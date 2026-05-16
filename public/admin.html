@@ -499,7 +499,7 @@
       <div class="col-12 col-md-4 col-xl-4">
         <div class="stat-card">
           <div class="stat-icon-bg bg-icon-success"><i class="fas fa-rupee-sign"></i></div>
-          <div class="stat-value" id="totalRevenue">&#8377;0</div>
+          <div class="stat-value" id="totalRevenue">₹0</div>
           <div class="text-muted small">Total Revenue</div>
         </div>
       </div>
@@ -651,7 +651,7 @@
                 </select>
               </div>
               <div class="col-md-6">
-                <label class="form-label text-muted small text-uppercase fw-bold">Price (&#8377;)</label>
+                <label class="form-label text-muted small text-uppercase fw-bold">Price (₹)</label>
                 <input type="number" step="0.01" class="form-control" id="itemPrice" placeholder="0.00" required>
               </div>
               <div class="col-md-6">
@@ -755,7 +755,7 @@
         if (data.success) {
           document.getElementById('totalOrders').textContent = data.stats.totalOrders;
           document.getElementById('todayOrders').textContent = data.stats.todayOrders;
-          document.getElementById('totalRevenue').textContent = `&#8377;${data.stats.totalRevenue.toFixed(2)}`;
+          document.getElementById('totalRevenue').textContent = `₹${data.stats.totalRevenue.toFixed(2)}`;
           document.getElementById('pendingOrders').textContent = data.stats.pendingOrders;
           document.getElementById('totalCustomers').textContent = data.stats.totalCustomers;
         }
@@ -890,7 +890,7 @@
         let itemsHtml = order.items && order.items.length > 0 ? order.items.map(item => `
              <div class="d-flex justify-content-between mb-1 small border-bottom border-opacity-10 pb-1">
                <span>${item.quantity}x ${item.item_name}</span>
-               <span class="fw-bold">&#8377;${(parseFloat(item.price) * parseInt(item.quantity)).toFixed(2)}</span>
+               <span class="fw-bold">₹${(parseFloat(item.price) * parseInt(item.quantity)).toFixed(2)}</span>
              </div>`).join('') : '<small class="text-muted">No items</small>';
 
         return `
@@ -924,7 +924,7 @@
                 </div>
                 <div class="d-flex justify-content-between align-items-center border-top border-opacity-10 pt-2">
                    <small class="text-muted">Total Amount</small>
-                   <span class="text-primary-custom fw-bold fs-5">&#8377;${parseFloat(order.total_amount).toFixed(2)}</span>
+                   <span class="text-primary-custom fw-bold fs-5">₹${parseFloat(order.total_amount).toFixed(2)}</span>
                 </div>
               </div>
               <div class="order-footer d-flex gap-2 align-items-center">
@@ -1035,7 +1035,7 @@
               </tr>
               <tr style="border-bottom: 1px solid #e0e0e0;">
                 <td style="padding: 0.75rem 0; color: #666; font-weight: 500;">Amount Paid</td>
-                <td style="padding: 0.75rem 0; text-align: right; font-weight: 700; color: #28a745; font-size: 1.1rem;">&#8377;${parseFloat(amount).toFixed(2)}</td>
+                <td style="padding: 0.75rem 0; text-align: right; font-weight: 700; color: #28a745; font-size: 1.1rem;">₹${parseFloat(amount).toFixed(2)}</td>
               </tr>
               ${paymentId && paymentId !== 'N/A' ? `
                 <tr>
@@ -1168,7 +1168,7 @@
                <h6 class="fw-bold mb-1 text-truncate">${item.item_name}</h6>
                <small class="text-muted mb-3">${item.category_name || 'Uncategorized'}</small>
                <div class="mt-auto d-flex justify-content-between align-items-center pt-3 border-top border-opacity-10">
-                 <span class="text-primary-custom fw-bold fs-5">&#8377;${parseFloat(item.price).toFixed(2)}</span>
+                 <span class="text-primary-custom fw-bold fs-5">₹${parseFloat(item.price).toFixed(2)}</span>
                  <div>
                    <button class="btn btn-sm btn-light border" onclick="openItemModal(${item.item_id})"><i class="fas fa-pen text-info"></i></button>
                    <button class="btn btn-sm btn-light border ms-1" onclick="deleteItem(${item.item_id})"><i class="fas fa-trash text-danger"></i></button>

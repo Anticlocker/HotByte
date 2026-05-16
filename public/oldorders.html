@@ -330,7 +330,7 @@
               <i class="fas fa-rupee-sign"></i>
            </div>
            <div>
-              <h4 class="fw-bold mb-0" id="revenueArchived">&#8377;0</h4>
+              <h4 class="fw-bold mb-0" id="revenueArchived">₹0</h4>
               <span class="text-muted small">Archived Revenue</span>
            </div>
         </div>
@@ -385,7 +385,7 @@
       }, 0);
       
       document.getElementById('totalArchived').textContent = count;
-      document.getElementById('revenueArchived').textContent = `&#8377;${revenue.toFixed(2)}`;
+      document.getElementById('revenueArchived').textContent = `₹${revenue.toFixed(2)}`;
       document.getElementById('statsRow').style.display = 'flex';
     }
 
@@ -410,7 +410,7 @@
         const itemsHtml = (order.items || []).map(item => `
             <div class="d-flex justify-content-between small mb-1 border-bottom border-opacity-10 pb-1" style="border-color: var(--card-border) !important;">
                <span>${item.quantity}x ${item.item_name}</span>
-               <span class="fw-bold">&#8377;${(item.price * item.quantity).toFixed(2)}</span>
+               <span class="fw-bold">₹${(item.price * item.quantity).toFixed(2)}</span>
             </div>
         `).join('');
 
@@ -453,7 +453,7 @@
                </div>
 
                <div class="card-footer-custom d-flex justify-content-between align-items-center">
-                  <span class="fs-5 fw-bold text-primary-custom">&#8377;${parseFloat(order.total_amount).toFixed(2)}</span>
+                  <span class="fs-5 fw-bold text-primary-custom">₹${parseFloat(order.total_amount).toFixed(2)}</span>
                   <button class="btn btn-sm btn-outline-danger border-0" onclick="deleteOrder(${order.order_id})" title="Delete Record">
                      <i class="fas fa-trash"></i>
                   </button>

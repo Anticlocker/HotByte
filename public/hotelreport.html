@@ -635,7 +635,7 @@
           <div class="stat-icon-bg bg-icon-primary">
             <i class="fas fa-rupee-sign"></i>
           </div>
-          <div class="stat-value" id="totalRevenue">&#8377;0</div>
+          <div class="stat-value" id="totalRevenue">₹0</div>
           <div class="text-muted small">Total Revenue</div>
         </div>
       </div>
@@ -653,7 +653,7 @@
           <div class="stat-icon-bg bg-icon-warning">
             <i class="fas fa-chart-bar"></i>
           </div>
-          <div class="stat-value" id="avgOrderValue">&#8377;0</div>
+          <div class="stat-value" id="avgOrderValue">₹0</div>
           <div class="text-muted small">Avg Order Value</div>
         </div>
       </div>
@@ -795,15 +795,15 @@
         const data = await response.json();
         
         if (data.success) {
-          document.getElementById('totalRevenue').textContent = '&#8377;' + Math.round(data.stats.total_revenue || 0);
+          document.getElementById('totalRevenue').textContent = '₹' + Math.round(data.stats.total_revenue || 0);
           document.getElementById('totalOrders').textContent = data.stats.total_orders || 0;
-          document.getElementById('avgOrderValue').textContent = '&#8377;' + Math.round(data.stats.avg_order_value || 0);
+          document.getElementById('avgOrderValue').textContent = '₹' + Math.round(data.stats.avg_order_value || 0);
           document.getElementById('totalCustomers').textContent = data.stats.total_customers || 0;
         }
       } catch (error) {
-        document.getElementById('totalRevenue').textContent = '&#8377;0';
+        document.getElementById('totalRevenue').textContent = '₹0';
         document.getElementById('totalOrders').textContent = '0';
-        document.getElementById('avgOrderValue').textContent = '&#8377;0';
+        document.getElementById('avgOrderValue').textContent = '₹0';
         document.getElementById('totalCustomers').textContent = '0';
       }
     }
@@ -830,7 +830,7 @@
                 <div class="product-category">${item.category}</div>
               </div>
               <div class="product-stats">
-                <div class="product-revenue text-success">&#8377;${Math.round(item.total_revenue)}</div>
+                <div class="product-revenue text-success">₹${Math.round(item.total_revenue)}</div>
                 <div class="product-quantity">${item.total_quantity_sold} sold</div>
               </div>
             </div>
@@ -868,7 +868,7 @@
                 <div class="product-category">${item.category}</div>
               </div>
               <div class="product-stats">
-                <div class="product-revenue text-danger">&#8377;${Math.round(item.total_revenue)}</div>
+                <div class="product-revenue text-danger">₹${Math.round(item.total_revenue)}</div>
                 <div class="product-quantity">${item.total_quantity_sold} sold</div>
               </div>
             </div>
@@ -926,7 +926,7 @@
     // Server se API call karke daily revenue data lete hain
     // Chart.js use karke line chart banate hain
     // X-axis ? dates (Jan 1, Jan 2, etc)
-    // Y-axis &#8377; revenue (&#8377;0, &#8377;1000, etc)
+    // Y-axis ₹ revenue (₹0, ₹1000, etc)
     // Smooth curve (tension: 0.4) aur gradient fill
     async function loadRevenueTrend() {
       try {
@@ -1096,7 +1096,7 @@
               <td>${customer.name}</td>
               <td>${customer.phone || 'N/A'}</td>
               <td><span class="badge bg-primary">${customer.total_orders}</span></td>
-              <td class="fw-bold text-success">&#8377;${Math.round(customer.total_spent)}</td>
+              <td class="fw-bold text-success">₹${Math.round(customer.total_spent)}</td>
               <td>${new Date(customer.last_order_date).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}</td>
             </tr>
           `).join('');
