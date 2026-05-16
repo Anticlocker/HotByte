@@ -30,7 +30,7 @@ app.disable('x-powered-by');
 // Ye decide karta hai kaun se domains se API call aa sakti hai
 // Production me: Sirf allowed domain se requests accept hoti hain (security ke liye)
 // Development me: Sab domains se requests allow hain (testing ke liye)
-const allowedOrigin = process.env.ALLOWED_ORIGIN || 'https://www.servhunt.in';
+const allowedOrigin = process.env.ALLOWED_ORIGIN || 'https://www.rav1.in';
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' ? allowedOrigin : '*',
   credentials: true // Cookies aur authentication headers allow karta hai

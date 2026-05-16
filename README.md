@@ -664,7 +664,7 @@ BUNNY_CDN_HOSTNAME=your-cdn.b-cdn.net
 # ============================
 # CORS & Domain Configuration
 # ============================
-ALLOWED_ORIGIN=https://www.servhunt.in
+ALLOWED_ORIGIN=https://www.rav1.in
 
 # ============================
 # Server Configuration
