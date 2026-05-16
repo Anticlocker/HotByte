@@ -1,0 +1,345 @@
+﻿<!DOCTYPE html>
+<html lang="en" class="min-h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HotByte | Digital Menu & Ordering Platform</title>
+
+  <!-- OneSignal -->
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  <script>
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function(OneSignal) {
+      await OneSignal.init({
+        appId: "f74b5208-81e8-4fb0-8083-8160a5665021",
+        safari_web_id: "web.onesignal.auto.4ed285de-faf5-4c6c-a346-3ff91e5aded6",
+        notifyButton: { enable: false },
+      });
+    });
+  </script>
+
+  <!-- Primary Meta Tags -->
+  <meta name="title" content="HotByte - Smart Digital Menu & Restaurant Ordering Platform">
+  <meta name="description" content="HotByte transforms dining with a seamless digital menu experience. Order directly from your table with our smart, fast, and modern platform.">
+  <meta name="keywords" content="HotByte, digital menu, restaurant ordering, table ordering, smart menu, food ordering system, QR menu">
+  <meta name="author" content="HotByte">
+  <meta name="robots" content="index, follow">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://www.HotByte.in/">
+  <meta property="og:title" content="HotByte - Smart Digital Menu & Ordering">
+  <meta property="og:description" content="HotByte transforms dining with a seamless digital menu experience. Order directly from your table.">
+  <meta property="og:image" content="https://www.HotByte.in/favicon_io/android-chrome-512x512.png">
+
+  <!-- Favicons -->
+  <link rel="icon" type="image/x-icon" href="/favicon_io/favicon.ico">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon_io/favicon-16x16.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon_io/favicon-32x32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon_io/apple-touch-icon.png">
+  <link rel="manifest" href="/favicon_io/site.webmanifest">
+
+  <!-- Theme & Fonts -->
+  <meta name="theme-color" content="#FF5A1F">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+  <style>
+    :root {
+      --orange: #FF5A1F;
+      --orange-dark: #E04A10;
+      --orange-light: #FFF3EE;
+      --orange-glow: rgba(255, 90, 31, 0.18);
+    }
+
+    * { -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+    }
+
+    /* Mesh gradient background */
+    .mesh-gradient {
+      background-color: #FAFAFA;
+      background-image:
+        radial-gradient(at 0% 0%, rgba(255, 90, 31, 0.07) 0px, transparent 55%),
+        radial-gradient(at 100% 0%, rgba(255, 90, 31, 0.04) 0px, transparent 50%),
+        radial-gradient(at 50% 100%, rgba(255, 90, 31, 0.05) 0px, transparent 50%);
+      background-attachment: fixed;
+    }
+
+    /* Glassmorphism navbar */
+    .glass-nav {
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255, 90, 31, 0.08);
+    }
+
+    /* Glass card */
+    .glass-card {
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.7);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
+    }
+
+    /* Orange gradient button */
+    .btn-orange {
+      background: linear-gradient(135deg, #FF5A1F 0%, #E04A10 100%);
+      box-shadow: 0 8px 24px rgba(255, 90, 31, 0.35);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .btn-orange:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 32px rgba(255, 90, 31, 0.45);
+    }
+    .btn-orange:active { transform: translateY(0); }
+
+    /* Floating animation */
+    .animate-float {
+      animation: float 6s ease-in-out infinite;
+    }
+    .animate-float-delay {
+      animation: float 6s ease-in-out infinite;
+      animation-delay: 1.2s;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-14px); }
+    }
+
+    /* Fade-in animation */
+    .animate-fade-in-up {
+      animation: fadeInUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    .animate-fade-in-up-delay {
+      animation: fadeInUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+    }
+    .animate-fade-in-up-delay-2 {
+      animation: fadeInUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Plate glow */
+    .plate-glow {
+      box-shadow: 0 0 60px rgba(255, 90, 31, 0.12), 0 0 120px rgba(255, 90, 31, 0.06);
+    }
+
+    /* Badge pulse */
+    .badge-pulse::before {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: inherit;
+      background: linear-gradient(135deg, rgba(255,90,31,0.2), transparent);
+      animation: badgePulse 3s ease-in-out infinite;
+    }
+    @keyframes badgePulse {
+      0%, 100% { opacity: 0; }
+      50% { opacity: 1; }
+    }
+
+    /* Nav link */
+    .nav-link {
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Feature chip */
+    .feature-chip {
+      transition: all 0.2s ease;
+    }
+    .feature-chip:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(255, 90, 31, 0.15);
+    }
+
+    /* Spin animation */
+    @keyframes spin-slow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .animate-spin-slow {
+      animation: spin-slow 20s linear infinite;
+    }
+  </style>
+
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react/": "https://esm.sh/react@^19.2.3/"
+  }
+}
+</script>
+</head>
+<body class="mesh-gradient flex flex-col selection:bg-orange-100 selection:text-orange-700">
+
+  <!-- Navbar -->
+  <nav class="glass-nav flex-none sticky top-0 z-50 px-5 lg:px-16 py-3.5 flex items-center">
+    <div class="flex items-center gap-2.5 cursor-pointer group">
+      <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-lg transition-all duration-300 group-hover:scale-105 group-hover:shadow-orange-200" style="background: linear-gradient(135deg, #FF5A1F, #E04A10); box-shadow: 0 4px 14px rgba(255,90,31,0.35);">
+        <i class="fas fa-fire text-sm"></i>
+      </div>
+      <span class="text-lg font-bold tracking-tight text-gray-900">Hot<span style="color:#FF5A1F">Byte</span></span>
+    </div>
+
+    <div class="ml-auto flex items-center gap-2 sm:gap-3">
+      <a href="/login" class="nav-link px-4 py-2 text-gray-600 text-sm font-semibold rounded-lg hover:text-orange-600 hover:bg-orange-50">
+        Customer Login
+      </a>
+      <a href="/admin/login" class="nav-link px-4 py-2 text-white text-sm font-bold rounded-xl flex items-center gap-2 btn-orange" style="background: linear-gradient(135deg, #FF5A1F, #E04A10);">
+        <i class="fas fa-user-shield text-xs opacity-90"></i>
+        <span class="hidden sm:inline">Admin</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="flex-grow flex items-center py-14 lg:py-24 px-5 lg:px-16">
+    <div class="max-w-[1280px] mx-auto w-full grid lg:grid-cols-2 gap-16 items-center">
+
+      <!-- Left Side -->
+      <div class="space-y-8 text-center lg:text-left">
+
+        <!-- Badge -->
+        <div class="animate-fade-in-up flex justify-center lg:justify-start">
+          <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold tracking-wide border" style="background: rgba(255,90,31,0.08); border-color: rgba(255,90,31,0.2); color: #FF5A1F;">
+            <span class="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span>
+            Next-Gen Digital Menu Platform
+          </div>
+        </div>
+
+        <div class="space-y-5 animate-fade-in-up-delay">
+          <h1 class="text-4xl lg:text-5xl xl:text-6xl font-black text-gray-900 leading-[1.1] tracking-tight">
+            Dining,<br/>
+            <span style="background: linear-gradient(135deg, #FF5A1F 0%, #E04A10 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+              Reimagined
+            </span>
+          </h1>
+          <p class="text-base lg:text-lg text-gray-500 max-w-md mx-auto lg:mx-0 leading-relaxed font-medium">
+            Scan. Browse. Order. HotByte brings a seamless digital menu experience to your table â€” fast, intuitive, and beautifully designed.
+          </p>
+        </div>
+
+        <!-- CTA -->
+        <div class="animate-fade-in-up-delay-2 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+          <a href="/menu" class="btn-orange px-8 py-4 text-white rounded-2xl font-bold text-base flex items-center justify-center gap-3">
+            <i class="fas fa-utensils text-orange-200"></i>
+            View Menu & Order
+            <i class="fas fa-arrow-right text-xs"></i>
+          </a>
+          <a href="/login" class="px-8 py-4 bg-white text-gray-700 rounded-2xl font-semibold text-base border border-gray-200 hover:border-orange-200 hover:text-orange-600 transition-all flex items-center justify-center gap-2" style="box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+            <i class="fas fa-user text-xs"></i>
+            Sign In
+          </a>
+        </div>
+
+        <!-- Feature Chips -->
+        <div class="animate-fade-in-up-delay-2 flex flex-wrap gap-2 justify-center lg:justify-start">
+          <div class="feature-chip inline-flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-full text-xs font-semibold text-gray-600 border border-gray-100 shadow-sm">
+            <i class="fas fa-bolt text-orange-500 text-xs"></i> Instant Orders
+          </div>
+          <div class="feature-chip inline-flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-full text-xs font-semibold text-gray-600 border border-gray-100 shadow-sm">
+            <i class="fas fa-qrcode text-orange-500 text-xs"></i> QR-Based
+          </div>
+          <div class="feature-chip inline-flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-full text-xs font-semibold text-gray-600 border border-gray-100 shadow-sm">
+            <i class="fas fa-shield-alt text-orange-500 text-xs"></i> Secure Payments
+          </div>
+          <div class="feature-chip inline-flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-full text-xs font-semibold text-gray-600 border border-gray-100 shadow-sm">
+            <i class="fas fa-chart-line text-orange-500 text-xs"></i> Live Dashboard
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Side â€” Visual -->
+      <div class="relative flex justify-center items-center">
+
+        <!-- Floating Badge 1: Fast Service -->
+        <div class="absolute top-4 right-0 lg:-right-4 z-20 animate-float">
+          <div class="glass-card px-4 py-3 rounded-2xl flex items-center gap-3 relative overflow-hidden">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center text-sm" style="background: rgba(255,90,31,0.1); color: #FF5A1F;">
+              <i class="fas fa-bolt"></i>
+            </div>
+            <div>
+              <p class="text-xs font-bold text-gray-800">Fast Service</p>
+              <p class="text-[10px] text-gray-500 font-semibold">Live Order Tracking</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Floating Badge 2: Certified -->
+        <div class="absolute bottom-4 left-0 lg:-left-4 z-20 animate-float-delay">
+          <div class="glass-card px-4 py-3 rounded-2xl flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center text-sm bg-emerald-50 text-emerald-600">
+              <i class="fas fa-check"></i>
+            </div>
+            <div>
+              <p class="text-xs font-bold text-gray-800">Hygienic</p>
+              <p class="text-[10px] text-gray-500 font-semibold">Certified Kitchen</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main Plate Visual -->
+        <div class="relative w-full max-w-[420px] aspect-square flex items-center justify-center">
+          <!-- Outer decorative ring -->
+          <div class="absolute inset-0 rounded-full" style="border: 10px solid rgba(255,90,31,0.06);"></div>
+          <!-- Inner plate bg -->
+          <div class="absolute inset-[28px] rounded-full plate-glow" style="background: radial-gradient(circle, rgba(255,90,31,0.05) 0%, rgba(255,90,31,0.02) 100%); border: 1px solid rgba(255,90,31,0.1);"></div>
+          <!-- Rotating ring decoration -->
+          <div class="absolute inset-[14px] rounded-full animate-spin-slow opacity-20" style="border: 1px dashed rgba(255,90,31,0.5);"></div>
+
+          <!-- Central QR Plate -->
+          <div class="relative z-10 w-[64%] h-[64%] bg-white rounded-full flex items-center justify-center shadow-2xl" style="border: 10px solid rgba(255,90,31,0.1); box-shadow: 0 20px 60px rgba(255,90,31,0.12), 0 4px 20px rgba(0,0,0,0.08);">
+            <div class="p-2 bg-white rounded-xl">
+              <img src="https://storage2.me-qr.com/qr/287575226.png?v=1765514441" alt="Menu QR Code" class="w-32 h-32 lg:w-36 lg:h-36 opacity-90 rounded-lg">
+            </div>
+            <!-- Decorative dots top -->
+            <div class="absolute top-4 flex gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full" style="background:#FF5A1F; opacity:0.4;"></span>
+              <span class="w-1.5 h-1.5 rounded-full" style="background:#FF5A1F; opacity:0.6;"></span>
+              <span class="w-1.5 h-1.5 rounded-full" style="background:#FF5A1F; opacity:0.4;"></span>
+            </div>
+            <!-- Decorative dots bottom -->
+            <div class="absolute bottom-4 flex gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full" style="background:#FF5A1F; opacity:0.4;"></span>
+              <span class="w-1.5 h-1.5 rounded-full" style="background:#FF5A1F; opacity:0.6;"></span>
+              <span class="w-1.5 h-1.5 rounded-full" style="background:#FF5A1F; opacity:0.4;"></span>
+            </div>
+          </div>
+
+          <!-- Scan CTA label -->
+          <div class="absolute bottom-12 z-20">
+            <div class="glass-card px-4 py-2 rounded-full flex items-center gap-2 text-xs font-bold text-gray-700">
+              <i class="fas fa-qrcode text-orange-500"></i>
+              Scan to Order
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="mt-auto py-7 border-t flex items-center justify-between px-6 lg:px-16" style="border-color: rgba(0,0,0,0.06); background: rgba(255,255,255,0.6);">
+    <div class="flex items-center gap-2">
+      <div class="w-6 h-6 rounded-lg flex items-center justify-center text-white text-xs" style="background: linear-gradient(135deg, #FF5A1F, #E04A10);">
+        <i class="fas fa-fire" style="font-size: 9px;"></i>
+      </div>
+      <span class="text-xs font-bold text-gray-400 tracking-wide">HotByte</span>
+    </div>
+    <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.25em]">
+      &copy; 2025 HotByte. All rights reserved.
+    </p>
+  </footer>
+
+</body>
+</html>
+

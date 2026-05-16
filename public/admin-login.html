@@ -1,0 +1,322 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <title>Admin Login - HotByte | Management Portal</title>
+    <meta name="title" content="Admin Login - HotByte | Management Portal">
+    <meta name="description" content="Secure admin login portal for HotByte management. Access dashboard, manage orders, menu, and restaurant operations.">
+    <meta name="keywords" content="HotByte admin, admin login, restaurant management, admin portal, secure login">
+    <meta name="author" content="HotByte">
+    <meta name="robots" content="noindex, nofollow">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://www.HotByte.in/admin/login">
+    <meta property="og:title" content="Admin Login - HotByte">
+    <meta property="og:description" content="Secure admin login portal for HotByte management.">
+    <meta property="og:image" content="https://www.HotByte.in/favicon_io/android-chrome-512x512.png">
+    <meta property="twitter:card" content="summary">
+    <meta property="twitter:url" content="https://www.HotByte.in/admin/login">
+    <meta property="twitter:title" content="Admin Login - HotByte">
+    <meta property="twitter:description" content="Secure admin login portal for HotByte management.">
+    <link rel="canonical" href="https://www.HotByte.in/admin/login">
+    <link rel="icon" type="image/x-icon" href="/favicon_io/favicon.ico">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon_io/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon_io/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/favicon_io/apple-touch-icon.png">
+    <link rel="manifest" href="/favicon_io/site.webmanifest">
+    <meta name="theme-color" content="#FF5A1F">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="HotByte Admin">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.12/dist/sweetalert2.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary-color: #FF5A1F;
+            --primary-hover: #E04A10;
+            --primary-glow: rgba(255, 90, 31, 0.18);
+            --text-main: #111827;
+            --text-muted: #6b7280;
+            --card-border: #e5e7eb;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FAFAFA;
+            background-image: radial-gradient(at 70% 80%, rgba(255,90,31,0.05) 0px, transparent 50%),
+                              radial-gradient(at 20% 20%, rgba(255,90,31,0.04) 0px, transparent 50%);
+            color: var(--text-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .auth-wrapper {
+            display: flex;
+            min-height: 100vh;
+            width: 100%;
+        }
+
+        .auth-banner {
+            display: none;
+            width: 50%;
+            background: url('https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?q=80&auto=format&fit=crop') no-repeat center center;
+            background-size: cover;
+            position: relative;
+        }
+
+        .auth-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(145deg, rgba(17,24,39,0.96) 0%, rgba(31,41,55,0.93) 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 4rem;
+            color: white;
+        }
+
+        .banner-logo {
+            display: flex; align-items: center; gap: 12px; margin-bottom: 3.5rem;
+        }
+        .banner-logo-icon {
+            width: 44px; height: 44px;
+            background: linear-gradient(135deg, #FF5A1F, #E04A10);
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.2rem;
+            box-shadow: 0 8px 20px rgba(255,90,31,0.4);
+        }
+        .banner-logo-name { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.5px; }
+        .banner-logo-badge {
+            font-size: 0.65rem; font-weight: 700;
+            background: rgba(255,90,31,0.2);
+            color: #FF7A4A;
+            padding: 2px 8px; border-radius: 20px;
+            border: 1px solid rgba(255,90,31,0.3);
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+
+        .banner-content h1 {
+            font-weight: 800; font-size: 2.8rem; line-height: 1.1;
+            margin-bottom: 1.25rem; letter-spacing: -1px;
+        }
+        .banner-content h1 span { color: #FF5A1F; }
+        .banner-content p { font-size: 1rem; opacity: 0.75; max-width: 400px; line-height: 1.65; }
+
+        .banner-stats {
+            display: flex; gap: 2rem; margin-top: 3rem;
+        }
+        .banner-stat { display: flex; flex-direction: column; gap: 4px; }
+        .banner-stat-value { font-size: 1.5rem; font-weight: 800; color: #FF5A1F; }
+        .banner-stat-label { font-size: 0.75rem; opacity: 0.6; font-weight: 500; }
+
+        .auth-form-container {
+            width: 100%;
+            display: flex; align-items: center; justify-content: center;
+            padding: 2rem;
+            background: white;
+        }
+
+        .auth-card {
+            width: 100%; max-width: 440px;
+            animation: slideInRight 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .brand-logo {
+            width: 52px; height: 52px;
+            background: linear-gradient(135deg, #FF5A1F, #E04A10);
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-size: 1.4rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 10px 28px rgba(255, 90, 31, 0.35);
+        }
+
+        .page-title { font-weight: 800; font-size: 1.8rem; margin-bottom: 0.4rem; color: #111827; letter-spacing: -0.5px; }
+        .page-subtitle { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.9rem; }
+
+        .form-floating > .form-control {
+            border: 2px solid var(--card-border);
+            border-radius: 12px;
+            height: 3.5rem;
+            padding-top: 1.625rem;
+            padding-bottom: 0.625rem;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .form-floating > .form-control:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 4px var(--primary-glow);
+        }
+        .form-floating > label { padding: 1rem 0.75rem; color: var(--text-muted); font-size: 0.9rem; }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #FF5A1F, #E04A10);
+            border: none;
+            padding: 0.85rem;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 0.95rem;
+            width: 100%; margin-top: 1rem;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 6px 20px rgba(255, 90, 31, 0.3);
+            font-family: 'Inter', sans-serif;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 28px rgba(255, 90, 31, 0.42);
+        }
+        .btn-primary:active { transform: translateY(0); }
+
+        .back-link { text-align: center; margin-top: 2rem; }
+        .back-link a {
+            color: var(--text-muted); text-decoration: none;
+            font-size: 0.9rem; transition: 0.2s; font-weight: 500;
+        }
+        .back-link a:hover { color: var(--primary-color); }
+
+        .security-badge {
+            display: flex; align-items: center; gap: 8px;
+            padding: 0.75rem 1rem;
+            background: #f9fafb; border: 1px solid #e5e7eb;
+            border-radius: 10px; margin-top: 1.5rem;
+            font-size: 0.8rem; color: var(--text-muted); font-weight: 500;
+        }
+        .security-badge i { color: #22c55e; }
+
+        @media (min-width: 992px) {
+            .auth-banner { display: block; }
+            .auth-form-container { width: 50%; }
+        }
+        @media (max-width: 576px) {
+            .auth-form-container { padding: 1.5rem; }
+            .brand-logo { margin: 0 auto 1.5rem auto; }
+            .auth-card { text-align: center; }
+            .form-floating { text-align: left; }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="auth-wrapper">
+        <!-- Left Banner -->
+        <div class="auth-banner">
+            <div class="auth-overlay">
+                <div class="banner-logo">
+                    <div class="banner-logo-icon"><i class="fas fa-fire text-white"></i></div>
+                    <span class="banner-logo-name">HotByte</span>
+                    <span class="banner-logo-badge">Admin</span>
+                </div>
+                <div class="banner-content">
+                    <h1>Your <span>Command</span><br>Center</h1>
+                    <p>Manage orders, track revenue, update your menu, and oversee all restaurant operations from one unified dashboard.</p>
+                </div>
+                <div class="banner-stats">
+                    <div class="banner-stat">
+                        <span class="banner-stat-value">Real-time</span>
+                        <span class="banner-stat-label">Order Updates</span>
+                    </div>
+                    <div class="banner-stat">
+                        <span class="banner-stat-value">Live</span>
+                        <span class="banner-stat-label">Kitchen Display</span>
+                    </div>
+                    <div class="banner-stat">
+                        <span class="banner-stat-value">Full</span>
+                        <span class="banner-stat-label">Analytics</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Form -->
+        <div class="auth-form-container">
+            <div class="auth-card">
+                <div class="brand-logo"><i class="fas fa-fire"></i></div>
+
+                <h2 class="page-title">Admin Access</h2>
+                <p class="page-subtitle">Sign in to manage your restaurant</p>
+
+                <div id="login-form-wrapper">
+                    <form id="adminLoginForm" novalidate>
+                        <div class="form-floating mb-3">
+                            <input type="text" class="form-control" id="username" placeholder="Username" required>
+                            <label for="username"><i class="fas fa-user me-2"></i>Username</label>
+                        </div>
+                        <div class="form-floating mb-3">
+                            <input type="password" class="form-control" id="password" placeholder="Password" required>
+                            <label for="password"><i class="fas fa-lock me-2"></i>Password</label>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-sign-in-alt me-2"></i>Login to Dashboard
+                        </button>
+                    </form>
+                </div>
+
+                <div class="security-badge">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>Restricted access â€” authorized personnel only</span>
+                </div>
+
+                <div class="back-link">
+                    <a href="/"><i class="fas fa-arrow-left me-1"></i>Back to Website</a>
+                </div>
+
+                <div class="text-center mt-4">
+                    <p class="text-muted small">&copy; 2025 HotByte. Restricted Access.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.12/dist/sweetalert2.all.min.js"></script>
+    <script>
+    async function checkAdminSession() {
+      try {
+        const response = await fetch('/api/auth/admin/session-check');
+        const data = await response.json();
+        if (data.authenticated) window.location.href = '/admin';
+      } catch (error) {}
+    }
+    checkAdminSession();
+
+    document.getElementById('adminLoginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const btn = e.submitter;
+      if (!username || !password) return Swal.fire('Error', 'Credentials required', 'error');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Logging in...';
+      try {
+        const response = await fetch('/api/auth/admin/login', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ username, password })
+        });
+        const data = await response.json();
+        if (data.success) {
+          Swal.fire({icon: 'success', title: 'Welcome Back', text: 'Redirecting...', timer: 1500, showConfirmButton: false})
+          .then(() => window.location.href = '/admin');
+        } else {
+          Swal.fire('Login Failed', data.message || 'Invalid credentials', 'error');
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>Login to Dashboard';
+        }
+      } catch (error) {
+        Swal.fire('Error', 'Connection failed', 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>Login to Dashboard';
+      }
+    });
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,39 @@
+﻿{
+  "name": "HotByte",
+  "version": "1.0.0",
+  "description": "HotByte - Smart Digital Menu & Restaurant Ordering Platform",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "keywords": [
+    "restaurant",
+    "menu",
+    "ordering",
+    "management",
+    "digital-menu"
+  ],
+  "author": "HotByte",
+  "license": "ISC",
+  "engines": {
+    "node": "18.x",
+    "npm": "8.x"
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.2.1",
+    "multer": "^2.0.2",
+    "pg": "^8.16.3",
+    "razorpay": "^2.9.6"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}
+
