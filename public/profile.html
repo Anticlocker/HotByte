@@ -672,7 +672,7 @@
         <div class="stat-icon">
           <i class="fas fa-rupee-sign"></i>
         </div>
-        <div class="stat-value" id="totalSpent">₹0</div>
+        <div class="stat-value" id="totalSpent">&#8377;0</div>
         <div class="stat-label">Total Spent</div>
       </div>
     </div>
@@ -802,7 +802,7 @@
         });
         document.getElementById('joinDate').textContent = formattedDate;
         document.getElementById('totalOrders').textContent = profile.totalOrders;
-        document.getElementById('totalSpent').textContent = `₹${profile.totalSpent.toFixed(2)}`;
+        document.getElementById('totalSpent').textContent = `&#8377;${profile.totalSpent.toFixed(2)}`;
       } catch (error) {}
     }
 
@@ -871,7 +871,7 @@
                       <div class="item-quantity">Qty: ${item.quantity}</div>
                     </div>
                   </div>
-                  <div class="item-price">₹${(item.price * item.quantity).toFixed(2)}</div>
+                  <div class="item-price">&#8377;${(item.price * item.quantity).toFixed(2)}</div>
                 </div>
               `;
             }).join('');
@@ -939,7 +939,7 @@
                 <div class="order-footer">
                   <div>
                     <div class="order-total">
-                      Total: <span class="order-total-amount">₹${order.totalAmount.toFixed(2)}</span>
+                      Total: <span class="order-total-amount">&#8377;${order.totalAmount.toFixed(2)}</span>
                     </div>
                     <div class="payment-info">
                       <i class="fas ${paymentIcon}"></i>
@@ -1168,7 +1168,7 @@
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
         doc.text('TOTAL', leftMargin, yPos);
-        doc.text(`₹ ${order.totalAmount.toFixed(2)}`, colAmount, yPos, { align: 'right' });
+        doc.text(`&#8377; ${order.totalAmount.toFixed(2)}`, colAmount, yPos, { align: 'right' });
         
         yPos += 3;
         doc.setLineWidth(0.5);

@@ -664,7 +664,7 @@
     <div class="cart-summary">
       <div class="cart-info-group">
         <span class="cart-count-text">Total</span>
-        <span class="cart-total-amount" id="cartTotal">₹0</span>
+        <span class="cart-total-amount" id="cartTotal">&#8377;0</span>
       </div>
       <button class="place-order-btn" onclick="placeOrder()">
         <span>Place Order</span>
@@ -899,7 +899,7 @@
 
         const buttonHtml = !item.is_available ? `<button class="add-to-cart-btn" disabled>N/A</button>` :
           (qty > 0 ? `<div class="quantity-controls">
-            <button class="qty-btn" onclick="updateQuantity(${item.item_id}, -1)">âˆ’</button>
+            <button class="qty-btn" onclick="updateQuantity(${item.item_id}, -1)">&#8722;</button>
             <span class="qty-value">${qty}</span>
             <button class="qty-btn" onclick="updateQuantity(${item.item_id}, 1)">+</button>
           </div>` : `<button class="add-to-cart-btn" onclick="addToCart(${item.item_id}, '${safeName}', ${item.price})">ADD</button>`);
@@ -914,7 +914,7 @@
             <div class="menu-item-name">${item.item_name}</div>
             <div class="menu-item-description">${item.description || 'Delicious freshly prepared dish'}</div>
             <div class="menu-item-footer">
-              <div class="menu-item-price">₹${parseFloat(item.price).toFixed(0)}</div>
+              <div class="menu-item-price">&#8377;${parseFloat(item.price).toFixed(0)}</div>
               ${buttonHtml}
             </div>
             ${rateButtonHtml}
@@ -1003,11 +1003,11 @@
 
           // Footer ke andar sirf button part ko update karo
           const priceDiv = footer.querySelector('.menu-item-price');
-          const priceHtml = priceDiv ? priceDiv.outerHTML : `<div class="menu-item-price">₹${parseFloat(item.price).toFixed(0)}</div>`;
+          const priceHtml = priceDiv ? priceDiv.outerHTML : `<div class="menu-item-price">&#8377;${parseFloat(item.price).toFixed(0)}</div>`;
 
           const buttonHtml = !item.is_available ? `<button class="add-to-cart-btn" disabled>N/A</button>` :
             (qty > 0 ? `<div class="quantity-controls">
-              <button class="qty-btn" onclick="updateQuantity(${item.item_id}, -1)">âˆ’</button>
+              <button class="qty-btn" onclick="updateQuantity(${item.item_id}, -1)">&#8722;</button>
               <span class="qty-value">${qty}</span>
               <button class="qty-btn" onclick="updateQuantity(${item.item_id}, 1)">+</button>
             </div>` : `<button class="add-to-cart-btn" onclick="addToCart(${item.item_id}, '${safeName}', ${item.price})">ADD</button>`);
@@ -1027,7 +1027,7 @@
       const total = cart.reduce((sum, i) => sum + (i.price * i.quantity), 0);
 
       document.getElementById('cartCount').textContent = count;
-      document.getElementById('cartTotal').textContent = `₹${total.toFixed(0)}`;
+      document.getElementById('cartTotal').textContent = `&#8377;${total.toFixed(0)}`;
       document.getElementById('cartBottomBar').classList.toggle('active', count > 0);
     }
 
@@ -1054,7 +1054,7 @@
               </div>
               <div style="text-align: right;">
                 <div style="font-size: 0.75rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.5px;">Total Amount</div>
-                <div style="font-size: 1.3rem; font-weight: 700;">₹${total.toFixed(0)}</div>
+                <div style="font-size: 1.3rem; font-weight: 700;">&#8377;${total.toFixed(0)}</div>
               </div>
             </div>
           </div>
@@ -1064,15 +1064,15 @@
               <div class="cart-item-row" data-item-id="${item.itemId}" style="display: flex; gap: 12px; padding: 12px; background: #f9f9f9; border-radius: 12px; margin-bottom: 10px; transition: all 0.2s;">
                 <div style="flex: 1; min-width: 0;">
                   <div style="font-weight: 600; font-size: 0.95rem; color: #1c1c1c; margin-bottom: 4px;">${item.itemName}</div>
-                  <div style="font-size: 0.8rem; color: #686b78;">₹${item.price.toFixed(0)} each</div>
+                  <div style="font-size: 0.8rem; color: #686b78;">&#8377;${item.price.toFixed(0)} each</div>
                 </div>
                 
                 <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
-                  <div style="font-weight: 700; font-size: 1rem; color: #FF5A1F;">₹${(item.price * item.quantity).toFixed(0)}</div>
+                  <div style="font-weight: 700; font-size: 1rem; color: #FF5A1F;">&#8377;${(item.price * item.quantity).toFixed(0)}</div>
                   
                   <div style="display: flex; align-items: center; background: white; border-radius: 8px; border: 1px solid #e8e8e8; overflow: hidden;">
                     <button class="cart-qty-btn" data-action="decrease" data-item-id="${item.itemId}" style="border: none; background: none; width: 32px; height: 32px; font-size: 1.1rem; font-weight: 700; color: #ef4444; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s;">
-                      ${item.quantity === 1 ? '<i class="fas fa-trash" style="font-size: 0.85rem;"></i>' : 'âˆ’'}
+                      ${item.quantity === 1 ? '<i class="fas fa-trash" style="font-size: 0.85rem;"></i>' : '&#8722;'}
                     </button>
                     <span style="font-size: 0.9rem; font-weight: 600; min-width: 28px; text-align: center; color: #1c1c1c;">${item.quantity}</span>
                     <button class="cart-qty-btn" data-action="increase" data-item-id="${item.itemId}" style="border: none; background: none; width: 32px; height: 32px; font-size: 1.1rem; font-weight: 700; color: #1fb881; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s;">+</button>
@@ -1089,7 +1089,7 @@
         html: html,
         width: '500px',
         showCancelButton: true,
-        confirmButtonText: `<i class="fas fa-arrow-right me-2"></i>Proceed to Pay ₹${total.toFixed(0)}`,
+        confirmButtonText: `<i class="fas fa-arrow-right me-2"></i>Proceed to Pay &#8377;${total.toFixed(0)}`,
         confirmButtonColor: '#FF5A1F',
         cancelButtonText: '<i class="fas fa-plus me-2"></i>Add More Items',
         cancelButtonColor: '#6c757d',
@@ -1383,7 +1383,7 @@
                    <p style="font-size: 1.1rem; font-weight: 600; color: #1fb881; margin: 10px 0;">Your Order is Confirmed! ðŸŽ‰</p>
                    <p style="font-size: 0.95rem; color: #666; margin: 15px 0;">Your delicious food will come shortly ðŸ½ï¸</p>
                    <div style="margin-top: 15px; padding: 12px; background: #fff3e0; border-radius: 8px; border-left: 4px solid #ff6d00;">
-                     <p style="font-size: 0.85rem; color: #666; margin: 0;">ðŸ’µ Please pay <strong>₹${total.toFixed(0)}</strong> at the counter</p>
+                     <p style="font-size: 0.85rem; color: #666; margin: 0;">ðŸ’µ Please pay <strong>&#8377;${total.toFixed(0)}</strong> at the counter</p>
                    </div>
                    <p style="font-size: 0.85rem; color: #999; margin-top: 15px;">We appreciate your order! ðŸ™</p>
                  </div>
