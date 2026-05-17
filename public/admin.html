@@ -1,52 +1,57 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-  
+
   <!-- Primary Meta Tags -->
   <title>Admin Dashboard - HotByte | Manage Orders & Menu</title>
   <meta name="title" content="Admin Dashboard - HotByte | Manage Orders & Menu">
-  <meta name="description" content="HotByte admin dashboard. Manage orders, menu items, categories, customer data, and restaurant operations in real-time.">
-  <meta name="keywords" content="HotByte admin, dashboard, order management, menu management, restaurant admin, operations">
+  <meta name="description"
+    content="HotByte admin dashboard. Manage orders, menu items, categories, customer data, and restaurant operations in real-time.">
+  <meta name="keywords"
+    content="HotByte admin, dashboard, order management, menu management, restaurant admin, operations">
   <meta name="author" content="HotByte">
   <meta name="robots" content="noindex, nofollow">
-  
+
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://www.HotByte.in/admin">
   <meta property="og:title" content="Admin Dashboard - HotByte">
   <meta property="og:description" content="HotByte admin dashboard for managing restaurant operations.">
   <meta property="og:image" content="https://www.HotByte.in/favicon_io/android-chrome-512x512.png">
-  
+
   <!-- Twitter -->
   <meta property="twitter:card" content="summary">
   <meta property="twitter:url" content="https://www.HotByte.in/admin">
   <meta property="twitter:title" content="Admin Dashboard - HotByte">
   <meta property="twitter:description" content="HotByte admin dashboard for managing restaurant operations.">
   <meta property="twitter:image" content="https://www.HotByte.in/favicon_io/android-chrome-512x512.png">
-  
+
   <!-- Canonical Link -->
   <link rel="canonical" href="https://www.HotByte.in/admin">
-  
+
   <!-- Favicons -->
-  <link rel="icon" type="image/x-icon" href="/favicon_io/favicon.ico">
-  <link rel="icon" type="image/png" sizes="16x16" href="/favicon_io/favicon-16x16.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon_io/favicon-32x32.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="/favicon_io/apple-touch-icon.png">
-  <link rel="manifest" href="/favicon_io/site.webmanifest">
-  
+  <link rel="icon" type="image/png" href="/favicon_io/favicon.png?v=2">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon_io/favicon-16x16.png?v=2">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon_io/favicon-32x32.png?v=2">
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon_io/apple-touch-icon.png?v=2">
+  <link rel="manifest" href="/favicon_io/site.webmanifest?v=2">
+
   <!-- Mobile Optimization -->
   <meta name="theme-color" content="#FF5A1F">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="HotByte Admin">
-  
+
   <!-- Bootstrap 5.3 CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <!-- FontAwesome 6.4 -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <!-- Google Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet">
   <!-- SweetAlert2 -->
   <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.12/dist/sweetalert2.min.css" rel="stylesheet">
 
@@ -58,29 +63,41 @@
       --accent: #FF5A1F;
       --bg-midnight: #111111;
       --sidebar-bg: #111111;
-      --sidebar-border: rgba(255,255,255,0.05);
+      --sidebar-border: rgba(255, 255, 255, 0.05);
       --card-bg: #FFFFFF;
-      --card-border: rgba(0,0,0,0.06);
+      --card-bg-custom: #FFFFFF;
+      --card-border: rgba(0, 0, 0, 0.06);
       --body-bg: #F8F9FA;
+      --body-bg-custom: #F8F9FA;
       --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     body {
-      font-family: 'Inter', sans-serif;
+      font-family: 'Plus Jakarta Sans', sans-serif;
       background-color: var(--body-bg);
       color: #1A1A1A;
       overflow-x: hidden;
-      background-image: radial-gradient(at 100% 0%, rgba(255,90,31,0.05) 0%, transparent 40%);
+      background-image: radial-gradient(at 100% 0%, rgba(255, 90, 31, 0.05) 0%, transparent 40%);
     }
 
-    h1, h2, h3, h4, h5, h6 { font-family: 'Outfit', sans-serif; font-weight: 700; letter-spacing: -0.02em; }
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
 
     /* --- Sidebar Styling --- */
     .sidebar {
       width: var(--sidebar-width);
       height: 100vh;
       position: fixed;
-      top: 0; left: 0;
+      top: 0;
+      left: 0;
       z-index: 1000;
       background: var(--sidebar-bg);
       border-right: 1px solid var(--sidebar-border);
@@ -89,10 +106,17 @@
       flex-direction: column;
       overflow-y: auto;
       scrollbar-width: thin;
-      scrollbar-color: rgba(255,255,255,0.1) transparent;
+      scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
     }
-    .sidebar::-webkit-scrollbar { width: 4px; }
-    .sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+
+    .sidebar::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .sidebar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+    }
 
     .sidebar-header {
       padding: 2.5rem 1.5rem;
@@ -100,15 +124,35 @@
     }
 
     .sidebar-brand {
-      font-family: 'Outfit', sans-serif;
-      font-size: 1.6rem;
-      font-weight: 800;
-      color: #FFFFFF;
       text-decoration: none;
       display: flex;
       align-items: center;
       gap: 12px;
     }
+
+    .brand-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.1;
+    }
+
+    .brand-name {
+      font-size: 1.6rem;
+      font-weight: 900;
+      color: #FFFFFF;
+      letter-spacing: -0.05em;
+    }
+
+    .brand-tagline {
+      font-size: 0.6rem;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-top: 2px;
+      opacity: 0.8;
+    }
+
     .sidebar-brand i {
       color: var(--primary);
       font-size: 1.8rem;
@@ -130,11 +174,12 @@
       font-size: 0.95rem;
       text-align: left;
       width: calc(100% - 32px);
+      text-decoration: none;
     }
 
     .nav-btn:hover {
       color: #FFF;
-      background: rgba(255,255,255,0.05);
+      background: rgba(255, 255, 255, 0.05);
     }
 
     .nav-btn.active {
@@ -143,7 +188,11 @@
       box-shadow: 0 10px 25px rgba(255, 90, 31, 0.3);
     }
 
-    .nav-btn i { font-size: 1.2rem; min-width: 24px; text-align: center; }
+    .nav-btn i {
+      font-size: 1.2rem;
+      min-width: 24px;
+      text-align: center;
+    }
 
     /* --- Main Content Area --- */
     .main-content {
@@ -160,11 +209,11 @@
       border-radius: 24px;
       padding: 1.2rem 2.5rem;
       margin-bottom: 3rem;
-      border: 1px solid rgba(0,0,0,0.05);
+      border: 1px solid rgba(0, 0, 0, 0.05);
       display: flex;
       justify-content: space-between;
       align-items: center;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.03);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.03);
     }
 
     /* --- Stats Cards --- */
@@ -174,14 +223,14 @@
       border: 1px solid var(--card-border);
       padding: 2rem;
       transition: var(--transition);
-      box-shadow: 0 4px 25px rgba(0,0,0,0.02);
+      box-shadow: 0 4px 25px rgba(0, 0, 0, 0.02);
       position: relative;
       overflow: hidden;
     }
 
     .stat-card:hover {
       transform: translateY(-6px);
-      box-shadow: 0 25px 50px rgba(0,0,0,0.07);
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.07);
       border-color: var(--primary);
     }
 
@@ -196,10 +245,25 @@
       margin-bottom: 1.5rem;
     }
 
-    .bg-icon-primary { background: rgba(255, 90, 31, 0.1); color: var(--primary); }
-    .bg-icon-success { background: rgba(31, 184, 129, 0.1); color: #1fb881; }
-    .bg-icon-warning { background: rgba(255, 193, 7, 0.1); color: #ffc107; }
-    .bg-icon-info { background: rgba(13, 202, 240, 0.1); color: #0dcaf0; }
+    .bg-icon-primary {
+      background: rgba(255, 90, 31, 0.1);
+      color: var(--primary);
+    }
+
+    .bg-icon-success {
+      background: rgba(31, 184, 129, 0.1);
+      color: #1fb881;
+    }
+
+    .bg-icon-warning {
+      background: rgba(255, 193, 7, 0.1);
+      color: #ffc107;
+    }
+
+    .bg-icon-info {
+      background: rgba(13, 202, 240, 0.1);
+      color: #0dcaf0;
+    }
 
     .stat-value {
       font-family: 'Outfit', sans-serif;
@@ -220,7 +284,7 @@
       height: 100%;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.02);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
     }
 
     .order-card:hover {
@@ -231,19 +295,22 @@
 
     .order-header {
       padding: 1.5rem;
-      border-bottom: 1px solid rgba(0,0,0,0.05);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
       display: flex;
       justify-content: space-between;
       align-items: start;
     }
 
-    .order-body { padding: 1.5rem; flex-grow: 1; }
+    .order-body {
+      padding: 1.5rem;
+      flex-grow: 1;
+    }
 
     .order-footer {
       padding: 1.2rem;
       background: #F9FAFB;
       border-radius: 0 0 20px 20px;
-      border-top: 1px solid rgba(0,0,0,0.05);
+      border-top: 1px solid rgba(0, 0, 0, 0.05);
     }
 
     .table-badge {
@@ -253,7 +320,7 @@
       font-weight: 800;
       font-size: 0.85rem;
       color: white;
-      box-shadow: 0 5px 15px rgba(255,90,31,0.3);
+      box-shadow: 0 5px 15px rgba(255, 90, 31, 0.3);
     }
 
     /* --- Menu Items --- */
@@ -263,7 +330,7 @@
       padding-bottom: 10px;
       margin-bottom: 1rem;
     }
-    
+
     .category-pill {
       display: inline-block;
       padding: 0.5rem 1.2rem;
@@ -287,7 +354,7 @@
       background: linear-gradient(135deg, #FF5A1F, #E04A10);
       color: #ffffff;
       border-color: #FF5A1F;
-      box-shadow: 0 4px 12px rgba(255,90,31,0.3);
+      box-shadow: 0 4px 12px rgba(255, 90, 31, 0.3);
     }
 
     .menu-item-card {
@@ -300,7 +367,7 @@
 
     .menu-item-card:hover {
       transform: translateY(-5px);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
     }
 
     .menu-img-wrap {
@@ -320,51 +387,71 @@
     }
 
     /* --- Forms & Modals --- */
-    .form-control, .form-select {
+    .form-control,
+    .form-select {
       background-color: var(--card-bg-custom);
       border-color: #e5e7eb;
       color: var(--bs-body-color);
       font-family: 'Inter', sans-serif;
     }
-    .form-control:focus, .form-select:focus {
+
+    .form-control:focus,
+    .form-select:focus {
       background-color: var(--card-bg-custom);
       border-color: var(--primary-color);
       box-shadow: 0 0 0 3px rgba(255, 90, 31, 0.15);
       color: var(--bs-body-color);
     }
-    
+
     .modal-content {
       background-color: var(--card-bg-custom);
       border: 1px solid var(--sidebar-border);
-      box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
     }
-    
-    .modal-header { border-bottom: 1px solid var(--sidebar-border); }
-    .modal-footer { border-top: 1px solid var(--sidebar-border); }
+
+    .modal-header {
+      border-bottom: 1px solid var(--sidebar-border);
+    }
+
+    .modal-footer {
+      border-top: 1px solid var(--sidebar-border);
+    }
 
     /* --- Responsive Tweaks --- */
     @media (max-width: 991px) {
       .sidebar {
         transform: translateX(-100%);
       }
+
       .sidebar.show {
         transform: translateX(0);
       }
+
       .main-content {
         margin-left: 0;
       }
+
       .overlay {
         position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0,0,0,0.5);
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
         z-index: 999;
         display: none;
       }
-      .overlay.show { display: block; }
+
+      .overlay.show {
+        display: block;
+      }
     }
 
     /* Utilities */
-    .text-primary-custom { color: var(--primary-color); }
+    .text-primary-custom {
+      color: var(--primary-color);
+    }
+
     .btn-primary-custom {
       background: linear-gradient(135deg, #FF5A1F, #E04A10);
       border: none;
@@ -373,19 +460,40 @@
       border-radius: 8px;
       font-weight: 600;
       transition: all 0.2s;
-      box-shadow: 0 4px 12px rgba(255,90,31,0.25);
+      box-shadow: 0 4px 12px rgba(255, 90, 31, 0.25);
     }
-    .btn-primary-custom:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(255,90,31,0.35); color: white; }
-    
-    .view-section { display: none; }
-    .view-section.active { display: block; fade-in: 0.3s; }
+
+    .btn-primary-custom:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(255, 90, 31, 0.35);
+      color: white;
+    }
+
+    .view-section {
+      display: none;
+    }
+
+    .view-section.active {
+      display: block;
+      fade-in: 0.3s;
+    }
 
     /* Scrollbar */
-    ::-webkit-scrollbar { width: 8px; }
-    ::-webkit-scrollbar-track { background: var(--body-bg-custom); }
-    ::-webkit-scrollbar-thumb { background: #6c757d; border-radius: 4px; }
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--body-bg-custom);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #6c757d;
+      border-radius: 4px;
+    }
   </style>
 </head>
+
 <body>
 
   <!-- Mobile Overlay -->
@@ -394,13 +502,14 @@
   <!-- Sidebar -->
   <nav class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <a href="#" class="sidebar-brand">
-        <div style="width:36px; height:36px; background:linear-gradient(135deg, #FF5A1F, #E04A10); border-radius:10px; display:flex; align-items:center; justify-content:center; color:white; box-shadow:0 4px 12px rgba(255,90,31,0.4);">
-          <i class="fas fa-fire" style="font-size: 1rem;"></i>
-        </div>
-        <span>Hot<span style="color:#FF5A1F">Byte</span></span>
-      </a>
-    </div>
+        <a href="/admin" class="sidebar-brand">
+          <i class="fas fa-fire"></i>
+          <div class="brand-text">
+            <span class="brand-name">Hot<span style="color:var(--primary)">Byte</span></span>
+            <span class="brand-tagline">Serve with Love</span>
+          </div>
+        </a>
+      </div>
     <div class="d-flex flex-column flex-grow-1 p-3 gap-2">
       <a href="/admin" class="nav-btn active" id="btn-orders" onclick="handleSidebarClick(event, 'orders')">
         <i class="fas fa-receipt"></i> Orders
@@ -408,7 +517,8 @@
       <a href="/admin?tab=menu" class="nav-btn" id="btn-menu" onclick="handleSidebarClick(event, 'menu')">
         <i class="fas fa-utensils"></i> Menu Items
       </a>
-      <a href="/admin?tab=categories" class="nav-btn" id="btn-categories" onclick="handleSidebarClick(event, 'categories')">
+      <a href="/admin?tab=categories" class="nav-btn" id="btn-categories"
+        onclick="handleSidebarClick(event, 'categories')">
         <i class="fas fa-tags"></i> Categories
       </a>
       <a href="/admin/ratings" class="nav-btn text-decoration-none">
@@ -417,12 +527,12 @@
       <a href="/admin/users" class="nav-btn text-decoration-none">
         <i class="fas fa-users-cog"></i> Users & Reports
       </a>
-   <a href="/admin/sales-report" class="nav-btn text-decoration-none">
-  <i class="fas fa-chart-line"></i> Sales & Analytics
-</a>
-   <a href="/admin/kitchen" class="nav-btn text-decoration-none" target="_blank">
-  <i class="fas fa-utensils"></i> Kitchen Display
-</a>
+      <a href="/admin/sales-report" class="nav-btn text-decoration-none">
+        <i class="fas fa-chart-line"></i> Sales & Analytics
+      </a>
+      <a href="/admin/kitchen" class="nav-btn text-decoration-none" target="_blank">
+        <i class="fas fa-utensils"></i> Kitchen Display
+      </a>
       <a href="/admin/oldorders" class="nav-btn text-decoration-none">
         <i class="fas fa-history"></i> Old Orders
       </a>
@@ -439,7 +549,7 @@
 
   <!-- Main Content -->
   <main class="main-content">
-    
+
     <!-- Top Navbar -->
     <div class="top-navbar">
       <div class="d-flex align-items-center">
@@ -451,29 +561,37 @@
 
       <div class="d-flex align-items-center gap-3">
         <!-- Order Status Toggle -->
-        <div class="d-none d-md-flex align-items-center gap-2 px-3 py-1 rounded bg-body-tertiary border border-secondary border-opacity-10">
-             <div class="form-check form-switch m-0">
-               <input class="form-check-input" type="checkbox" id="ordersEnabledSwitch" checked onchange="toggleOrdersEnabled(this)">
-               <label class="form-check-label text-small fw-semibold" for="ordersEnabledSwitch" style="font-size:0.8rem" id="ordersStatusLabel">Orders ON</label>
-             </div>
+        <div
+          class="d-none d-md-flex align-items-center gap-2 px-3 py-1 rounded bg-body-tertiary border border-secondary border-opacity-10">
+          <div class="form-check form-switch m-0">
+            <input class="form-check-input" type="checkbox" id="ordersEnabledSwitch" checked
+              onchange="toggleOrdersEnabled(this)">
+            <label class="form-check-label text-small fw-semibold" for="ordersEnabledSwitch" style="font-size:0.8rem"
+              id="ordersStatusLabel">Orders ON</label>
+          </div>
         </div>
 
         <!-- Live Notification Toggle -->
-        <div class="d-none d-md-flex align-items-center gap-2 px-3 py-1 rounded bg-body-tertiary border border-secondary border-opacity-10">
-             <div class="spinner-grow text-success spinner-grow-sm" id="autoRefreshIndicator" role="status"></div>
-             <div class="form-check form-switch m-0">
-               <input class="form-check-input" type="checkbox" id="liveNotificationSwitch" checked onchange="toggleLiveNotifications(this)">
-               <label class="form-check-label text-small fw-semibold" for="liveNotificationSwitch" style="font-size:0.8rem" id="liveNotificationLabel">Live ON</label>
-             </div>
+        <div
+          class="d-none d-md-flex align-items-center gap-2 px-3 py-1 rounded bg-body-tertiary border border-secondary border-opacity-10">
+          <div class="spinner-grow text-success spinner-grow-sm" id="autoRefreshIndicator" role="status"></div>
+          <div class="form-check form-switch m-0">
+            <input class="form-check-input" type="checkbox" id="liveNotificationSwitch" checked
+              onchange="toggleLiveNotifications(this)">
+            <label class="form-check-label text-small fw-semibold" for="liveNotificationSwitch" style="font-size:0.8rem"
+              id="liveNotificationLabel">Live ON</label>
+          </div>
         </div>
 
         <!-- Admin Profile -->
-        <div class="d-flex align-items-center gap-3 ps-3 border-start" style="border-color: var(--sidebar-border) !important;">
+        <div class="d-flex align-items-center gap-3 ps-3 border-start"
+          style="border-color: var(--sidebar-border) !important;">
           <div class="text-end d-none d-sm-block">
             <div class="fw-bold" style="font-size: 0.9rem; line-height: 1.2;" id="adminUsername">Admin</div>
             <div class="text-muted" style="font-size: 0.75rem;">Manager</div>
           </div>
-          <div class="rounded-circle bg-primary-subtle d-flex align-items-center justify-content-center text-primary" style="width: 40px; height: 40px; flex-shrink: 0;">
+          <div class="rounded-circle bg-primary-subtle d-flex align-items-center justify-content-center text-primary"
+            style="width: 40px; height: 40px; flex-shrink: 0;">
             <i class="fas fa-user"></i>
           </div>
         </div>
@@ -521,7 +639,7 @@
 
     <!-- Tab Sections (Managed by Vanilla JS) -->
     <div id="content-area">
-      
+
       <!-- Orders Section -->
       <div id="section-orders" class="view-section active">
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4 gap-3">
@@ -541,61 +659,61 @@
               <option value="completed">Completed</option>
               <option value="cancelled">Cancelled</option>
             </select>
-             <a href="/admin/oldorders" class="btn btn-outline-secondary btn-sm">
-               <i class="fas fa-history"></i> Archive
-             </a>
+            <a href="/admin/oldorders" class="btn btn-outline-secondary btn-sm">
+              <i class="fas fa-history"></i> Archive
+            </a>
           </div>
         </div>
 
         <div id="ordersCardsContainer" class="row g-3">
-            <div class="col-12 text-center py-5">
-              <div class="spinner-border text-primary" role="status"></div>
-            </div>
+          <div class="col-12 text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+          </div>
         </div>
       </div>
 
       <!-- Menu Items Section -->
       <div id="section-menu" class="view-section">
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4 class="fw-bold mb-0">Menu Management</h4>
-            <button class="btn btn-primary-custom shadow" onclick="openItemModal()">
-              <i class="fas fa-plus me-2"></i>New Item
-            </button>
+          <h4 class="fw-bold mb-0">Menu Management</h4>
+          <button class="btn btn-primary-custom shadow" onclick="openItemModal()">
+            <i class="fas fa-plus me-2"></i>New Item
+          </button>
         </div>
-        
+
         <!-- Category Filter Bar -->
         <div class="category-pills-container" id="categoryFilterBar">
           <!-- Populated by JS -->
         </div>
 
         <div id="menuItemsGrid" class="row g-4">
-            <!-- Menu Items Injected Here -->
+          <!-- Menu Items Injected Here -->
         </div>
       </div>
 
       <!-- Categories Section -->
       <div id="section-categories" class="view-section">
-         <div class="card border-0 shadow-sm" style="background-color: var(--card-bg-custom);">
-            <div class="card-header bg-transparent border-bottom d-flex justify-content-between align-items-center py-3">
-               <h5 class="mb-0">Categories</h5>
-               <button class="btn btn-primary-custom btn-sm" onclick="openCategoryModal()">
-                 <i class="fas fa-plus me-1"></i> Add Category
-               </button>
+        <div class="card border-0 shadow-sm" style="background-color: var(--card-bg-custom);">
+          <div class="card-header bg-transparent border-bottom d-flex justify-content-between align-items-center py-3">
+            <h5 class="mb-0">Categories</h5>
+            <button class="btn btn-primary-custom btn-sm" onclick="openCategoryModal()">
+              <i class="fas fa-plus me-1"></i> Add Category
+            </button>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0 align-middle" style="color: var(--bs-body-color);">
+                <thead class="bg-body-tertiary">
+                  <tr>
+                    <th class="ps-4">Category Name</th>
+                    <th class="text-end pe-4">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="categoriesTableBody"></tbody>
+              </table>
             </div>
-            <div class="card-body p-0">
-               <div class="table-responsive">
-                  <table class="table table-hover mb-0 align-middle" style="color: var(--bs-body-color);">
-                     <thead class="bg-body-tertiary">
-                        <tr>
-                           <th class="ps-4">Category Name</th>
-                           <th class="text-end pe-4">Actions</th>
-                        </tr>
-                     </thead>
-                     <tbody id="categoriesTableBody"></tbody>
-                  </table>
-               </div>
-            </div>
-         </div>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -663,10 +781,12 @@
               </div>
               <div class="col-12">
                 <label class="form-label text-muted small text-uppercase fw-bold">Image</label>
-                <input type="file" class="form-control" id="itemImageFile" accept="image/*" onchange="previewImage(this)">
+                <input type="file" class="form-control" id="itemImageFile" accept="image/*"
+                  onchange="previewImage(this)">
                 <input type="hidden" id="existingImageUrl">
-                <div id="imagePreview" class="mt-3 p-2 border rounded d-inline-block" style="display: none; background: var(--body-bg-custom);">
-                    <img id="previewImg" src="" alt="Preview" style="max-height: 150px; border-radius: 6px;">
+                <div id="imagePreview" class="mt-3 p-2 border rounded d-inline-block"
+                  style="display: none; background: var(--body-bg-custom);">
+                  <img id="previewImg" src="" alt="Preview" style="max-height: 150px; border-radius: 6px;">
                 </div>
               </div>
               <div class="col-12">
@@ -687,7 +807,7 @@
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.12/dist/sweetalert2.all.min.js"></script>
-  
+
   <script>
     // --- Manual Tab Switching (Fixes 'Illegal invocation') ---
     function switchTab(tabId) {
@@ -776,7 +896,7 @@
         if (isUserInteracting && showNotification) {
           return;
         }
-        
+
         const status = document.getElementById('orderStatusFilter').value;
         const dateFilter = document.getElementById('orderDateFilter').value;
         let url = '/api/admin/orders?';
@@ -784,15 +904,15 @@
         if (status) params.push(`status=${status}`);
         if (dateFilter) params.push(`date_filter=${dateFilter}`);
         url += params.join('&');
-        
+
         const response = await fetch(url);
         const data = await response.json();
-        
+
         if (data.success) {
           const previousOrderIds = new Set(orders.map(o => o.order_id));
           const previousOrders = [...orders];
           orders = data.orders;
-          
+
           // Check for new orders
           if (showNotification && orders.length > 0 && lastOrderCount >= 0) {
             const newOrders = orders.filter(o => !previousOrderIds.has(o.order_id));
@@ -803,9 +923,9 @@
               audio.play().catch(() => {
                 // Try alternative path
                 const audio2 = new Audio('./notification.mp3');
-                audio2.play().catch(() => {});
+                audio2.play().catch(() => { });
               });
-              
+
               // Show notification popup
               Swal.fire({
                 icon: 'info', title: 'New Order!', text: `${newOrders.length} new order(s)!`,
@@ -813,7 +933,7 @@
               });
             }
           }
-          
+
           // Only re-render if there are actual changes
           const hasChanges = checkOrderChanges(previousOrders, orders);
           if (hasChanges || orders.length !== previousOrders.length) {
@@ -823,26 +943,26 @@
         }
       } catch (error) { console.error('Orders error', error); }
     }
-    
+
     // Check karta hai ki orders me koi change hua hai ya nahi (status, payment, etc.)
     // Agar koi change nahi hai to cards ko re-render nahi karega (flickering nahi hogi)
     function checkOrderChanges(oldOrders, newOrders) {
       if (oldOrders.length !== newOrders.length) return true;
-      
+
       for (let i = 0; i < newOrders.length; i++) {
         const newOrder = newOrders[i];
         const oldOrder = oldOrders.find(o => o.order_id === newOrder.order_id);
-        
+
         if (!oldOrder) return true;
-        
+
         // Check if key fields changed
         if (oldOrder.status !== newOrder.status ||
-            oldOrder.payment_status !== newOrder.payment_status ||
-            oldOrder.total_amount !== newOrder.total_amount) {
+          oldOrder.payment_status !== newOrder.payment_status ||
+          oldOrder.total_amount !== newOrder.total_amount) {
           return true;
         }
       }
-      
+
       return false;
     }
 
@@ -853,11 +973,11 @@
         container.innerHTML = '<div class="col-12 text-center py-5"><p class="text-muted fs-5">No active orders found.</p></div>';
         return;
       }
-      
+
       container.innerHTML = orders.map(order => {
         const formattedDate = new Date(order.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' });
         const tableNumber = order.table_number.replace('T-', '');
-        
+
         // Status Badge Logic
         const statusMap = {
           pending: 'bg-warning text-dark',
@@ -871,7 +991,7 @@
         // Payment Status Logic
         const isPaid = order.payment_status === 'completed';
         const isCash = !order.payment_method || order.payment_method === 'cash';
-        
+
         let paymentBadge = '';
         if (isPaid) {
           // Already paid - show clickable badge to view details
@@ -883,7 +1003,7 @@
           // Online payment pending
           paymentBadge = '<span class="badge bg-warning bg-opacity-75 text-dark border border-warning"><i class="fas fa-clock me-1"></i>PENDING</span>';
         }
-        
+
         const paymentMethodDisplay = order.payment_method ? order.payment_method.toUpperCase() : 'CASH';
 
         // Items HTML
@@ -951,30 +1071,30 @@
       try {
         // Status change karte waqt auto-refresh ko pause kar do (disturbance na ho)
         isUserInteracting = true;
-        
+
         const res = await fetch(`/api/admin/orders/${id}/status`, {
-          method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({status})
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status })
         });
-        if((await res.json()).success) {
-          Swal.mixin({toast: true, position: 'top-end', showConfirmButton: false, timer: 1500}).fire({icon:'success', title:'Updated'});
-          await loadOrders(false); 
+        if ((await res.json()).success) {
+          Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 }).fire({ icon: 'success', title: 'Updated' });
+          await loadOrders(false);
           await loadDashboard();
         }
-        
+
         // 2 second baad auto-refresh phir se chalu ho jayega
         setTimeout(() => { isUserInteracting = false; }, 2000);
-      } catch(e) { 
-        Swal.fire('Error', 'Failed', 'error'); 
+      } catch (e) {
+        Swal.fire('Error', 'Failed', 'error');
         isUserInteracting = false;
       }
     }
 
     // Order ko delete karta hai (confirmation ke baad)
     async function deleteOrder(id) {
-       if((await Swal.fire({title:'Delete?', icon:'warning', showCancelButton:true, confirmButtonColor:'#d33'})).isConfirmed) {
-         await fetch(`/api/admin/orders/${id}`, {method:'DELETE'});
-         loadOrders(false); loadDashboard();
-       }
+      if ((await Swal.fire({ title: 'Delete?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33' })).isConfirmed) {
+        await fetch(`/api/admin/orders/${id}`, { method: 'DELETE' });
+        loadOrders(false); loadDashboard();
+      }
     }
 
     // Cash order ko "Paid" mark karta hai (jab customer payment de de)
@@ -1054,22 +1174,22 @@
 
     // --- Auto Refresh (Har 8 second me backend se data check karta hai) ---
     function startAutoRefresh() {
-      if(autoRefreshInterval) clearInterval(autoRefreshInterval); // Purana timer clear kar do
+      if (autoRefreshInterval) clearInterval(autoRefreshInterval); // Purana timer clear kar do
       // Har 8 second me backend call hogi (agar user interact nahi kar raha aur live notification ON hai)
-      autoRefreshInterval = setInterval(()=>{ 
-        if(!isUserInteracting && liveNotificationsEnabled) {
+      autoRefreshInterval = setInterval(() => {
+        if (!isUserInteracting && liveNotificationsEnabled) {
           loadOrders(true); // Orders load karo aur notification dikhao
           loadDashboard(); // Stats update karo (total orders, revenue, etc.)
         }
       }, 8000); // 8000 milliseconds = 8 seconds
     }
-    
+
     // Live Notification ko ON/OFF karta hai (toggle switch se)
     function toggleLiveNotifications(switchEl) {
       liveNotificationsEnabled = switchEl.checked; // Switch ki value store kar lo (true/false)
       const indicator = document.getElementById('autoRefreshIndicator'); // Green spinner
       const label = document.getElementById('liveNotificationLabel'); // "Live ON/OFF" text
-      
+
       if (liveNotificationsEnabled) {
         // Agar ON hai to:
         indicator.style.display = 'block'; // Spinner dikhao
@@ -1096,11 +1216,11 @@
       try {
         const res = await fetch('/api/admin/categories');
         const data = await res.json();
-        if(data.success) {
+        if (data.success) {
           categories = data.categories;
           renderCategoryFilters();
           displayCategoriesTable();
-          
+
           // Only repopulate category select if item modal is NOT open
           const itemModal = document.getElementById('itemModal');
           const isModalOpen = itemModal && itemModal.classList.contains('show');
@@ -1108,7 +1228,7 @@
             populateCategorySelect();
           }
         }
-      } catch(e) { console.error(e); }
+      } catch (e) { console.error(e); }
     }
 
     // Category filter pills banata hai (All Items, Starters, Main Course, etc.)
@@ -1125,7 +1245,7 @@
 
     // Category pill par click karne par items ko filter karta hai
     // catId = 'all' ya koi specific category ID (1, 2, 3, etc.)
-    window.filterItemsByCategory = function(catId) {
+    window.filterItemsByCategory = function (catId) {
       currentCategoryFilter = catId; // Selected category store kar lo
       renderCategoryFilters();
       displayItems();
@@ -1136,8 +1256,8 @@
       try {
         const res = await fetch('/api/admin/items');
         const data = await res.json();
-        if(data.success) { items = data.items; displayItems(); }
-      } catch(e) { console.error(e); }
+        if (data.success) { items = data.items; displayItems(); }
+      } catch (e) { console.error(e); }
     }
 
     // Menu items ko screen par dikhata hai (cards banata hai)
@@ -1149,7 +1269,7 @@
         // Agar specific category select hai to sirf wahi items dikhao
         filtered = items.filter(i => i.category_id == currentCategoryFilter);
       }
-      
+
       if (filtered.length === 0) {
         grid.innerHTML = '<div class="col-12 text-center text-muted py-5">No items in this category.</div>';
         return;
@@ -1183,9 +1303,9 @@
     // --- Category Management (Categories ko table me dikhata hai) ---
     // Categories Section me table banata hai (Edit/Delete buttons ke saath)
     function displayCategoriesTable() {
-       const tbody = document.getElementById('categoriesTableBody');
-       if(categories.length===0) { tbody.innerHTML='<tr><td colspan="2" class="text-center">No categories</td></tr>'; return; }
-       tbody.innerHTML = categories.map(c => `
+      const tbody = document.getElementById('categoriesTableBody');
+      if (categories.length === 0) { tbody.innerHTML = '<tr><td colspan="2" class="text-center">No categories</td></tr>'; return; }
+      tbody.innerHTML = categories.map(c => `
          <tr>
            <td class="ps-4">${c.category_name}</td>
            <td class="text-end pe-4">
@@ -1199,63 +1319,63 @@
     // --- Modal Functions (Popup windows kholta hai) ---
     // Category add/edit karne ka popup kholta hai
     // id = null matlab new category, id = number matlab edit existing category
-    window.openCategoryModal = function(id = null, name = '') {
+    window.openCategoryModal = function (id = null, name = '') {
       document.getElementById('categoryId').value = id || '';
       document.getElementById('categoryName').value = name;
       document.getElementById('categoryModalTitle').textContent = id ? 'Edit Category' : 'Add Category';
       new bootstrap.Modal(document.getElementById('categoryModal')).show();
     }
-    
+
     // Category ko save karta hai (new add ya existing edit)
-    window.saveCategory = async function() {
+    window.saveCategory = async function () {
       const id = document.getElementById('categoryId').value; // Agar ID hai to edit, nahi to new
       const name = document.getElementById('categoryName').value; // Category ka naam
-      if(!name) return Swal.fire('Error', 'Name required', 'error');
-      
+      if (!name) return Swal.fire('Error', 'Name required', 'error');
+
       try {
         const url = id ? `/api/admin/categories/${id}` : '/api/admin/categories';
         const method = id ? 'PUT' : 'POST';
-        await fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify({category_name:name})});
+        await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category_name: name }) });
         bootstrap.Modal.getInstance(document.getElementById('categoryModal')).hide();
         loadCategories(); // Reloads both filter bar and table
-        Swal.fire({icon:'success', title:'Saved', timer:1000, showConfirmButton:false});
-      } catch(e) { console.error(e); }
+        Swal.fire({ icon: 'success', title: 'Saved', timer: 1000, showConfirmButton: false });
+      } catch (e) { console.error(e); }
     }
 
     // Category ko delete karta hai (confirmation ke baad)
-    window.deleteCategory = async function(id) {
-       if((await Swal.fire({title:'Delete?', icon:'warning', showCancelButton:true, confirmButtonColor:'#d33'})).isConfirmed) {
-         await fetch(`/api/admin/categories/${id}`, {method:'DELETE'});
-         loadCategories();
-       }
+    window.deleteCategory = async function (id) {
+      if ((await Swal.fire({ title: 'Delete?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33' })).isConfirmed) {
+        await fetch(`/api/admin/categories/${id}`, { method: 'DELETE' });
+        loadCategories();
+      }
     }
 
     // Menu item add/edit karne ka popup kholta hai
     // id = null matlab new item, id = number matlab edit existing item
-    window.openItemModal = function(id = null) {
+    window.openItemModal = function (id = null) {
       document.getElementById('itemId').value = id || ''; // Item ID store kar lo
       document.getElementById('itemModalTitle').textContent = id ? 'Edit Item' : 'New Item'; // Title set kar do
-      
+
       // Form aur image preview ko reset kar do
       document.getElementById('itemImageFile').value = ''; // File input clear kar do
       document.getElementById('imagePreview').style.display = 'none'; // Image preview chupa do
-      
+
       if (id) {
         // Edit mode - existing item ka data load kar do
         const item = items.find(i => i.item_id == id); // Item ko dhundo
         if (item) {
           // Categories dropdown ko populate kar do aur selected value set kar do
           populateCategorySelect();
-          
+
           document.getElementById('itemName').value = item.item_name;
           document.getElementById('itemCategory').value = item.category_id;
           document.getElementById('itemPrice').value = item.price;
           document.getElementById('existingImageUrl').value = item.image_url || '';
           document.getElementById('itemDescription').value = item.description || '';
           document.getElementById('itemAvailable').value = item.is_available ? 'true' : 'false';
-          if (item.image_url) { 
-             document.getElementById('previewImg').src = item.image_url; 
-             document.getElementById('imagePreview').style.display = 'block'; 
+          if (item.image_url) {
+            document.getElementById('previewImg').src = item.image_url;
+            document.getElementById('imagePreview').style.display = 'block';
           }
         }
       } else {
@@ -1265,12 +1385,12 @@
         document.getElementById('itemDescription').value = '';
         document.getElementById('existingImageUrl').value = '';
         document.getElementById('itemAvailable').value = 'true'; // Default to available
-        
+
         // Populate categories AFTER clearing fields
         populateCategorySelect();
         document.getElementById('itemCategory').value = ''; // Set to default "Select Category"
       }
-      
+
       new bootstrap.Modal(document.getElementById('itemModal')).show();
     }
 
@@ -1280,7 +1400,7 @@
       // Currently selected value ko save kar lo (re-populate karne ke baad restore karenge)
       const currentValue = sel.value;
       // Dropdown ko phir se populate kar do (saare categories ke options)
-      sel.innerHTML = '<option value="">Select Category</option>' + categories.map(c=>`<option value="${c.category_id}">${c.category_name}</option>`).join('');
+      sel.innerHTML = '<option value="">Select Category</option>' + categories.map(c => `<option value="${c.category_id}">${c.category_name}</option>`).join('');
       // Agar pehle koi value selected thi to use restore kar do
       if (currentValue) {
         sel.value = currentValue;
@@ -1288,77 +1408,77 @@
     }
 
     // Menu item ko save karta hai (new add ya existing edit)
-    window.saveItem = async function() {
-       // Form se saari values le lo
-       const id = document.getElementById('itemId').value; // Agar ID hai to edit, nahi to new
-       const itemName = document.getElementById('itemName').value.trim(); // Item ka naam
-       const categoryId = document.getElementById('itemCategory').value; // Category ID
-       const price = document.getElementById('itemPrice').value; // Price
-       
-       // Required fields ko validate kar lo (empty nahi hone chahiye)
-       if (!itemName) {
-         Swal.fire({icon: 'error', title: 'Error', text: 'Please enter item name'});
-         return;
-       }
-       if (!categoryId) {
-         Swal.fire({icon: 'error', title: 'Error', text: 'Please select a category'});
-         return;
-       }
-       if (!price || parseFloat(price) <= 0) {
-         Swal.fire({icon: 'error', title: 'Error', text: 'Please enter a valid price'});
-         return;
-       }
+    window.saveItem = async function () {
+      // Form se saari values le lo
+      const id = document.getElementById('itemId').value; // Agar ID hai to edit, nahi to new
+      const itemName = document.getElementById('itemName').value.trim(); // Item ka naam
+      const categoryId = document.getElementById('itemCategory').value; // Category ID
+      const price = document.getElementById('itemPrice').value; // Price
 
-       // Loading popup dikhao (user ko pata chale ki save ho raha hai)
-       Swal.fire({
-         title: 'Saving...',
-         allowOutsideClick: false,
-         didOpen: () => { Swal.showLoading(); }
-       });
+      // Required fields ko validate kar lo (empty nahi hone chahiye)
+      if (!itemName) {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Please enter item name' });
+        return;
+      }
+      if (!categoryId) {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Please select a category' });
+        return;
+      }
+      if (!price || parseFloat(price) <= 0) {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Please enter a valid price' });
+        return;
+      }
 
-       // Form data banao (image upload ke liye FormData chahiye)
-       const formData = new FormData();
-       formData.append('item_name', itemName);
-       formData.append('category_id', categoryId);
-       formData.append('price', price);
-       formData.append('description', document.getElementById('itemDescription').value);
-       formData.append('is_available', document.getElementById('itemAvailable').value === 'true');
-       if(id) formData.append('existing_image_url', document.getElementById('existingImageUrl').value);
-       if(document.getElementById('itemImageFile').files[0]) formData.append('image', document.getElementById('itemImageFile').files[0]);
+      // Loading popup dikhao (user ko pata chale ki save ho raha hai)
+      Swal.fire({
+        title: 'Saving...',
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); }
+      });
 
-       try {
-         const url = id ? `/api/admin/items/${id}` : '/api/admin/items';
-         const method = id ? 'PUT' : 'POST';
-         const res = await fetch(url, {method, body:formData});
-         const data = await res.json();
-         
-         if(data.success) {
-           bootstrap.Modal.getInstance(document.getElementById('itemModal')).hide();
-           await loadItems();
-           Swal.fire({icon:'success', title: id ? 'Item Updated!' : 'Item Added!', text: 'Menu item saved successfully', timer:2000, showConfirmButton:false});
-         } else {
-           Swal.fire({icon: 'error', title: 'Error', text: data.message || 'Failed to save item'});
-         }
-       } catch(e) { 
-         console.error('Save item error:', e);
-         Swal.fire({icon: 'error', title: 'Error', text: 'Failed to save item. Please try again.'});
-       }
+      // Form data banao (image upload ke liye FormData chahiye)
+      const formData = new FormData();
+      formData.append('item_name', itemName);
+      formData.append('category_id', categoryId);
+      formData.append('price', price);
+      formData.append('description', document.getElementById('itemDescription').value);
+      formData.append('is_available', document.getElementById('itemAvailable').value === 'true');
+      if (id) formData.append('existing_image_url', document.getElementById('existingImageUrl').value);
+      if (document.getElementById('itemImageFile').files[0]) formData.append('image', document.getElementById('itemImageFile').files[0]);
+
+      try {
+        const url = id ? `/api/admin/items/${id}` : '/api/admin/items';
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetch(url, { method, body: formData });
+        const data = await res.json();
+
+        if (data.success) {
+          bootstrap.Modal.getInstance(document.getElementById('itemModal')).hide();
+          await loadItems();
+          Swal.fire({ icon: 'success', title: id ? 'Item Updated!' : 'Item Added!', text: 'Menu item saved successfully', timer: 2000, showConfirmButton: false });
+        } else {
+          Swal.fire({ icon: 'error', title: 'Error', text: data.message || 'Failed to save item' });
+        }
+      } catch (e) {
+        console.error('Save item error:', e);
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to save item. Please try again.' });
+      }
     }
-    
+
     // Menu item ko delete karta hai (confirmation ke baad)
-    window.deleteItem = async function(id) {
-      if((await Swal.fire({title:'Delete?', icon:'warning', showCancelButton:true, confirmButtonColor:'#d33'})).isConfirmed) {
-         await fetch(`/api/admin/items/${id}`, {method:'DELETE'});
-         loadItems();
+    window.deleteItem = async function (id) {
+      if ((await Swal.fire({ title: 'Delete?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33' })).isConfirmed) {
+        await fetch(`/api/admin/items/${id}`, { method: 'DELETE' });
+        loadItems();
       }
     }
 
     // Image upload karne se pehle preview dikhata hai
-    window.previewImage = function(input) {
+    window.previewImage = function (input) {
       if (input.files && input.files[0]) {
         const file = input.files[0]; // Selected file
         const maxSize = 10 * 1024 * 1024; // Maximum 10MB allowed (bytes me)
-        
+
         // File size check karo (10MB se zyada nahi hona chahiye)
         if (file.size > maxSize) {
           Swal.fire({
@@ -1371,7 +1491,7 @@
           document.getElementById('imagePreview').style.display = 'none';
           return;
         }
-        
+
         // File type check karo (sirf image files allowed hai)
         const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
         if (!allowedTypes.includes(file.type)) {
@@ -1385,10 +1505,10 @@
           document.getElementById('imagePreview').style.display = 'none';
           return;
         }
-        
+
         // Image ko preview me dikhao (upload karne se pehle)
         const r = new FileReader(); // File reader banao
-        r.onload = e => { 
+        r.onload = e => {
           document.getElementById('previewImg').src = e.target.result; // Image ka source set kar do
           document.getElementById('imagePreview').style.display = 'block'; // Preview container dikhao
         };
@@ -1399,17 +1519,17 @@
 
 
     // Admin ko logout karta hai aur login page par bhej deta hai
-    async function logout() { await fetch('/api/auth/admin/logout', {method: 'POST'}); window.location.href = '/admin/login'; }
+    async function logout() { await fetch('/api/auth/admin/logout', { method: 'POST' }); window.location.href = '/admin/login'; }
 
     // --- System Settings Functions (System settings load aur manage karta hai) ---
-    
+
     // Order acceptance status load karta hai (Orders ON/OFF)
     // Backend se check karta hai ki abhi orders accept ho rahe hai ya nahi
     async function loadSystemSettings() {
       try {
         const response = await fetch('/api/admin/order-accept-status');
         const data = await response.json();
-        
+
         if (data.success) {
           const switchEl = document.getElementById('ordersEnabledSwitch');
           const labelEl = document.getElementById('ordersStatusLabel');
@@ -1421,26 +1541,26 @@
         console.error('Load order status error:', error);
       }
     }
-    
+
     // Orders ko ON/OFF karta hai (customers order kar sakte hai ya nahi)
     // enabled = true matlab customers order kar sakte hai, false matlab nahi kar sakte
     async function toggleOrdersEnabled(switchEl) {
       const enabled = switchEl.checked; // Switch ki value (true/false)
       const labelEl = document.getElementById('ordersStatusLabel');
-      
+
       try {
         const response = await fetch('/api/admin/toggle-order-accept', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled })
         });
-        
+
         const data = await response.json();
-        
+
         if (data.success) {
           labelEl.textContent = enabled ? 'Orders ON' : 'Orders OFF';
           labelEl.style.color = enabled ? '#22c55e' : '#ef4444';
-          
+
           Swal.fire({
             icon: 'success',
             title: enabled ? 'Orders Enabled' : 'Orders Disabled',
@@ -1461,13 +1581,13 @@
         Swal.fire('Error', 'Failed to update setting', 'error');
       }
     }
-    
+
 
 
     // --- Event Listeners (Filter change hone par orders reload karta hai) ---
     document.getElementById('orderStatusFilter').addEventListener('change', () => loadOrders(false)); // Status filter change hone par
     document.getElementById('orderDateFilter').addEventListener('change', () => loadOrders(false)); // Date filter change hone par
-    
+
     // --- Initialization (Page load hone par ye sab chalta hai) ---
     checkAdminAuth(); // Pehle check karo ki admin logged in hai ya nahi
     loadSystemSettings(); // System settings load karo (Orders ON/OFF status)
@@ -1483,5 +1603,5 @@
 
 
 </body>
-</html>
 
+</html>

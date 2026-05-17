@@ -21,11 +21,12 @@ const razorpay = new Razorpay({
   key_secret: RAZORPAY_KEY_SECRET,
 });
 
-// Get Razorpay key
+// Get Razorpay key (Base64 encoded for obfuscation)
 router.get("/razorpay-key", requireAuth, (req, res) => {
+  const obfuscatedKey = Buffer.from(RAZORPAY_KEY_ID).toString('base64');
   res.json({ 
     success: true,
-    key: RAZORPAY_KEY_ID 
+    key: obfuscatedKey 
   });
 });
 

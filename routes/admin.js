@@ -1,7 +1,8 @@
 const express = require("express");
-const router = express.Router();
+const router = WebAppRouter = express.Router();
 const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
 const db = require("./database");
 const { requireAdmin } = require("./auth");
 const bunnyCDN = require("./bunnyCDN");
@@ -161,18 +162,36 @@ router.post("/items", requireAdmin, (req, res, next) => {
       return res.status(400).json({ success: false, message: "Item name, category, and price are required" });
     }
 
-    // Upload image to Bunny CDN if provided
+    // Upload image to Bunny CDN (or fall back to local storage if credentials are missing)
     if (req.file) {
-      const uploadResult = await bunnyCDN.uploadImage(
-        req.file.buffer,
-        req.file.originalname,
-        "menu-items"
-      );
-
-      if (uploadResult.success) {
-        image_url = uploadResult.url;
+      const isBunnyConfigured = process.env.BUNNY_ACCESS_KEY && 
+                                !process.env.BUNNY_ACCESS_KEY.startsWith("your_");
+      
+      if (isBunnyConfigured) {
+        const uploadResult = await bunnyCDN.uploadImage(
+          req.file.buffer,
+          req.file.originalname,
+          "menu-items"
+        );
+        if (uploadResult.success) {
+          image_url = uploadResult.url;
+        } else {
+          return res.status(500).json({ success: false, message: "Failed to upload image to Bunny CDN" });
+        }
       } else {
-        return res.status(500).json({ success: false, message: "Failed to upload image" });
+        try {
+          const uploadsDir = path.join(__dirname, "../public/uploads/menu-items");
+          if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+          }
+          const fileName = `${Date.now()}_${req.file.originalname}`;
+          const filePath = path.join(uploadsDir, fileName);
+          fs.writeFileSync(filePath, req.file.buffer);
+          image_url = `/uploads/menu-items/${fileName}`;
+        } catch (localError) {
+          console.error("Local upload fallback error:", localError);
+          return res.status(500).json({ success: false, message: "Failed to save image locally" });
+        }
       }
     }
 
@@ -224,23 +243,54 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
 
     let image_url = existing_image_url || null;
 
-    // Upload new image to Bunny CDN if provided
+    // Upload new image (with Bunny CDN detection and local fallback)
     if (req.file) {
-      // Delete old image if exists
-      if (existing_image_url) {
-        await bunnyCDN.deleteImage(existing_image_url);
-      }
-
-      const uploadResult = await bunnyCDN.uploadImage(
-        req.file.buffer,
-        req.file.originalname,
-        "menu-items"
-      );
-
-      if (uploadResult.success) {
-        image_url = uploadResult.url;
+      const isBunnyConfigured = process.env.BUNNY_ACCESS_KEY && 
+                                !process.env.BUNNY_ACCESS_KEY.startsWith("your_");
+      
+      if (isBunnyConfigured) {
+        // Delete old image from Bunny CDN if exists
+        if (existing_image_url && existing_image_url.includes(bunnyCDN.cdnUrl)) {
+          await bunnyCDN.deleteImage(existing_image_url);
+        }
+        
+        const uploadResult = await bunnyCDN.uploadImage(
+          req.file.buffer,
+          req.file.originalname,
+          "menu-items"
+        );
+        if (uploadResult.success) {
+          image_url = uploadResult.url;
+        } else {
+          return res.status(500).json({ success: false, message: "Failed to upload image to Bunny CDN" });
+        }
       } else {
-        return res.status(500).json({ success: false, message: "Failed to upload image" });
+        // Delete old local image if exists
+        if (existing_image_url && existing_image_url.startsWith("/uploads/")) {
+          try {
+            const oldFilePath = path.join(__dirname, "../public", existing_image_url);
+            if (fs.existsSync(oldFilePath)) {
+              fs.unlinkSync(oldFilePath);
+            }
+          } catch (deleteError) {
+            console.error("Local delete error:", deleteError);
+          }
+        }
+        
+        // Fallback to local upload
+        try {
+          const uploadsDir = path.join(__dirname, "../public/uploads/menu-items");
+          if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+          }
+          const fileName = `${Date.now()}_${req.file.originalname}`;
+          const filePath = path.join(uploadsDir, fileName);
+          fs.writeFileSync(filePath, req.file.buffer);
+          image_url = `/uploads/menu-items/${fileName}`;
+        } catch (localError) {
+          console.error("Local upload fallback error:", localError);
+          return res.status(500).json({ success: false, message: "Failed to save image locally" });
+        }
       }
     }
 
@@ -298,12 +348,24 @@ router.delete("/items/:id", requireAdmin, async (req, res) => {
       });
     }
 
-    // Delete image from Bunny CDN if exists
-    if (itemResult.rows[0].image_url) {
-      try {
-        await bunnyCDN.deleteImage(itemResult.rows[0].image_url);
-      } catch (cdnError) {
-        // Ignore CDN delete errors (image might already be deleted)
+    // Delete image if exists (handles both local storage and Bunny CDN)
+    const imageUrl = itemResult.rows[0].image_url;
+    if (imageUrl) {
+      if (imageUrl.startsWith("/uploads/")) {
+        try {
+          const filePath = path.join(__dirname, "../public", imageUrl);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        } catch (localDeleteError) {
+          console.error("Local file delete error:", localDeleteError);
+        }
+      } else {
+        try {
+          await bunnyCDN.deleteImage(imageUrl);
+        } catch (cdnError) {
+          // Ignore CDN delete errors (image might already be deleted)
+        }
       }
     }
 

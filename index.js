@@ -153,6 +153,14 @@ app.use('/api/sales', require('./routes/sales'));
 // Customer ratings aur reviews
 app.use('/api/ratings', require('./routes/ratings'));
 
+// Unified Public Config (Obfuscated IDs)
+app.get('/api/config/public', (req, res) => {
+  res.json({
+    onesignal_app_id: Buffer.from("f74b5208-81e8-4fb0-8083-8160a5665021").toString('base64'),
+    onesignal_safari_id: Buffer.from("web.onesignal.auto.4ed285de-faf5-4c6c-a346-3ff91e5aded6").toString('base64')
+  });
+});
+
 // ================= ADDITIONAL HEALTH CHECK ENDPOINTS =================
 // 🏥 Monitoring aur load balancers ke liye extra endpoints
 
