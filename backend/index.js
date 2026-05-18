@@ -198,86 +198,18 @@ app.get('/ping', (req, res) => {
 });
 
 // ================= PAGE ROUTES (CUSTOMER PAGES) =================
-// 🌐 Frontend pages serve karte hain (DISABLED - Next.js frontend now handles all routing)
-/*
-// Home page - Landing page
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Customer login page - OTP based authentication
-app.get('/login', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'login.html'));
-});
-
-// README/Documentation page
-app.get('/readme', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'README.html'));
-});
-
-// Menu page - Browse menu items
-app.get('/menu', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'menu.html'));
-});
-
-// Customer profile page - View orders, update profile
-app.get('/profile', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'profile.html'));
-});
-*/
+// 🌐 CUSTOMER PAGES (निष्क्रिय / DISABLED):
+// अब सभी ग्राहक पेजों को Next.js फ़्रंटएंड हैंडल करता है।
+// इसलिए बैकएंड के इन HTML फ़ाइलों को सर्व करने वाले रूट्स को पूरी तरह से हटा दिया गया है।
 
 // ================= ADMIN PAGES =================
-// 👨‍💼 Admin panel pages - Restaurant management (DISABLED - Next.js frontend now handles all routing)
-/*
-// Admin login page - Username/password authentication
-app.get('/admin/login', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin-login.html'));
-});
-
-// Admin dashboard - Overview aur active orders
-app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-});
-
-// Users management - Customer list aur details
-app.get('/admin/users', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin-users.html'));
-});
-
-// Old orders - Past orders history
-app.get('/admin/oldorders', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'oldorders.html'));
-});
-
-// Kitchen display - Active orders for kitchen staff
-app.get('/admin/kitchen', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'kitchen.html'));
-});
-
-// Sales report - Revenue aur statistics
-app.get('/admin/sales-report', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'hotelreport.html'));
-});
-
-// Individual customer report
-app.get('/admin/report/:id', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'reportcustomer.html'));
-});
-
-// Admin settings - Menu management, categories
-app.get('/admin/settings', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'adminsetting.html'));
-});
-
-// Ratings management - View aur delete customer reviews
-app.get('/admin/ratings', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin-ratings.html'));
-});
-*/
+// 👨‍💼 ADMIN PAGES (निष्क्रिय / DISABLED):
+// एडमिन पैनल के सभी पेजों को भी अब Next.js फ़्रंटएंड हैंडल करता है।
+// इसलिए बैकएंड के इन HTML फ़ाइलों को सर्व करने वाले रूट्स को पूरी तरह से हटा दिया गया है।
 
 // ================= 404 HANDLER =================
-// ❌ Jab koi route match nahi hota to ye chalega
-// Decoupled API server ke liye JSON error return karte hain
+// ❌ जब कोई भी API रूट मैच नहीं होगा, तब यह कोड चलेगा।
+// चूंकि यह अब एक स्वतंत्र API सर्वर है, इसलिए हम HTML फ़ाइल भेजने के बजाय JSON एरर रिस्पॉन्स भेजते हैं।
 app.use((req, res) => {
   res.status(404).json({
     success: false,
