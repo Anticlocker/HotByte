@@ -38,3 +38,10 @@ dist/
 # Uploads (if storing locally)
 uploads/
 temp/
+
+# Next.js Build Output
+.next/
+.env.local
+.env.production
+.env.development
+
