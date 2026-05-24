@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
@@ -21,14 +21,20 @@ import Swal from "sweetalert2";
 interface AdminInfo {
   id: number;
   username: string;
+  hotelId?: number;
+  role?: string;
+  hotelSlug?: string;
 }
 
 export default function AdminSidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [admin, setAdmin] = useState<AdminInfo | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const hotelSlug = searchParams.get("hotel") || admin?.hotelSlug;
 
   useEffect(() => {
     fetch("/api/auth/admin/session-check")
@@ -147,10 +153,11 @@ export default function AdminSidebar() {
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
+            const targetHref = hotelSlug ? `${item.href}?hotel=${hotelSlug}` : item.href;
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={targetHref}
                 onClick={() => setIsOpen(false)}
                 className={`flex items-center gap-3.5 px-4 py-3 text-sm font-semibold rounded-xl transition-all duration-200 ${
                   isActive

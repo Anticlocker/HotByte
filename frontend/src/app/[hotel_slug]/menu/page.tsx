@@ -1,0 +1,847 @@
+"use client";
+
+import { useEffect, useState, use } from "react";
+import { useRouter } from "next/navigation";
+import CustomerNavbar from "@/components/CustomerNavbar";
+import {
+  Search,
+  ShoppingCart,
+  Plus,
+  Minus,
+  Sparkles,
+  Utensils,
+  Leaf,
+  X,
+  CreditCard,
+  Banknote,
+  ArrowRight,
+  AlertTriangle,
+} from "lucide-react";
+import Swal from "sweetalert2";
+import confetti from "canvas-confetti";
+
+interface MenuItem {
+  item_id: number;
+  name: string;
+  description: string;
+  price: number;
+  image_url: string;
+  category_name: string;
+  is_available: boolean;
+  is_veg: boolean;
+  avg_rating?: string;
+  reviews_count?: string;
+}
+
+interface CartItem extends MenuItem {
+  quantity: number;
+}
+
+interface PageProps {
+  params: Promise<{
+    hotel_slug: string;
+  }>;
+}
+
+export default function MenuPage({ params }: PageProps) {
+  const router = useRouter();
+  const { hotel_slug } = use(params);
+  const hotelSlug = hotel_slug || "hotbyte";
+
+  const [categories, setCategories] = useState<string[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isVegOnly, setIsVegOnly] = useState(false);
+  const [customer, setCustomer] = useState<any>(null);
+  const [isFrozen, setIsFrozen] = useState(false);
+  
+  // Cart state
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [tableNumber, setTableNumber] = useState("T-1");
+  const [tableCount, setTableCount] = useState<number>(5);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // 1. Fetch Session Info (Public access: do not redirect if not logged in!)
+    fetch("/api/auth/session-check")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.authenticated) {
+          setCustomer(data.customer);
+        }
+      })
+      .catch(() => {});
+
+    // 2. Fetch Categories
+    fetch(`/api/menu/categories?hotel_slug=${hotelSlug}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.isFrozen) {
+          setIsFrozen(true);
+        } else if (data.success) {
+          setCategories(["All", ...data.categories.map((c: any) => c.category_name || c.name || "")]);
+          if (data.tableCount) {
+            setTableCount(data.tableCount);
+          }
+        }
+      })
+      .catch(() => {});
+
+    // 3. Fetch Menu Items
+    fetch(`/api/menu/items?hotel_slug=${hotelSlug}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.isFrozen) {
+          setIsFrozen(true);
+        } else if (data.success) {
+          const mappedItems = data.items.map((item: any) => ({
+            ...item,
+            name: item.item_name || item.name || "",
+          }));
+          setMenuItems(mappedItems);
+        }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+
+    // 4. Restore Cart from LocalStorage
+    const savedCart = localStorage.getItem(`hotbyte_cart_${hotelSlug}`);
+    if (savedCart) {
+      try {
+        setCart(JSON.parse(savedCart));
+      } catch (err) {}
+    }
+
+    // 5. Dynamic Cart Opening & Event Observers
+    const handleOpenMenuCart = () => {
+      setIsCartOpen(true);
+    };
+    window.addEventListener("openMenuCart", handleOpenMenuCart);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("openCart") === "true") {
+      setIsCartOpen(true);
+      // Clean up the URL search params so it doesn't reopen on subsequent reloads
+      router.replace(`/${hotelSlug}/menu`);
+    }
+
+    return () => {
+      window.removeEventListener("openMenuCart", handleOpenMenuCart);
+    };
+  }, [router, hotelSlug]);
+
+  // Synchronize cart to localStorage and dispatch update events
+  const saveCartToStorage = (updatedCart: CartItem[]) => {
+    setCart(updatedCart);
+    localStorage.setItem(`hotbyte_cart_${hotelSlug}`, JSON.stringify(updatedCart));
+    window.dispatchEvent(new Event("cartUpdated"));
+  };
+
+  const handleAddToCart = (item: MenuItem) => {
+    if (!item.is_available) return;
+    const existing = cart.find((i) => i.item_id === item.item_id);
+    if (existing) {
+      const updated = cart.map((i) =>
+        i.item_id === item.item_id ? { ...i, quantity: i.quantity + 1 } : i
+      );
+      saveCartToStorage(updated);
+    } else {
+      saveCartToStorage([...cart, { ...item, quantity: 1 }]);
+    }
+    
+    // Light vibration/sparkles feel
+    navigator.vibrate?.(50);
+  };
+
+  const handleDecreaseQuantity = (itemId: number) => {
+    const existing = cart.find((i) => i.item_id === itemId);
+    if (!existing) return;
+    if (existing.quantity === 1) {
+      const filtered = cart.filter((i) => i.item_id !== itemId);
+      saveCartToStorage(filtered);
+    } else {
+      const updated = cart.map((i) =>
+        i.item_id === itemId ? { ...i, quantity: i.quantity - 1 } : i
+      );
+      saveCartToStorage(updated);
+    }
+  };
+
+  const handleRemoveFromCart = (itemId: number) => {
+    const filtered = cart.filter((i) => i.item_id !== itemId);
+    saveCartToStorage(filtered);
+  };
+
+  const handleClearCart = () => {
+    saveCartToStorage([]);
+  };
+
+  const cartTotal = cart.reduce((total, item) => total + item.price * item.quantity, 0);
+  const cartCount = cart.reduce((count, item) => count + item.quantity, 0);
+
+  // Dynamic filter
+  const filteredItems = menuItems.filter((item) => {
+    const matchesCategory =
+      selectedCategory === "All" || item.category_name === selectedCategory;
+    const matchesSearch =
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesVeg = !isVegOnly || item.is_veg;
+    return matchesCategory && matchesSearch && matchesVeg;
+  });
+
+  // Razorpay script load helper
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handleCheckout = async () => {
+    if (cart.length === 0) {
+      Swal.fire("Cart Empty", "Please add items to your cart before checking out.", "info");
+      return;
+    }
+
+    if (!customer) {
+      const result = await Swal.fire({
+        title: "Login Required",
+        text: "Please login or register to place your order.",
+        icon: "info",
+        showCancelButton: true,
+        confirmButtonColor: "#FF5A1F",
+        cancelButtonColor: "#aaa",
+        confirmButtonText: "Go to Login",
+      });
+      if (result.isConfirmed) {
+        router.push("/login");
+      }
+      return;
+    }
+
+    const result = await Swal.fire({
+      title: "Place Order",
+      html: `
+        <div class="text-gray-400 mb-5 text-sm text-center">Select your preferred payment method for table <span class="text-orange-500 font-bold font-mono">${tableNumber}</span>:</div>
+        <div class="flex flex-col gap-3 mt-2 text-left">
+          <button id="pay-cash-btn" class="flex items-center justify-between p-4 rounded-xl border border-gray-800 bg-gray-900/40 hover:bg-gray-850 hover:border-orange-500 transition-all duration-300 text-left w-full group focus:outline-none">
+            <div class="flex items-center gap-4">
+              <div class="p-3 rounded-xl bg-orange-500/10 text-orange-500 group-hover:bg-orange-500 group-hover:text-white transition-all duration-300">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-wallet"><path d="M21 12V7H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14v2"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+              </div>
+              <div>
+                <div class="font-bold text-white text-base tracking-wide">Cash / Pay At Table</div>
+                <div class="text-xs text-gray-400 mt-0.5">Pay directly with cash or card at your table</div>
+              </div>
+            </div>
+            <div class="w-5 h-5 rounded-full border-2 border-gray-700 flex items-center justify-center group-hover:border-orange-500 group-hover:bg-orange-500/20 transition-all duration-300">
+              <div class="w-2.5 h-2.5 rounded-full bg-transparent group-hover:bg-orange-500 transition-all duration-300"></div>
+            </div>
+          </button>
+          
+          <button id="pay-online-btn" class="flex items-center justify-between p-4 rounded-xl border border-gray-800 bg-gray-900/40 hover:bg-gray-850 hover:border-orange-500 transition-all duration-300 text-left w-full group focus:outline-none">
+            <div class="flex items-center gap-4">
+              <div class="p-3 rounded-xl bg-orange-500/10 text-orange-500 group-hover:bg-orange-500 group-hover:text-white transition-all duration-300">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-credit-card"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+              </div>
+              <div>
+                <div class="font-bold text-white text-base tracking-wide">Online Payment (UPI / Card)</div>
+                <div class="text-xs text-gray-400 mt-0.5">Instant online payment using Razorpay gateway</div>
+              </div>
+            </div>
+            <div class="w-5 h-5 rounded-full border-2 border-gray-700 flex items-center justify-center group-hover:border-orange-500 group-hover:bg-orange-500/20 transition-all duration-300">
+              <div class="w-2.5 h-2.5 rounded-full bg-transparent group-hover:bg-orange-500 transition-all duration-300"></div>
+            </div>
+          </button>
+        </div>
+      `,
+      showConfirmButton: false,
+      showCancelButton: true,
+      cancelButtonText: "Cancel",
+      cancelButtonColor: "#374151",
+      background: "#0d0f14",
+      color: "#fff",
+      customClass: {
+        popup: "rounded-2xl border border-gray-800/80 shadow-2xl backdrop-blur-xl bg-gray-950/95 p-6",
+        title: "text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-400 to-yellow-500 tracking-wide pb-1",
+        cancelButton: "px-6 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300 hover:bg-gray-600 focus:outline-none"
+      },
+      didOpen: () => {
+        const cashBtn = document.getElementById("pay-cash-btn");
+        const onlineBtn = document.getElementById("pay-online-btn");
+        
+        if (cashBtn) {
+          cashBtn.addEventListener("click", () => {
+            (Swal as any).selectedPaymentMethod = "CASH";
+            Swal.clickConfirm();
+          });
+        }
+        if (onlineBtn) {
+          onlineBtn.addEventListener("click", () => {
+            (Swal as any).selectedPaymentMethod = "ONLINE";
+            Swal.clickConfirm();
+          });
+        }
+      },
+      preConfirm: () => {
+        return (Swal as any).selectedPaymentMethod;
+      }
+    });
+
+    const paymentMethod = result.value;
+
+    if (!paymentMethod) return;
+
+    if (paymentMethod === "CASH") {
+      // Cash Order Placement
+      Swal.fire({
+        title: "Processing Order",
+        text: "Sending your order to the kitchen...",
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading(),
+      });
+
+      try {
+        const res = await fetch("/api/orders/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            table_number: tableNumber,
+            hotel_slug: hotelSlug,
+            items: cart.map((i) => ({
+              item_id: i.item_id,
+              price: i.price,
+              quantity: i.quantity,
+            })),
+          }),
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+          handleClearCart();
+          setIsCartOpen(false);
+          await Swal.fire({
+            title: "Order Placed!",
+            text: `Your cash order for table ${tableNumber} has been received.`,
+            icon: "success",
+            confirmButtonColor: "#FF5A1F",
+          });
+          router.push("/profile");
+        } else {
+          Swal.fire("Occupied Table", data.message || "Checkout failed.", "error");
+        }
+      } catch (err) {
+        Swal.fire("Network Error", "Unable to send checkout request.", "error");
+      }
+    } else {
+      // Online Razorpay Payment
+      Swal.fire({
+        title: "Initializing Payment",
+        text: "Connecting to payment gateway...",
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading(),
+      });
+
+      try {
+        // 1. Get Key ID
+        const keyRes = await fetch("/api/payments/razorpay-key");
+        const keyData = await keyRes.json();
+        if (!keyData.success) throw new Error("Could not retrieve payment parameters");
+        const razorpayKey = Buffer.from(keyData.key, "base64").toString("ascii");
+
+        // 2. Load script
+        const isLoaded = await loadRazorpayScript();
+        if (!isLoaded) {
+          Swal.fire("Integration Error", "Failed to load payment portal script.", "error");
+          return;
+        }
+
+        // 3. Create Razorpay order
+        const orderCreateRes = await fetch("/api/payments/create-razorpay-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount: cartTotal }),
+        });
+        const orderCreateData = await orderCreateRes.json();
+        if (!orderCreateData.success) throw new Error(orderCreateData.message || "Failed to create payment order");
+
+        const rzpOrder = orderCreateData.razorpay_order;
+
+        Swal.close();
+
+        // 4. Open Razorpay Widget
+        const options = {
+          key: razorpayKey,
+          amount: rzpOrder.amount,
+          currency: rzpOrder.currency,
+          name: "HotByte Digital Menu",
+          description: `Table ${tableNumber} Dining Bill`,
+          order_id: rzpOrder.id,
+          handler: async (response: any) => {
+            Swal.fire({
+              title: "Verifying Transaction",
+              text: "Please wait while we log your order...",
+              allowOutsideClick: false,
+              didOpen: () => Swal.showLoading(),
+            });
+
+            try {
+              const verifyRes = await fetch("/api/orders/create-after-payment", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  table_number: tableNumber,
+                  hotel_slug: hotelSlug,
+                  items: cart.map((i) => ({
+                    item_id: i.item_id,
+                    price: i.price,
+                    quantity: i.quantity,
+                  })),
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                }),
+              });
+              const verifyData = await verifyRes.json();
+
+              if (verifyData.success) {
+                confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+                handleClearCart();
+                setIsCartOpen(false);
+                await Swal.fire({
+                  title: "Payment Successful!",
+                  text: "Your order is now being prepared in the kitchen.",
+                  icon: "success",
+                  confirmButtonColor: "#FF5A1F",
+                });
+                router.push("/profile");
+              } else {
+                Swal.fire("Verification Error", verifyData.message || "Signature checks failed.", "error");
+              }
+            } catch (err) {
+              Swal.fire("Verification Error", "Failed to confirm payment signature.", "error");
+            }
+          },
+          prefill: {
+            name: customer?.name || "",
+            contact: customer?.phone || "",
+          },
+          theme: {
+            color: "#FF5A1F",
+          },
+        };
+
+        const rzp = new (window as any).Razorpay(options);
+        rzp.open();
+      } catch (err: any) {
+        Swal.fire("Gateway Offline", err.message || "Failed to initialize payment gateway.", "error");
+      }
+    }
+  };
+
+  if (isFrozen) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-6 relative overflow-hidden font-sans">
+        {/* Abstract luxury glowing orbs */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-red-600/20 rounded-full blur-[120px] animate-pulse"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-orange-600/20 rounded-full blur-[120px] animate-pulse"></div>
+        
+        {/* Glassmorphic Lockbox card */}
+        <div className="relative w-full max-w-lg bg-[#0e0e0e]/85 backdrop-blur-xl border border-gray-900/60 rounded-[32px] p-8 md:p-12 text-center shadow-2xl flex flex-col items-center">
+          <div className="w-20 h-20 bg-red-500/10 border border-red-500/20 rounded-full flex items-center justify-center text-red-500 text-3xl mb-6 shadow-lg shadow-red-500/5 animate-bounce">
+            🥶
+          </div>
+          <h2 className="text-2xl md:text-3xl font-black text-gray-100 uppercase tracking-tight mb-3">
+            Hotel Account Frozen
+          </h2>
+          <div className="w-16 h-1 bg-gradient-to-r from-red-500 to-orange-500 rounded-full mb-6"></div>
+          <p className="text-sm font-semibold text-gray-400 leading-relaxed mb-8">
+            Your free trial or subscription period for this digital menu has expired. Please buy a subscription or contact the hotel administration to continue accessing services.
+          </p>
+          <div className="w-full bg-[#141414]/80 border border-gray-900 rounded-2xl py-4 px-6 mb-8 flex flex-col items-center justify-center gap-1">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Contact System Administrator</span>
+            <span className="text-xs font-black text-yellow-500 font-mono tracking-widest uppercase">support@hotbyte.in</span>
+          </div>
+          <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest">
+            &copy; 2026 HotByte SaaS Technologies
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700">
+      <CustomerNavbar />
+
+      {/* Hero Header */}
+      <div className="w-full bg-white/40 border-b border-gray-150/40 py-8 px-6 lg:px-16">
+        <div className="max-w-[1280px] mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="space-y-1.5 text-center md:text-left">
+            <h1 className="text-3xl font-black tracking-tight text-gray-900 flex items-center justify-center md:justify-start gap-2">
+              <Utensils className="text-[var(--orange)]" />
+              <span>Explore Our Menu</span>
+            </h1>
+            <p className="text-sm font-semibold text-gray-500">
+              Select category and browse freshly prepared delicacies.
+            </p>
+          </div>
+
+          {/* Quick Filters */}
+          <div className="w-full md:w-auto flex flex-col sm:flex-row items-center gap-3">
+            {/* Search Input */}
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3.5 top-3.5 text-gray-400" size={16} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search food item..."
+                className="w-full pl-10 pr-4 py-3 rounded-2xl bg-white border border-gray-205 focus:border-[var(--orange)] outline-none text-sm font-semibold text-gray-800 transition-all shadow-sm"
+              />
+            </div>
+
+            {/* Veg Only Toggle */}
+            <button
+              onClick={() => setIsVegOnly(!isVegOnly)}
+              className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border text-sm font-bold transition-all cursor-pointer shadow-sm ${
+                isVegOnly
+                  ? "bg-emerald-50 border-emerald-350 text-emerald-700"
+                  : "bg-white border-gray-205 text-gray-650 hover:bg-gray-50"
+              }`}
+            >
+              <Leaf size={16} className={isVegOnly ? "fill-emerald-700" : ""} />
+              <span>Veg Only</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Browse Section */}
+      <main className="flex-grow max-w-[1280px] mx-auto w-full px-6 py-8 flex flex-col gap-8">
+        
+        {/* Dynamic Category Selector Scroll */}
+        {categories.length > 0 && (
+          <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-none">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-5 py-3 rounded-2xl text-xs font-bold whitespace-nowrap tracking-wide transition-all cursor-pointer shadow-sm ${
+                  selectedCategory === cat
+                    ? "bg-[var(--orange)] text-white shadow-lg shadow-orange-500/10"
+                    : "bg-white border border-gray-200/80 text-gray-600 hover:text-gray-900 hover:border-gray-350"
+                }`}
+              >
+                {cat === "All" && <Sparkles size={12} className="inline mr-1" />}
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Loading Spinner */}
+        {loading ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-20 gap-3">
+            <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">Loading Fresh Menu...</p>
+          </div>
+        ) : filteredItems.length === 0 ? (
+          <div className="flex-grow flex flex-col items-center justify-center py-20 text-center space-y-4">
+            <div className="w-16 h-16 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center text-2xl mx-auto shadow-inner">
+              <Search size={28} />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-black text-gray-950">No Menu Items Found</h3>
+              <p className="text-sm font-medium text-gray-500 max-w-sm mx-auto">
+                No items match your selected filters. Try clearing your search queries or vegetarian preferences.
+              </p>
+            </div>
+          </div>
+        ) : (
+          /* Food Card Listing Grid */
+          <div className="grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
+            {filteredItems.map((item) => (
+              <div
+                key={item.item_id}
+                className={`glass-card rounded-3xl overflow-hidden flex flex-col relative transition-all duration-300 ${
+                  item.is_available
+                    ? "hover:shadow-xl hover:shadow-orange-100 hover:-translate-y-1.5"
+                    : "opacity-75"
+                }`}
+              >
+                {/* Veg/Non-Veg Badge */}
+                <div className="absolute top-3 left-3 z-10 flex gap-2">
+                  <span
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black tracking-wide uppercase shadow-md ${
+                      item.is_veg
+                        ? "bg-emerald-600 text-white"
+                        : "bg-red-650 text-white"
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+                    {item.is_veg ? "Veg" : "Non-Veg"}
+                  </span>
+                </div>
+
+                {/* Rating Badge */}
+                {item.avg_rating && parseFloat(item.avg_rating) > 0 && (
+                  <div className="absolute top-3 right-3 z-10">
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm text-[10px] font-bold text-yellow-400 shadow-md">
+                      <i className="fas fa-star text-[9px]"></i>
+                      {parseFloat(item.avg_rating).toFixed(1)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Food Image Container */}
+                <div className="aspect-[4/3] bg-gray-100 w-full relative overflow-hidden">
+                  {item.image_url ? (
+                    <img
+                      src={item.image_url}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
+                      <Utensils size={48} />
+                    </div>
+                  )}
+                  
+                  {/* Out of Stock Overlay */}
+                  {!item.is_available && (
+                    <div className="absolute inset-0 bg-black/65 flex flex-col items-center justify-center text-white p-4 text-center">
+                      <AlertTriangle className="text-yellow-500 mb-1" size={24} />
+                      <p className="text-xs font-black uppercase tracking-wider">Out of Stock</p>
+                      <p className="text-[10px] opacity-75 mt-0.5">Chef is preparing more!</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Card details */}
+                <div className="p-5 flex-1 flex flex-col justify-between gap-4">
+                  <div className="space-y-1">
+                    <h3 className="font-extrabold text-base text-gray-900 leading-snug line-clamp-1">
+                      {item.name}
+                    </h3>
+                    <p className="text-xs font-semibold text-gray-400 line-clamp-2">
+                      {item.description}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="flex flex-col leading-none">
+                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Price</span>
+                      <span className="text-lg font-black text-gray-900 mt-0.5">₹{item.price}</span>
+                    </div>
+
+                    {item.is_available ? (
+                      cart.find((i) => i.item_id === item.item_id) ? (
+                        /* Quantity adjusters */
+                        <div className="flex items-center gap-2.5 bg-orange-50 border border-orange-200 rounded-xl p-1 shadow-sm">
+                          <button
+                            onClick={() => handleDecreaseQuantity(item.item_id)}
+                            className="w-8 h-8 rounded-lg hover:bg-orange-100 flex items-center justify-center text-orange-600 transition-colors cursor-pointer"
+                          >
+                            <Minus size={14} />
+                          </button>
+                          <span className="text-sm font-extrabold text-orange-950">
+                            {cart.find((i) => i.item_id === item.item_id)?.quantity}
+                          </span>
+                          <button
+                            onClick={() => handleAddToCart(item)}
+                            className="w-8 h-8 rounded-lg hover:bg-orange-100 flex items-center justify-center text-orange-600 transition-colors cursor-pointer"
+                          >
+                            <Plus size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        /* Add Button */
+                        <button
+                          onClick={() => handleAddToCart(item)}
+                          className="px-4 py-2.5 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 btn-orange cursor-pointer"
+                        >
+                          <Plus size={14} />
+                          <span>ADD</span>
+                        </button>
+                      )
+                    ) : (
+                      <button
+                        disabled
+                        className="px-4 py-2.5 text-gray-400 font-bold text-xs bg-gray-100 border border-gray-200 rounded-xl flex items-center gap-1.5"
+                      >
+                        Unavailable
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
+
+      {/* Floating Smart Cart Toggle Button */}
+      {cartCount > 0 && (
+        <button
+          onClick={() => setIsCartOpen(true)}
+          className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-orange-500 via-orange-600 to-amber-600 text-white font-extrabold text-sm sm:text-base flex items-center gap-3.5 shadow-[0_15px_40px_rgba(255,90,31,0.45)] px-6 py-4 rounded-2xl cursor-pointer transition-all duration-300 hover:scale-105 active:scale-95 group overflow-hidden border border-white/10"
+        >
+          <div className="relative w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center shadow-inner group-hover:rotate-12 transition-transform duration-300">
+            <ShoppingCart size={18} className="text-white" />
+            <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-650 border-2 border-orange-500 text-[10px] font-black flex items-center justify-center shadow-lg">
+              {cartCount}
+            </span>
+          </div>
+          <div className="flex flex-col items-start leading-none gap-0.5">
+            <span className="text-[10px] text-orange-200 uppercase tracking-widest font-black">Your Order</span>
+            <span className="text-sm font-black">₹{cartTotal}</span>
+          </div>
+          <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center group-hover:translate-x-1.5 transition-transform duration-300">
+            <ArrowRight size={14} />
+          </div>
+        </button>
+      )}
+
+      {/* Stateful Slide-out Cart Drawer */}
+      {isCartOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          {/* Backdrop */}
+          <div
+            onClick={() => setIsCartOpen(false)}
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          ></div>
+
+          {/* Drawer Panel */}
+          <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col z-10 animate-fade-in-up">
+            
+            {/* Drawer Header */}
+            <div className="p-6 border-b border-gray-150 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="text-[var(--orange)]" />
+                <h2 className="text-lg font-black text-gray-900">Your Basket</h2>
+                <span className="px-2 py-0.5 bg-orange-100 text-[var(--orange)] rounded-lg text-xs font-bold">
+                  {cartCount} Items
+                </span>
+              </div>
+              <button
+                onClick={() => setIsCartOpen(false)}
+                className="p-1 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-800 cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Table Number & Quick Options */}
+            <div className="p-6 bg-gray-50 border-b border-gray-150 flex items-center justify-between gap-4">
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Dining Station</span>
+                <span className="text-sm font-extrabold text-gray-800 mt-0.5">Enter Table Number</span>
+              </div>
+              <select
+                value={tableNumber}
+                onChange={(e) => setTableNumber(e.target.value)}
+                className="px-4 py-2 bg-white rounded-xl border border-gray-205 text-sm font-bold text-gray-800 outline-none focus:border-[var(--orange)] shadow-sm"
+              >
+                {Array.from({ length: tableCount }, (_, i) => `T-${i + 1}`).map((t) => (
+                  <option key={t} value={t}>
+                    Table {t.replace("T-", "")}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Cart Items List scrollable */}
+            <div className="flex-grow overflow-y-auto p-6 space-y-4">
+              {cart.map((item) => (
+                <div
+                  key={item.item_id}
+                  className="flex items-center justify-between gap-4 border-b border-gray-100 pb-4 last:border-0"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-12 h-12 rounded-xl bg-gray-150 overflow-hidden flex-shrink-0">
+                      <img
+                        src={item.image_url}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="font-extrabold text-sm text-gray-900 leading-snug truncate">
+                        {item.name}
+                      </h4>
+                      <p className="text-xs font-bold text-gray-450 mt-0.5">₹{item.price}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {/* Quantity controls */}
+                    <div className="flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-lg p-0.5">
+                      <button
+                        onClick={() => handleDecreaseQuantity(item.item_id)}
+                        className="w-6 h-6 rounded-md hover:bg-gray-200 flex items-center justify-center text-gray-600 cursor-pointer"
+                      >
+                        <Minus size={10} />
+                      </button>
+                      <span className="text-xs font-bold text-gray-800">{item.quantity}</span>
+                      <button
+                        onClick={() => handleAddToCart(item)}
+                        className="w-6 h-6 rounded-md hover:bg-gray-200 flex items-center justify-center text-gray-600 cursor-pointer"
+                      >
+                        <Plus size={10} />
+                      </button>
+                    </div>
+
+                    {/* Total Price & Delete */}
+                    <span className="text-sm font-black text-gray-950 w-14 text-right">
+                      ₹{item.price * item.quantity}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Drawer Checkout Footer */}
+            <div className="p-6 border-t border-gray-150 bg-white space-y-4">
+              <div className="flex justify-between items-end">
+                <div className="flex flex-col leading-none">
+                  <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Subtotal bill</span>
+                  <span className="text-2xl font-black text-gray-900 mt-1">₹{cartTotal}</span>
+                </div>
+                <button
+                  onClick={handleClearCart}
+                  className="text-xs font-bold text-red-500 hover:underline cursor-pointer"
+                >
+                  Clear Cart
+                </button>
+              </div>
+
+              <button
+                onClick={handleCheckout}
+                className="w-full btn-orange py-4 rounded-2xl font-black text-white flex items-center justify-center gap-2.5 shadow-lg shadow-orange-500/20 cursor-pointer"
+              >
+                <span>Checkout Dining Order</span>
+                <ArrowRight size={18} />
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <footer className="w-full py-4 border-t border-gray-150/40 bg-white/60 text-center">
+        <p className="text-[10px] font-bold text-gray-450 uppercase tracking-[0.2em]">
+          &copy; 2026 HotByte. Tables QR Integrated.
+        </p>
+      </footer>
+    </div>
+  );
+}

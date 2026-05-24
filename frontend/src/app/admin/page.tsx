@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   DollarSign,
   Users,
@@ -14,6 +15,7 @@ import {
   RefreshCw,
   CreditCard,
   Banknote,
+  ExternalLink,
 } from "lucide-react";
 import Swal from "sweetalert2";
 
@@ -53,6 +55,8 @@ export default function AdminDashboard() {
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [hotelName, setHotelName] = useState("");
+  const [hotelSlug, setHotelSlug] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -61,10 +65,12 @@ export default function AdminDashboard() {
       // 1. Fetch Admin Session Check
       const sessionRes = await fetch("/api/auth/admin/session-check");
       const sessionData = await sessionRes.json();
-      if (!sessionData.authenticated) {
+      if (!sessionData.authenticated || sessionData.admin?.role !== "admin") {
         router.push("/admin/login");
         return;
       }
+      setHotelName(sessionData.admin?.hotelName || "");
+      setHotelSlug(sessionData.admin?.hotelSlug || "");
 
       // 2. Fetch Stats
       const statsRes = await fetch("/api/admin/dashboard/stats");
@@ -192,16 +198,50 @@ export default function AdminDashboard() {
   return (
     <div className="p-6 lg:p-10 space-y-8">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-            <span>Live Orders Manager</span>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 border-b border-gray-900/60 pb-6">
+        <div className="space-y-1">
+          {hotelName && (
+            hotelSlug ? (
+              <Link
+                href={`/${hotelSlug}/menu`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-3 py-1 rounded-xl border border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/10 text-orange-400 text-[10px] font-black uppercase tracking-wider mb-2 transition-all duration-300 cursor-pointer group"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-ping"></span>
+                <span>Active Terminal — {hotelName}</span>
+                <ExternalLink size={10} className="text-orange-500/50 group-hover:text-orange-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-300" />
+              </Link>
+            ) : (
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl border border-orange-500/20 bg-orange-500/5 text-orange-400 text-[10px] font-black uppercase tracking-wider mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-ping"></span>
+                <span>Active Terminal — {hotelName}</span>
+              </div>
+            )
+          )}
+          <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
+            {hotelSlug ? (
+              <Link
+                href={`/${hotelSlug}/menu`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-[var(--orange)] text-white transition-all duration-300 ease-in-out flex items-center gap-2 group cursor-pointer"
+              >
+                <span>{hotelName || "Hotel Console"}</span>
+                <ExternalLink
+                  size={20}
+                  className="text-gray-500 group-hover:text-[var(--orange)] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-300"
+                />
+              </Link>
+            ) : (
+              <span>{hotelName || "Hotel Console"}</span>
+            )}
             {refreshing && (
-              <RefreshCw size={16} className="text-orange-500 animate-spin" />
+              <RefreshCw size={18} className="text-orange-500 animate-spin" />
             )}
           </h1>
-          <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mt-1">
-            Realtime operations controller dashboard
+          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">
+            Real-time digital menu checkout & kitchen operations queue
           </p>
         </div>
 

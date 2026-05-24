@@ -32,9 +32,9 @@ const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:3000';
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
-    const isAllowed = origin === allowedOrigin || 
-                      origin.startsWith('http://localhost:') || 
-                      origin.startsWith('http://127.0.0.1:');
+    const isAllowed = origin === allowedOrigin ||
+      origin.startsWith('http://localhost:') ||
+      origin.startsWith('http://127.0.0.1:');
     if (isAllowed) {
       callback(null, true);
     } else {
@@ -127,12 +127,22 @@ app.use((req, res, next) => {
 // Example: public/index.html ko /index.html se access kar sakte hain
 app.use(express.static('public'));
 
+// ================= MULTI-TENANCY MIDDLEWARE =================
+// 🏨 Hotel slug resolution: customer-facing routes pe X-Hotel-Slug header se hotel resolve karta hai
+const validateHotelHeader = require('./middleware/validateHotelHeader');
+// 🔐 Subscription check: trial expiry auto-freeze + frozen hotel block karta hai
+const checkSubscription = require('./middleware/checkSubscription');
+
+// Apply to all public menu and order routes (customer-facing)
+app.use('/api/menu', validateHotelHeader, checkSubscription);
+app.use('/api/orders', validateHotelHeader, checkSubscription);
+
 // ================= HEALTH CHECK ENDPOINT =================
 // ✅ Server running hai ya nahi check karne ke liye
 // Cloud platforms aur monitoring tools ye endpoint use karte hain
 // Response me server status, time, aur uptime milta hai
 app.get('/health', (req, res) => {
-  res.json({ 
+  res.json({
     status: 'ok', // Server chal raha hai
     timestamp: new Date().toISOString(), // Current time (ISO format)
     uptime: process.uptime() // Server kitne seconds se chal raha hai
@@ -159,6 +169,9 @@ app.use('/api/menu', require('./routes/menu'));
 // Admin panel routes (Admin authentication required)
 app.use('/api/admin', require('./routes/admin'));
 
+// Super Admin panel routes (Super Admin privileges required)
+app.use('/api/superadmin', require('./routes/superadmin'));
+
 // Order creation aur management
 app.use('/api/orders', require('./routes/orders'));
 
@@ -184,8 +197,8 @@ app.get('/api/config/public', (req, res) => {
 
 // Detailed health check with environment info
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'ok', 
+  res.status(200).json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(), // Seconds me uptime
     environment: process.env.NODE_ENV || 'development'
@@ -222,9 +235,9 @@ app.use((req, res) => {
 // Production me detailed error message nahi bhejte (security ke liye)
 app.use((err, req, res, next) => {
   console.error('Server error:', err); // Console me error log karo
-  res.status(500).json({ 
+  res.status(500).json({
     success: false,
-    message: 'Internal server error' 
+    message: 'Internal server error'
   });
 });
 
@@ -232,7 +245,7 @@ app.use((err, req, res, next) => {
 // 🚀 Server ko start karta hai
 // PORT environment variable se port number leta hai
 // Agar PORT set nahi hai to default 3000 use karta hai
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 8000;
 const server = app.listen(port, () => {
   console.log(`✅ Server running on port ${port}`);
   console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);

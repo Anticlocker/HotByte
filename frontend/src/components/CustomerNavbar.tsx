@@ -10,6 +10,7 @@ interface Customer {
   id: number;
   name: string;
   phone: string;
+  hotelSlug?: string;
 }
 
 export default function CustomerNavbar() {
@@ -21,8 +22,13 @@ export default function CustomerNavbar() {
   const [cartCount, setCartCount] = useState(0);
 
   useEffect(() => {
-    // 1. Session check
-    fetch("/api/auth/session-check")
+    // 1. Scoped session check: fetch with hotel_slug parameter if browsing menu
+    const pathParts = window.location.pathname.split("/");
+    const hotelSlug = pathParts[1];
+    const isHotelMenu = hotelSlug && !["admin", "super-admin", "login", "profile", "menu"].includes(hotelSlug);
+    const sessionUrl = isHotelMenu ? `/api/auth/session-check?hotel_slug=${hotelSlug}` : "/api/auth/session-check";
+
+    fetch(sessionUrl)
       .then((res) => res.json())
       .then((data) => {
         if (data.authenticated) {
@@ -167,17 +173,27 @@ export default function CustomerNavbar() {
           )}
         </button>
 
-        <Link
-          href="/menu"
-          className={`nav-link px-3 py-2 text-sm font-semibold rounded-lg flex items-center gap-1.5 transition-colors ${
-            pathname === "/menu"
-              ? "text-[var(--orange)] bg-[var(--orange-light)]"
-              : "text-gray-600 hover:text-[var(--orange)] hover:bg-orange-50"
-          }`}
-        >
-          <Utensils size={16} />
-          <span>Menu</span>
-        </Link>
+        {(() => {
+          const hotelSlug = pathname.split("/")[1];
+          const isHotelMenu = hotelSlug && !["admin", "super-admin", "login", "profile", "menu"].includes(hotelSlug);
+          const resolvedMenuSlug = isHotelMenu ? hotelSlug : (customer?.hotelSlug || "hotbyte");
+          const menuHref = `/${resolvedMenuSlug}/menu`;
+
+          return (
+          <Link
+            key="menu-link"
+            href={menuHref}
+            className={`nav-link px-3 py-2 text-sm font-semibold rounded-lg flex items-center gap-1.5 transition-colors ${
+              pathname === menuHref
+                ? "text-[var(--orange)] bg-[var(--orange-light)]"
+                : "text-gray-600 hover:text-[var(--orange)] hover:bg-orange-50"
+            }`}
+          >
+            <Utensils size={16} />
+            <span>Menu</span>
+          </Link>
+        );
+      })()}
 
         {loading ? (
           <div className="w-8 h-8 rounded-full border-2 border-orange-500 border-t-transparent animate-spin"></div>
@@ -204,19 +220,26 @@ export default function CustomerNavbar() {
           </>
         ) : (
           <>
+            {(() => {
+              const hotelSlug = pathname.split("/")[1];
+              const isHotelMenu = hotelSlug && !["admin", "super-admin", "login", "profile", "menu"].includes(hotelSlug);
+              const loginHref = isHotelMenu ? `/login?hotel=${hotelSlug}` : "/login";
+              return (
+                <Link
+                  href={loginHref}
+                  className={`nav-link px-3 py-2 text-sm font-semibold rounded-lg flex items-center gap-1.5 transition-colors ${
+                    pathname === "/login"
+                      ? "text-[var(--orange)] bg-[var(--orange-light)]"
+                      : "text-gray-600 hover:text-[var(--orange)] hover:bg-orange-50"
+                  }`}
+                >
+                  <User size={16} />
+                  <span>Login</span>
+                </Link>
+              );
+            })()}
             <Link
-              href="/login"
-              className={`nav-link px-3 py-2 text-sm font-semibold rounded-lg flex items-center gap-1.5 transition-colors ${
-                pathname === "/login"
-                  ? "text-[var(--orange)] bg-[var(--orange-light)]"
-                  : "text-gray-600 hover:text-[var(--orange)] hover:bg-orange-50"
-              }`}
-            >
-              <User size={16} />
-              <span>Login</span>
-            </Link>
-            <Link
-              href="/admin/login"
+              href={pathname.split("/")[1] && !["admin", "super-admin", "login", "profile"].includes(pathname.split("/")[1]) ? `/admin/login?hotel=${pathname.split("/")[1]}` : "/admin/login"}
               className="nav-link px-4 py-2 text-white text-sm font-bold rounded-xl flex items-center gap-1.5 btn-orange"
             >
               <ShieldAlert size={14} className="opacity-95" />

@@ -271,6 +271,13 @@ router.get("/ordered-items", requireAuth, async (req, res) => {
 // Get average rating (PUBLIC)
 router.get("/average", async (req, res) => {
   try {
+    const hotelSlug = req.query.hotel_slug || "hotbyte";
+    const hotelResult = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [hotelSlug]);
+    if (hotelResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found" });
+    }
+    const hotelId = hotelResult.rows[0].hotel_id;
+
     const result = await db.query(
       `SELECT 
         COUNT(*) as total_ratings,
@@ -280,7 +287,10 @@ router.get("/average", async (req, res) => {
         COUNT(CASE WHEN rating_value = 3 THEN 1 END) as three_star,
         COUNT(CASE WHEN rating_value = 2 THEN 1 END) as two_star,
         COUNT(CASE WHEN rating_value = 1 THEN 1 END) as one_star
-       FROM ratings`
+       FROM ratings r
+       INNER JOIN customers c ON r.customer_id = c.customer_id
+       WHERE c.hotel_id = $1`,
+      [hotelId]
     );
 
     const stats = result.rows[0];
@@ -314,6 +324,13 @@ router.get("/recent", async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const offset = parseInt(req.query.offset) || 0;
     const item_id = req.query.item_id;
+    const hotelSlug = req.query.hotel_slug || "hotbyte";
+
+    const hotelResult = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [hotelSlug]);
+    if (hotelResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found" });
+    }
+    const hotelId = hotelResult.rows[0].hotel_id;
 
     let query = `
       SELECT 
@@ -330,10 +347,10 @@ router.get("/recent", async (req, res) => {
        FROM ratings r
        INNER JOIN customers c ON r.customer_id = c.customer_id
        LEFT JOIN menu_items mi ON r.item_id = mi.item_id
-       WHERE r.review_text IS NOT NULL AND r.review_text != ''
+       WHERE r.review_text IS NOT NULL AND r.review_text != '' AND c.hotel_id = $1
     `;
 
-    const params = [];
+    const params = [hotelId];
     
     if (item_id) {
       query += ` AND r.item_id = $${params.length + 1}`;

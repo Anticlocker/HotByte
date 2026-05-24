@@ -1,0 +1,529 @@
+const express = require("express");
+const router = express.Router();
+const db = require("./database");
+const crypto = require("crypto");
+const { requireAdmin } = require("./auth");
+
+// Hashing helper for password
+const hashPassword = (pwd) => crypto.createHash('sha256').update(pwd).digest('hex');
+
+// Middleware to restrict access only to Super Admins
+const requireSuperAdmin = (req, res, next) => {
+  if (!req.admin || req.admin.role !== 'super_admin') {
+    return res.status(403).json({ success: false, message: "Super Admin privileges required." });
+  }
+  next();
+};
+
+// Apply requireAdmin and requireSuperAdmin to all routes in this module
+router.use(requireAdmin);
+router.use(requireSuperAdmin);
+
+/**
+ * GET /api/superadmin/hotels
+ * Lists all hotel tenants along with premium analytics metrics
+ */
+router.get("/hotels", async (req, res) => {
+  try {
+    const queryText = `
+      SELECT 
+        h.hotel_id, 
+        h.name, 
+        h.slug, 
+        h.phone, 
+        h.address, 
+        h.created_at,
+        h.is_frozen,
+        h.plan,
+        h.trial_ends_at,
+        h.table_count,
+        (SELECT COUNT(*) FROM admins a WHERE a.hotel_id = h.hotel_id) as manager_count,
+        (SELECT COUNT(*) FROM menu_items m WHERE m.hotel_id = h.hotel_id) as item_count,
+        (SELECT COUNT(*) FROM orders o WHERE o.hotel_id = h.hotel_id) as order_count,
+        COALESCE((SELECT SUM(o.total_amount) FROM orders o WHERE o.hotel_id = h.hotel_id), 0) as total_revenue
+      FROM public.hotels h
+      ORDER BY h.created_at DESC
+    `;
+    const result = await db.query(queryText);
+    
+    return res.json({
+      success: true,
+      hotels: result.rows.map(row => ({
+        id: row.hotel_id,
+        name: row.name,
+        slug: row.slug,
+        phone: row.phone,
+        address: row.address,
+        createdAt: row.created_at,
+        isFrozen: row.is_frozen || false,
+        plan: row.plan || 'trial',
+        trialEndsAt: row.trial_ends_at,
+        tableCount: row.table_count || 5,
+        managerCount: parseInt(row.manager_count),
+        itemCount: parseInt(row.item_count),
+        orderCount: parseInt(row.order_count),
+        totalRevenue: parseFloat(row.total_revenue)
+      }))
+    });
+  } catch (error) {
+    console.error("Superadmin fetch hotels error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch hotels." });
+  }
+});
+
+/**
+ * POST /api/superadmin/hotels
+ * Creates/Registers a new hotel tenant
+ */
+router.post("/hotels", async (req, res) => {
+  try {
+    const { name, slug, phone, address, plan, tableCount } = req.body;
+    
+    if (!name || !slug) {
+      return res.status(400).json({ success: false, message: "Hotel name and unique URL slug are required." });
+    }
+    
+    const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9\-]/g, "");
+    if (!cleanSlug) {
+      return res.status(400).json({ success: false, message: "Invalid URL slug. Use alphanumeric and hyphen characters only." });
+    }
+
+    const existing = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [cleanSlug]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ success: false, message: "A hotel with this URL slug already exists." });
+    }
+
+    const hotelPlan = ['trial', 'basic', 'pro'].includes(plan) ? plan : 'trial';
+    const trialEndsAt = hotelPlan === 'trial' ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) : null;
+    const tables = parseInt(tableCount) > 0 ? parseInt(tableCount) : 5;
+
+    const result = await db.query(
+      "INSERT INTO public.hotels (name, slug, phone, address, plan, trial_ends_at, table_count) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING hotel_id, name, slug, phone, address, plan, trial_ends_at, table_count, created_at",
+      [name.trim(), cleanSlug, phone ? phone.trim() : null, address ? address.trim() : null, hotelPlan, trialEndsAt, tables]
+    );
+
+    return res.json({
+      success: true,
+      message: "Hotel registered successfully!",
+      hotel: result.rows[0]
+    });
+  } catch (error) {
+    console.error("Superadmin register hotel error:", error);
+    return res.status(500).json({ success: false, message: "Failed to register hotel." });
+  }
+});
+
+/**
+ * GET /api/superadmin/admins
+ * Lists all active managers and their assigned hotels
+ */
+router.get("/admins", async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT 
+        a.admin_id, 
+        a.name, 
+        a.username, 
+        a.email, 
+        a.role, 
+        a.created_at, 
+        a.hotel_id,
+        h.name as hotel_name, 
+        h.slug as hotel_slug
+      FROM public.admins a
+      LEFT JOIN public.hotels h ON a.hotel_id = h.hotel_id
+      ORDER BY a.created_at DESC
+    `);
+    
+    return res.json({
+      success: true,
+      admins: result.rows.map(row => ({
+        id: row.admin_id,
+        name: row.name,
+        username: row.username,
+        email: row.email,
+        role: row.role,
+        createdAt: row.created_at,
+        hotelId: row.hotel_id,
+        hotelName: row.hotel_name || "Super Admin",
+        hotelSlug: row.hotel_slug || null
+      }))
+    });
+  } catch (error) {
+    console.error("Superadmin fetch admins error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch managers." });
+  }
+});
+
+/**
+ * POST /api/superadmin/admins
+ * Creates and registers a manager, assigning them to a specific hotel
+ */
+router.post("/admins", async (req, res) => {
+  try {
+    const { name, username, email, password, hotelId } = req.body;
+    
+    if (!username || !password || !hotelId) {
+      return res.status(400).json({ success: false, message: "Username, password, and target Hotel ID are required." });
+    }
+    
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: "Password must be at least 6 characters long." });
+    }
+
+    const hotelCheck = await db.query("SELECT hotel_id FROM public.hotels WHERE hotel_id = $1", [hotelId]);
+    if (hotelCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Target hotel not found." });
+    }
+
+    const existingUsername = await db.query("SELECT admin_id FROM public.admins WHERE username = $1", [username.trim()]);
+    if (existingUsername.rows.length > 0) {
+      return res.status(409).json({ success: false, message: "This username is already taken." });
+    }
+    
+    if (email) {
+      const existingEmail = await db.query("SELECT admin_id FROM public.admins WHERE email = $1", [email.trim()]);
+      if (existingEmail.rows.length > 0) {
+        return res.status(409).json({ success: false, message: "This email address is already registered." });
+      }
+    }
+
+    const result = await db.query(
+      "INSERT INTO public.admins (name, username, email, password, hotel_id, role) VALUES ($1, $2, $3, $4, $5, 'admin') RETURNING admin_id, name, username, email, hotel_id, role, created_at",
+      [name ? name.trim() : null, username.trim(), email ? email.trim() : null, hashPassword(password), hotelId]
+    );
+
+    return res.json({
+      success: true,
+      message: "Hotel manager assigned successfully!",
+      admin: result.rows[0]
+    });
+  } catch (error) {
+    console.error("Superadmin assign manager error:", error);
+    return res.status(500).json({ success: false, message: "Failed to assign hotel manager." });
+  }
+});
+
+/**
+ * PUT /api/superadmin/hotels/:id
+ * Updates an existing hotel tenant's details
+ */
+router.put("/hotels/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, slug, phone, address, isFrozen, plan, tableCount } = req.body;
+
+    if (!name || !slug) {
+      return res.status(400).json({ success: false, message: "Hotel name and unique URL slug are required." });
+    }
+
+    const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9\-]/g, "");
+    if (!cleanSlug) {
+      return res.status(400).json({ success: false, message: "Invalid URL slug. Use alphanumeric and hyphen characters only." });
+    }
+
+    const slugCheck = await db.query(
+      "SELECT hotel_id FROM public.hotels WHERE slug = $1 AND hotel_id <> $2",
+      [cleanSlug, id]
+    );
+    if (slugCheck.rows.length > 0) {
+      return res.status(409).json({ success: false, message: "A hotel with this URL slug already exists." });
+    }
+
+    const hotelPlan = ['trial', 'basic', 'pro'].includes(plan) ? plan : undefined;
+    const tables = parseInt(tableCount) > 0 ? parseInt(tableCount) : undefined;
+
+    const result = await db.query(
+      `UPDATE public.hotels 
+       SET name = $1, slug = $2, phone = $3, address = $4, is_frozen = $5
+           ${hotelPlan ? ', plan = $7' : ''}
+           ${tables ? `, table_count = ${hotelPlan ? '$8' : '$7'}` : ''}
+       WHERE hotel_id = $6 
+       RETURNING hotel_id, name, slug, phone, address, is_frozen, plan, trial_ends_at, table_count, created_at`,
+      [name.trim(), cleanSlug, phone ? phone.trim() : null, address ? address.trim() : null, isFrozen === true, id,
+       ...(hotelPlan ? [hotelPlan] : []),
+       ...(tables ? [tables] : [])]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found." });
+    }
+
+    const row = result.rows[0];
+    return res.json({
+      success: true,
+      message: "Hotel updated successfully!",
+      hotel: {
+        id: row.hotel_id,
+        name: row.name,
+        slug: row.slug,
+        phone: row.phone,
+        address: row.address,
+        isFrozen: row.is_frozen,
+        plan: row.plan,
+        trialEndsAt: row.trial_ends_at,
+        tableCount: row.table_count,
+        createdAt: row.created_at
+      }
+    });
+  } catch (error) {
+    console.error("Superadmin update hotel error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update hotel." });
+  }
+});
+
+/**
+ * PUT /api/superadmin/hotels/:id/plan
+ * Changes a hotel's subscription plan (trial → basic → pro)
+ */
+router.put("/hotels/:id/plan", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { plan } = req.body;
+
+    if (!['trial', 'basic', 'pro'].includes(plan)) {
+      return res.status(400).json({ success: false, message: "Invalid plan. Use 'trial', 'basic', or 'pro'." });
+    }
+
+    // If moving to trial, reset trial_ends_at to 14 days from now
+    // If upgrading to paid plan, clear trial_ends_at and unfreeze
+    const trialEndsAt = plan === 'trial' ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) : null;
+    const unfreezeIfPaid = plan !== 'trial';
+
+    const result = await db.query(
+      `UPDATE public.hotels 
+       SET plan = $1, trial_ends_at = $2, is_frozen = CASE WHEN $3 THEN FALSE ELSE is_frozen END
+       WHERE hotel_id = $4
+       RETURNING hotel_id, name, slug, plan, trial_ends_at, is_frozen`,
+      [plan, trialEndsAt, unfreezeIfPaid, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found." });
+    }
+
+    return res.json({
+      success: true,
+      message: `Hotel subscription updated to ${plan} plan successfully!`,
+      hotel: result.rows[0]
+    });
+  } catch (error) {
+    console.error("Superadmin update plan error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update subscription plan." });
+  }
+});
+
+/**
+ * PUT /api/superadmin/admins/:id
+ * Updates a manager's details or reassigns them to another hotel
+ */
+router.put("/admins/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, username, email, password, hotelId } = req.body;
+
+    if (!username || !hotelId) {
+      return res.status(400).json({ success: false, message: "Username and target Hotel ID are required." });
+    }
+
+    // Check if target hotel exists
+    const hotelCheck = await db.query("SELECT hotel_id FROM public.hotels WHERE hotel_id = $1", [hotelId]);
+    if (hotelCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Target hotel not found." });
+    }
+
+    // Check if the username is taken by ANOTHER admin
+    const usernameCheck = await db.query(
+      "SELECT admin_id FROM public.admins WHERE username = $1 AND admin_id <> $2",
+      [username.trim(), id]
+    );
+    if (usernameCheck.rows.length > 0) {
+      return res.status(409).json({ success: false, message: "This username is already taken." });
+    }
+
+    // Check if the email is taken by ANOTHER admin
+    if (email) {
+      const emailCheck = await db.query(
+        "SELECT admin_id FROM public.admins WHERE email = $1 AND admin_id <> $2",
+        [email.trim(), id]
+      );
+      if (emailCheck.rows.length > 0) {
+        return res.status(409).json({ success: false, message: "This email address is already registered." });
+      }
+    }
+
+    let queryText = "";
+    let params = [];
+
+    if (password && password.trim() !== "") {
+      if (password.length < 6) {
+        return res.status(400).json({ success: false, message: "Password must be at least 6 characters long." });
+      }
+      queryText = `
+        UPDATE public.admins 
+        SET name = $1, username = $2, email = $3, password = $4, hotel_id = $5 
+        WHERE admin_id = $6 AND role <> 'super_admin'
+        RETURNING admin_id, name, username, email, hotel_id, role, created_at
+      `;
+      params = [name ? name.trim() : null, username.trim(), email ? email.trim() : null, hashPassword(password), hotelId, id];
+    } else {
+      queryText = `
+        UPDATE public.admins 
+        SET name = $1, username = $2, email = $3, hotel_id = $4 
+        WHERE admin_id = $5 AND role <> 'super_admin'
+        RETURNING admin_id, name, username, email, hotel_id, role, created_at
+      `;
+      params = [name ? name.trim() : null, username.trim(), email ? email.trim() : null, hotelId, id];
+    }
+
+    const result = await db.query(queryText, params);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Manager not found or unauthorized to edit Super Admin." });
+    }
+
+    return res.json({
+      success: true,
+      message: "Manager updated successfully!",
+      admin: result.rows[0]
+    });
+  } catch (error) {
+    console.error("Superadmin update manager error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update hotel manager." });
+  }
+});
+
+/**
+ * DELETE /api/superadmin/hotels/:id
+ * Permanently removes a hotel tenant (cascades automatically to menu categories, items, and orders)
+ */
+router.delete("/hotels/:id", async (req, res) => {
+  const { id } = req.params;
+  const client = await db.connect();
+  
+  try {
+    await client.query("BEGIN");
+
+    // 1. Delete ratings referencing menu_items of this hotel
+    await client.query(
+      "DELETE FROM public.ratings WHERE item_id IN (SELECT item_id FROM public.menu_items WHERE hotel_id = $1)",
+      [id]
+    );
+
+    // 2. Delete ratings referencing orders of this hotel
+    await client.query(
+      "DELETE FROM public.ratings WHERE order_id IN (SELECT order_id FROM public.orders WHERE hotel_id = $1)",
+      [id]
+    );
+
+    // 3. Delete order_items referencing orders of this hotel
+    await client.query(
+      "DELETE FROM public.order_items WHERE order_id IN (SELECT order_id FROM public.orders WHERE hotel_id = $1)",
+      [id]
+    );
+
+    // 4. Delete payments referencing orders of this hotel
+    await client.query(
+      "DELETE FROM public.payments WHERE order_id IN (SELECT order_id FROM public.orders WHERE hotel_id = $1)",
+      [id]
+    );
+
+    // 5. Delete orders of this hotel
+    await client.query(
+      "DELETE FROM public.orders WHERE hotel_id = $1",
+      [id]
+    );
+
+    // 6. Delete order_items referencing menu_items
+    await client.query(
+      "DELETE FROM public.order_items WHERE item_id IN (SELECT item_id FROM public.menu_items WHERE hotel_id = $1)",
+      [id]
+    );
+
+    // 7. Delete menu_items of this hotel
+    await client.query(
+      "DELETE FROM public.menu_items WHERE hotel_id = $1",
+      [id]
+    );
+
+    // 8. Delete menu_category of this hotel
+    await client.query(
+      "DELETE FROM public.menu_category WHERE hotel_id = $1",
+      [id]
+    );
+
+    // 9. Delete sessions referencing admins of this hotel (except the super admin)
+    await client.query(
+      "DELETE FROM public.sessions WHERE admin_id IN (SELECT admin_id FROM public.admins WHERE hotel_id = $1 AND role <> 'super_admin')",
+      [id]
+    );
+
+    // 10. Delete admins of this hotel (except the super admin)
+    await client.query(
+      "DELETE FROM public.admins WHERE hotel_id = $1 AND role <> 'super_admin'",
+      [id]
+    );
+
+    // 11. Disassociate super_admin from this hotel
+    await client.query(
+      "UPDATE public.admins SET hotel_id = NULL WHERE hotel_id = $1 AND role = 'super_admin'",
+      [id]
+    );
+
+    // 12. Delete the hotel itself
+    const result = await client.query(
+      "DELETE FROM public.hotels WHERE hotel_id = $1 RETURNING hotel_id, name, slug",
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ success: false, message: "Hotel not found." });
+    }
+
+    await client.query("COMMIT");
+
+    return res.json({
+      success: true,
+      message: `Hotel "${result.rows[0].name}" and all its linked categories, menu items, and orders have been deleted successfully!`,
+      hotel: result.rows[0]
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Superadmin delete hotel error:", error);
+    return res.status(500).json({ success: false, message: "Failed to delete hotel: " + error.message });
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * DELETE /api/superadmin/admins/:id
+ * Removes a manager admin profile securely (preventing deletion of Super Admins)
+ */
+router.delete("/admins/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Delete query ensuring role is not super_admin
+    const result = await db.query(
+      "DELETE FROM public.admins WHERE admin_id = $1 AND role <> 'super_admin' RETURNING admin_id, username, name",
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Manager not found or unauthorized to delete Super Admin." });
+    }
+
+    return res.json({
+      success: true,
+      message: `Manager "${result.rows[0].username}" deleted successfully!`,
+      admin: result.rows[0]
+    });
+  } catch (error) {
+    console.error("Superadmin delete manager error:", error);
+    return res.status(500).json({ success: false, message: "Failed to delete manager." });
+  }
+});
+
+module.exports = router;

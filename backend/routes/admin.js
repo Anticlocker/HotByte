@@ -8,6 +8,21 @@ const { requireAdmin } = require("./auth");
 const bunnyCDN = require("./bunnyCDN");
 const crypto = require("crypto");
 
+// ─── Helper: resolve hotel_slug → hotel_id for super_admin scoped queries ───────
+// Usage: const hotelId = await resolveHotelSlug(req) || req.admin.hotelId
+const resolveHotelSlug = async (req) => {
+  if (req.admin.role !== 'super_admin') return req.admin.hotelId;
+  const slug = req.query.hotel_slug || req.body?.hotel_slug;
+  if (!slug) return null; // super_admin with no filter = all hotels
+  const result = await db.query('SELECT hotel_id FROM public.hotels WHERE slug = $1', [slug]);
+  if (result.rows.length === 0) return -1; // sentinel: slug not found
+  return result.rows[0].hotel_id;
+};
+
+const hashPassword = (password) => {
+  return crypto.createHash('sha256').update(password).digest('hex');
+};
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -26,19 +41,26 @@ const upload = multer({
   },
 });
 
-const hashPassword = (password) => {
-  return crypto.createHash('sha256').update(password).digest('hex');
-};
-
 // Get all categories
 router.get("/categories", requireAdmin, async (req, res) => 
   {
   try
   {
-    const result = await db.query("SELECT category_id, category_name FROM menu_category ORDER BY category_name");
+    let result;
+    if (req.admin.role !== 'super_admin') {
+      result = await db.query("SELECT category_id, category_name FROM menu_category WHERE hotel_id = $1 ORDER BY category_name", [req.admin.hotelId]);
+    } else {
+      const hotelId = await resolveHotelSlug(req);
+      if (hotelId === -1) return res.status(404).json({ success: false, message: 'Hotel slug not found.' });
+      if (hotelId) {
+        result = await db.query("SELECT category_id, category_name FROM menu_category WHERE hotel_id = $1 ORDER BY category_name", [hotelId]);
+      } else {
+        result = await db.query("SELECT category_id, category_name FROM menu_category ORDER BY category_name");
+      }
+    }
     return res.json({ success: true, categories: result.rows });
   }
- catch(error)
+  catch(error)
   {
     console.error("Get categories error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch categories" });
@@ -52,9 +74,20 @@ router.post("/categories", requireAdmin, async (req, res) => {
     if (!name)
       return res.status(400).json({ success: false, message: "Category name is required" });
 
+    let hotelId;
+    if (req.admin.role === 'super_admin') {
+      hotelId = await resolveHotelSlug(req);
+      if (hotelId === -1) return res.status(404).json({ success: false, message: 'Hotel slug not found.' });
+    } else {
+      hotelId = req.admin.hotelId;
+    }
+    if (!hotelId) {
+      return res.status(400).json({ success: false, message: "Hotel slug is required" });
+    }
+
     const { rows } = await db.query(
-      "INSERT INTO menu_category (category_name) VALUES ($1) RETURNING category_id, category_name",
-      [name]
+      "INSERT INTO menu_category (category_name, hotel_id) VALUES ($1, $2) RETURNING category_id, category_name",
+      [name, hotelId]
     );
 
     res.json({ success: true, category: rows[0] });
@@ -79,13 +112,21 @@ router.put("/categories/:id", requireAdmin, async (req, res) => {
       return res.status(400).json({ success: false, message: "Category name is required" });
     }
 
-    const result = await db.query(
-      "UPDATE menu_category SET category_name = $1 WHERE category_id = $2 RETURNING category_id, category_name",
-      [category_name.trim(), id]
-    );
+    let result;
+    if (req.admin.role === 'super_admin') {
+      result = await db.query(
+        "UPDATE menu_category SET category_name = $1 WHERE category_id = $2 RETURNING category_id, category_name",
+        [category_name.trim(), id]
+      );
+    } else {
+      result = await db.query(
+        "UPDATE menu_category SET category_name = $1 WHERE category_id = $2 AND hotel_id = $3 RETURNING category_id, category_name",
+        [category_name.trim(), id, req.admin.hotelId]
+      );
+    }
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Category not found" });
+      return res.status(404).json({ success: false, message: "Category not found or unauthorized" });
     }
 
     return res.json({ success: true, category: result.rows[0] });
@@ -100,10 +141,15 @@ router.delete("/categories/:id", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const result = await db.query("DELETE FROM menu_category WHERE category_id = $1 RETURNING category_id", [id]);
+    let result;
+    if (req.admin.role === 'super_admin') {
+      result = await db.query("DELETE FROM menu_category WHERE category_id = $1 RETURNING category_id", [id]);
+    } else {
+      result = await db.query("DELETE FROM menu_category WHERE category_id = $1 AND hotel_id = $2 RETURNING category_id", [id, req.admin.hotelId]);
+    }
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Category not found" });
+      return res.status(404).json({ success: false, message: "Category not found or unauthorized" });
     }
 
     return res.json({ success: true, message: "Category deleted successfully" });
@@ -119,7 +165,7 @@ router.delete("/categories/:id", requireAdmin, async (req, res) => {
 // Get all menu items
 router.get("/items", requireAdmin, async (req, res) => {
   try {
-    const result = await db.query(`
+    let query = `
       SELECT 
         mi.item_id,
         mi.item_name,
@@ -132,8 +178,21 @@ router.get("/items", requireAdmin, async (req, res) => {
         mi.is_veg
       FROM menu_items mi
       LEFT JOIN menu_category mc ON mi.category_id = mc.category_id
-      ORDER BY mc.category_name, mi.item_name
-    `);
+    `;
+    let params = [];
+    if (req.admin.role !== 'super_admin') {
+      query += " WHERE mi.hotel_id = $1";
+      params.push(req.admin.hotelId);
+    } else {
+      const hotelId = await resolveHotelSlug(req);
+      if (hotelId === -1) return res.status(404).json({ success: false, message: 'Hotel slug not found.' });
+      if (hotelId) {
+        query += " WHERE mi.hotel_id = $1";
+        params.push(hotelId);
+      }
+    }
+    query += " ORDER BY mc.category_name, mi.item_name";
+    const result = await db.query(query, params);
     return res.json({ success: true, items: result.rows });
   } catch (error) {
     console.error("Get items error:", error);
@@ -216,11 +275,22 @@ router.post("/items", requireAdmin, (req, res, next) => {
       isVegBool = Boolean(is_veg);
     }
 
+    let hotelId;
+    if (req.admin.role === 'super_admin') {
+      hotelId = await resolveHotelSlug(req);
+      if (hotelId === -1) return res.status(404).json({ success: false, message: 'Hotel slug not found.' });
+    } else {
+      hotelId = req.admin.hotelId;
+    }
+    if (!hotelId) {
+      return res.status(400).json({ success: false, message: "Hotel slug is required" });
+    }
+
     const result = await db.query(
-      `INSERT INTO menu_items (item_name, category_id, price, image_url, description, is_available, is_veg) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7) 
+      `INSERT INTO menu_items (item_name, category_id, price, image_url, description, is_available, is_veg, hotel_id) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
        RETURNING item_id, item_name, category_id, price, image_url, description, is_available, is_veg`,
-      [item_name.trim(), category_id, parseFloat(price), image_url, description || null, isAvailableBool, isVegBool]
+      [item_name.trim(), category_id, parseFloat(price), image_url, description || null, isAvailableBool, isVegBool, hotelId]
     );
 
     return res.json({ success: true, item: result.rows[0] });
@@ -250,6 +320,19 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
 
     if (!item_name || !category_id || !price) {
       return res.status(400).json({ success: false, message: "Item name, category, and price are required" });
+    }
+
+    // Tenant authorization check
+    if (req.admin.role !== 'super_admin') {
+      const itemCheck = await db.query("SELECT hotel_id FROM menu_items WHERE item_id = $1", [id]);
+      if (itemCheck.rows.length === 0 || itemCheck.rows[0].hotel_id !== req.admin.hotelId) {
+        return res.status(403).json({ success: false, message: "Unauthorized: Menu item belongs to another hotel." });
+      }
+
+      const catCheck = await db.query("SELECT hotel_id FROM menu_category WHERE category_id = $1", [category_id]);
+      if (catCheck.rows.length === 0 || catCheck.rows[0].hotel_id !== req.admin.hotelId) {
+        return res.status(403).json({ success: false, message: "Unauthorized: Target category belongs to another hotel." });
+      }
     }
 
     let image_url = existing_image_url || null;
@@ -348,6 +431,14 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
 router.delete("/items/:id", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Tenant authorization check
+    if (req.admin.role !== 'super_admin') {
+      const itemCheck = await db.query("SELECT hotel_id FROM menu_items WHERE item_id = $1", [id]);
+      if (itemCheck.rows.length === 0 || itemCheck.rows[0].hotel_id !== req.admin.hotelId) {
+        return res.status(403).json({ success: false, message: "Unauthorized: Menu item belongs to another hotel." });
+      }
+    }
 
     // Check if item exists
     const itemResult = await db.query("SELECT item_name, image_url FROM menu_items WHERE item_id = $1", [id]);
@@ -453,6 +544,14 @@ router.get("/orders", requireAdmin, async (req, res) => {
     const conditions = [];
     const params = [];
 
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req).then(id => { if (id === -1) throw new Error('Hotel slug not found'); return id; })
+      : req.admin.hotelId;
+    if (hotelId) {
+      conditions.push(`o.hotel_id = $${params.length + 1}`);
+      params.push(hotelId);
+    }
+
     // ✅ Active view → hide completed orders
     if (view_type === 'active') {
       conditions.push(`o.status != 'completed'`);
@@ -512,6 +611,14 @@ router.delete("/orders/:id", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Tenant authorization check
+    if (req.admin.role !== 'super_admin') {
+      const orderCheck = await db.query("SELECT hotel_id FROM orders WHERE order_id = $1", [id]);
+      if (orderCheck.rows.length === 0 || orderCheck.rows[0].hotel_id !== req.admin.hotelId) {
+        return res.status(403).json({ success: false, message: "Unauthorized: Order belongs to another hotel." });
+      }
+    }
+
     // Start transaction
     await db.query("BEGIN");
 
@@ -553,6 +660,14 @@ router.put("/orders/:id/status", requireAdmin, async (req, res) => {
       return res.status(400).json({ success: false, message: "Valid status is required" });
     }
 
+    // Tenant authorization check
+    if (req.admin.role !== 'super_admin') {
+      const orderCheck = await db.query("SELECT hotel_id FROM orders WHERE order_id = $1", [id]);
+      if (orderCheck.rows.length === 0 || orderCheck.rows[0].hotel_id !== req.admin.hotelId) {
+        return res.status(403).json({ success: false, message: "Unauthorized: Order belongs to another hotel." });
+      }
+    }
+
     const result = await db.query(
       "UPDATE orders SET status = $1 WHERE order_id = $2 RETURNING order_id, status",
       [status, id]
@@ -573,6 +688,14 @@ router.put("/orders/:id/status", requireAdmin, async (req, res) => {
 router.put("/orders/:id/mark-paid", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Tenant authorization check
+    if (req.admin.role !== 'super_admin') {
+      const orderCheck = await db.query("SELECT hotel_id FROM orders WHERE order_id = $1", [id]);
+      if (orderCheck.rows.length === 0 || orderCheck.rows[0].hotel_id !== req.admin.hotelId) {
+        return res.status(403).json({ success: false, message: "Unauthorized: Order belongs to another hotel." });
+      }
+    }
 
     // Check if order exists
     const orderCheck = await db.query(
@@ -629,6 +752,44 @@ router.get("/dashboard/stats", requireAdmin, async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req).then(id => { if (id === -1) throw new Error('Hotel slug not found'); return id; })
+      : req.admin.hotelId;
+
+    let totalOrdersQuery = "SELECT COUNT(*) as count FROM orders";
+    let todayOrdersQuery = "SELECT COUNT(*) as count FROM orders WHERE created_at >= $1";
+    let totalRevenueQuery = "SELECT COALESCE(SUM(total_amount), 0) as total FROM orders WHERE status = 'completed'";
+    let todayRevenueQuery = "SELECT COALESCE(SUM(total_amount), 0) as total FROM orders WHERE status = 'completed' AND created_at >= $1";
+    let pendingOrdersQuery = "SELECT COUNT(*) as count FROM orders WHERE status IN ('pending', 'preparing', 'ready')";
+    let totalCustomersQuery = "SELECT COUNT(DISTINCT customer_id) as count FROM orders";
+
+    let totalOrdersParams = [];
+    let todayOrdersParams = [today];
+    let totalRevenueParams = [];
+    let todayRevenueParams = [today];
+    let pendingOrdersParams = [];
+    let totalCustomersParams = [];
+
+    if (hotelId) {
+      totalOrdersQuery += " WHERE hotel_id = $1";
+      totalOrdersParams.push(hotelId);
+
+      todayOrdersQuery += " AND hotel_id = $2";
+      todayOrdersParams.push(hotelId);
+
+      totalRevenueQuery += " AND hotel_id = $1";
+      totalRevenueParams.push(hotelId);
+
+      todayRevenueQuery += " AND hotel_id = $2";
+      todayRevenueParams.push(hotelId);
+
+      pendingOrdersQuery += " AND hotel_id = $1";
+      pendingOrdersParams.push(hotelId);
+
+      totalCustomersQuery += " WHERE hotel_id = $1";
+      totalCustomersParams.push(hotelId);
+    }
+
     const [
       totalOrders,
       todayOrders,
@@ -637,23 +798,12 @@ router.get("/dashboard/stats", requireAdmin, async (req, res) => {
       pendingOrders,
       totalCustomers,
     ] = await Promise.all([
-      db.query("SELECT COUNT(*) as count FROM orders"),
-      db.query("SELECT COUNT(*) as count FROM orders WHERE created_at >= $1", [today]),
-      // Total revenue from completed orders only
-      db.query(`
-        SELECT COALESCE(SUM(total_amount), 0) as total 
-        FROM orders 
-        WHERE status = 'completed'
-      `),
-      // Today's revenue from completed orders only
-      db.query(`
-        SELECT COALESCE(SUM(total_amount), 0) as total 
-        FROM orders 
-        WHERE status = 'completed' 
-        AND created_at >= $1
-      `, [today]),
-      db.query("SELECT COUNT(*) as count FROM orders WHERE status IN ('pending', 'preparing', 'ready')"),
-      db.query("SELECT COUNT(*) as count FROM customers"),
+      db.query(totalOrdersQuery, totalOrdersParams),
+      db.query(todayOrdersQuery, todayOrdersParams),
+      db.query(totalRevenueQuery, totalRevenueParams),
+      db.query(todayRevenueQuery, todayRevenueParams),
+      db.query(pendingOrdersQuery, pendingOrdersParams),
+      db.query(totalCustomersQuery, totalCustomersParams),
     ]);
 
     return res.json({
@@ -679,9 +829,21 @@ router.get("/customer-stats", requireAdmin, async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    let totalCustomersQuery = "SELECT COUNT(DISTINCT customer_id) as count FROM orders";
+    let todayCustomersQuery = "SELECT COUNT(DISTINCT customer_id) as count FROM orders WHERE DATE(created_at) = CURRENT_DATE";
+    const totalParams = [];
+    const todayParams = [];
+
+    if (req.admin.role !== 'super_admin') {
+      totalCustomersQuery += " WHERE hotel_id = $1";
+      todayCustomersQuery += " AND hotel_id = $1";
+      totalParams.push(req.admin.hotelId);
+      todayParams.push(req.admin.hotelId);
+    }
+
     const [totalCustomers, todayCustomers] = await Promise.all([
-      db.query("SELECT COUNT(*) as count FROM customers"),
-      db.query("SELECT COUNT(*) as count FROM customers WHERE DATE(created_at) = CURRENT_DATE"),
+      db.query(totalCustomersQuery, totalParams),
+      db.query(todayCustomersQuery, todayParams),
     ]);
 
     return res.json({
@@ -700,7 +862,7 @@ router.get("/customer-stats", requireAdmin, async (req, res) => {
 // Get all users with order stats
 router.get("/users", requireAdmin, async (req, res) => {
   try {
-    const result = await db.query(`
+    let query = `
       SELECT 
         c.customer_id,
         c.name,
@@ -711,11 +873,19 @@ router.get("/users", requireAdmin, async (req, res) => {
         COALESCE(SUM(CASE WHEN o.status = 'completed' THEN o.total_amount ELSE 0 END), 0) as total_spent,
         MAX(o.created_at) as last_order_date
       FROM customers c
-      LEFT JOIN orders o ON c.customer_id = o.customer_id
+      INNER JOIN orders o ON c.customer_id = o.customer_id
+    `;
+    const params = [];
+    if (req.admin.role !== 'super_admin') {
+      query += " WHERE o.hotel_id = $1";
+      params.push(req.admin.hotelId);
+    }
+    query += `
       GROUP BY c.customer_id, c.name, c.phone, c.dob, c.created_at
       ORDER BY total_orders DESC, c.created_at DESC
-    `);
+    `;
 
+    const result = await db.query(query, params);
     return res.json({ success: true, users: result.rows });
   } catch (error) {
     console.error("Get users error:", error);
@@ -728,6 +898,17 @@ router.get("/users/:id", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Tenant authorization check: verify user has at least one transaction with the admin's hotel
+    if (req.admin.role !== 'super_admin') {
+      const accessCheck = await db.query(
+        "SELECT 1 FROM orders WHERE customer_id = $1 AND hotel_id = $2 LIMIT 1",
+        [id, req.admin.hotelId]
+      );
+      if (accessCheck.rows.length === 0) {
+        return res.status(403).json({ success: false, message: "Unauthorized: Customer has no history with your hotel." });
+      }
+    }
+
     // Get user info
     const userResult = await db.query(
       "SELECT customer_id, name, phone, dob, created_at FROM customers WHERE customer_id = $1",
@@ -739,8 +920,8 @@ router.get("/users/:id", requireAdmin, async (req, res) => {
     }
 
     // Get user orders with items in single query
-    const ordersResult = await db.query(
-      `SELECT 
+    let ordersQuery = `
+      SELECT 
         o.order_id,
         o.table_number,
         o.total_amount,
@@ -764,17 +945,24 @@ router.get("/users/:id", requireAdmin, async (req, res) => {
       LEFT JOIN order_items oi ON o.order_id = oi.order_id
       LEFT JOIN menu_items mi ON oi.item_id = mi.item_id
       WHERE o.customer_id = $1
+    `;
+    const ordersParams = [id];
+    if (req.admin.role !== 'super_admin') {
+      ordersQuery += " AND o.hotel_id = $2";
+      ordersParams.push(req.admin.hotelId);
+    }
+    ordersQuery += `
       GROUP BY o.order_id, o.table_number, o.total_amount, o.status, o.created_at, 
                p.payment_status, p.payment_method
-      ORDER BY o.created_at DESC`,
-      [id]
-    );
+      ORDER BY o.created_at DESC
+    `;
+    const ordersResult = await db.query(ordersQuery, ordersParams);
 
     const ordersWithItems = ordersResult.rows;
 
     // Get user reviews (both order and item reviews)
-    const reviewsResult = await db.query(
-      `SELECT 
+    let reviewsQuery = `
+      SELECT 
         r.rating_id,
         r.rating_value,
         r.review_text,
@@ -785,10 +973,16 @@ router.get("/users/:id", requireAdmin, async (req, res) => {
         mi.image_url as item_image
       FROM ratings r
       LEFT JOIN menu_items mi ON r.item_id = mi.item_id
+      LEFT JOIN orders o ON r.order_id = o.order_id
       WHERE r.customer_id = $1
-      ORDER BY r.created_at DESC`,
-      [id]
-    );
+    `;
+    const reviewsParams = [id];
+    if (req.admin.role !== 'super_admin') {
+      reviewsQuery += " AND (mi.hotel_id = $2 OR o.hotel_id = $2)";
+      reviewsParams.push(req.admin.hotelId);
+    }
+    reviewsQuery += " ORDER BY r.created_at DESC";
+    const reviewsResult = await db.query(reviewsQuery, reviewsParams);
 
     return res.json({
       success: true,
@@ -806,12 +1000,20 @@ router.get("/users/:id", requireAdmin, async (req, res) => {
 router.get("/notifications", requireAdmin, async (req, res) => {
   try {
     const notifications = [];
+    let hotelFilter = "";
+    const params = [];
+
+    if (req.admin.role !== 'super_admin') {
+      hotelFilter = "AND hotel_id = $1";
+      params.push(req.admin.hotelId);
+    }
 
     // Recent pending orders
     const pendingOrders = await db.query(
       `SELECT COUNT(*) as count FROM orders 
        WHERE status IN ('pending', 'preparing', 'ready') 
-       AND created_at > NOW() - INTERVAL '24 hours'`
+       AND created_at > NOW() - INTERVAL '24 hours' ${hotelFilter}`,
+      params
     );
 
     if (parseInt(pendingOrders.rows[0].count) > 0) {
@@ -826,7 +1028,8 @@ router.get("/notifications", requireAdmin, async (req, res) => {
     // Today's new orders
     const todayOrders = await db.query(
       `SELECT COUNT(*) as count FROM orders 
-       WHERE created_at::date = CURRENT_DATE`
+       WHERE created_at::date = CURRENT_DATE ${hotelFilter}`,
+      params
     );
 
     if (parseInt(todayOrders.rows[0].count) > 0) {
@@ -838,11 +1041,15 @@ router.get("/notifications", requireAdmin, async (req, res) => {
       });
     }
 
-    // New customers today
-    const newCustomers = await db.query(
-      `SELECT COUNT(*) as count FROM customers 
-       WHERE created_at::date = CURRENT_DATE`
-    );
+    // New customers today (customers who ordered today from this hotel)
+    let newCustomersQuery = `
+      SELECT COUNT(DISTINCT customer_id) as count FROM orders 
+      WHERE created_at::date = CURRENT_DATE
+    `;
+    if (req.admin.role !== 'super_admin') {
+      newCustomersQuery += " AND hotel_id = $1";
+    }
+    const newCustomers = await db.query(newCustomersQuery, params);
 
     if (parseInt(newCustomers.rows[0].count) > 0) {
       notifications.push({
@@ -863,8 +1070,7 @@ router.get("/notifications", requireAdmin, async (req, res) => {
 // Get all ratings
 router.get("/ratings", requireAdmin, async (req, res) => {
   try {
-    // Database se saare ratings fetch karo with customer aur item details
-    const query = `
+    let query = `
       SELECT 
         r.rating_id,
         r.customer_id,
@@ -882,24 +1088,37 @@ router.get("/ratings", requireAdmin, async (req, res) => {
       INNER JOIN customers c ON r.customer_id = c.customer_id
       LEFT JOIN menu_items mi ON r.item_id = mi.item_id
       LEFT JOIN menu_category mc ON mi.category_id = mc.category_id
-      ORDER BY r.created_at DESC
+      LEFT JOIN orders o ON r.order_id = o.order_id
     `;
+    const params = [];
+    if (req.admin.role !== 'super_admin') {
+      query += " WHERE (mi.hotel_id = $1 OR o.hotel_id = $1)";
+      params.push(req.admin.hotelId);
+    }
+    query += " ORDER BY r.created_at DESC";
 
-    const result = await db.query(query);
+    const result = await db.query(query, params);
 
     // Statistics calculate karo
-    const statsResult = await db.query(`
+    let statsQuery = `
       SELECT 
         COUNT(*) as total_ratings,
         AVG(rating_value) as average_rating,
         COUNT(CASE WHEN review_text IS NOT NULL AND review_text != '' THEN 1 END) as with_review,
-        COUNT(CASE WHEN DATE(created_at) = CURRENT_DATE THEN 1 END) as today_ratings
-      FROM ratings
-    `);
+        COUNT(CASE WHEN DATE(r.created_at) = CURRENT_DATE THEN 1 END) as today_ratings
+      FROM ratings r
+      LEFT JOIN menu_items mi ON r.item_id = mi.item_id
+      LEFT JOIN orders o ON r.order_id = o.order_id
+    `;
+    const statsParams = [];
+    if (req.admin.role !== 'super_admin') {
+      statsQuery += " WHERE (mi.hotel_id = $1 OR o.hotel_id = $1)";
+      statsParams.push(req.admin.hotelId);
+    }
 
+    const statsResult = await db.query(statsQuery, statsParams);
     const stats = statsResult.rows[0];
 
-    // Response bhejo
     return res.json({
       success: true,
       ratings: result.rows,
@@ -920,11 +1139,25 @@ router.get("/ratings", requireAdmin, async (req, res) => {
   }
 });
 
-
 // Delete rating
 router.delete("/ratings/:id", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Tenant authorization check
+    if (req.admin.role !== 'super_admin') {
+      const checkResult = await db.query(
+        `SELECT r.rating_id 
+         FROM ratings r
+         LEFT JOIN menu_items mi ON r.item_id = mi.item_id
+         LEFT JOIN orders o ON r.order_id = o.order_id
+         WHERE r.rating_id = $1 AND (mi.hotel_id = $2 OR o.hotel_id = $2)`,
+        [id, req.admin.hotelId]
+      );
+      if (checkResult.rows.length === 0) {
+        return res.status(403).json({ success: false, message: "Unauthorized: Rating belongs to another hotel." });
+      }
+    }
 
     const result = await db.query(
       "DELETE FROM ratings WHERE rating_id = $1 RETURNING rating_id",
@@ -932,7 +1165,7 @@ router.delete("/ratings/:id", requireAdmin, async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Rating not found" });
+      return res.status(404).json({ success: false, message: "Rating not found or unauthorized" });
     }
 
     return res.json({ success: true, message: "Rating deleted successfully" });
@@ -945,7 +1178,7 @@ router.delete("/ratings/:id", requireAdmin, async (req, res) => {
 // Get rating statistics
 router.get("/ratings/stats", requireAdmin, async (req, res) => {
   try {
-    const result = await db.query(`
+    let statsQuery = `
       SELECT 
         COUNT(*) as total_ratings,
         AVG(rating_value) as average_rating,
@@ -954,12 +1187,20 @@ router.get("/ratings/stats", requireAdmin, async (req, res) => {
         COUNT(CASE WHEN rating_value = 3 THEN 1 END) as three_star,
         COUNT(CASE WHEN rating_value = 2 THEN 1 END) as two_star,
         COUNT(CASE WHEN rating_value = 1 THEN 1 END) as one_star,
-        COUNT(CASE WHEN DATE(created_at) = CURRENT_DATE THEN 1 END) as today_ratings,
-        COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as week_ratings,
+        COUNT(CASE WHEN DATE(r.created_at) = CURRENT_DATE THEN 1 END) as today_ratings,
+        COUNT(CASE WHEN r.created_at >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as week_ratings,
         COUNT(CASE WHEN review_text IS NOT NULL AND review_text != '' THEN 1 END) as with_review
-      FROM ratings
-    `);
+      FROM ratings r
+      LEFT JOIN menu_items mi ON r.item_id = mi.item_id
+      LEFT JOIN orders o ON r.order_id = o.order_id
+    `;
+    const params = [];
+    if (req.admin.role !== 'super_admin') {
+      statsQuery += " WHERE (mi.hotel_id = $1 OR o.hotel_id = $1)";
+      params.push(req.admin.hotelId);
+    }
 
+    const result = await db.query(statsQuery, params);
     const stats = result.rows[0];
 
     return res.json({
@@ -988,9 +1229,17 @@ router.get("/ratings/stats", requireAdmin, async (req, res) => {
 // Get all admins
 router.get("/admins", requireAdmin, async (req, res) => {
   try {
-    const result = await db.query(
-      "SELECT admin_id, name, username, email, created_at FROM admins ORDER BY created_at DESC"
-    );
+    let result;
+    if (req.admin.role === 'super_admin') {
+      result = await db.query(
+        "SELECT admin_id, name, username, email, created_at FROM admins ORDER BY created_at DESC"
+      );
+    } else {
+      result = await db.query(
+        "SELECT admin_id, name, username, email, created_at FROM admins WHERE hotel_id = $1 AND role = 'admin' ORDER BY created_at DESC",
+        [req.admin.hotelId]
+      );
+    }
     return res.json({ success: true, admins: result.rows });
   } catch (error) {
     console.error("Get admins error:", error);
@@ -1006,6 +1255,14 @@ router.put("/admins/:id", requireAdmin, async (req, res) => {
 
     if (!username) {
       return res.status(400).json({ success: false, message: "Username is required" });
+    }
+
+    // Tenant authorization check
+    if (req.admin.role !== 'super_admin') {
+      const adminCheck = await db.query("SELECT hotel_id, role FROM admins WHERE admin_id = $1", [id]);
+      if (adminCheck.rows.length === 0 || adminCheck.rows[0].hotel_id !== req.admin.hotelId || adminCheck.rows[0].role === 'super_admin') {
+        return res.status(403).json({ success: false, message: "Unauthorized: Manager belongs to another hotel." });
+      }
     }
 
     // Check if username is taken by another admin
@@ -1052,6 +1309,14 @@ router.delete("/admins/:id", requireAdmin, async (req, res) => {
     // Prevent deleting yourself
     if (parseInt(id) === req.admin.id) {
       return res.status(400).json({ success: false, message: "You cannot delete your own account" });
+    }
+
+    // Tenant authorization check
+    if (req.admin.role !== 'super_admin') {
+      const adminCheck = await db.query("SELECT hotel_id, role FROM admins WHERE admin_id = $1", [id]);
+      if (adminCheck.rows.length === 0 || adminCheck.rows[0].hotel_id !== req.admin.hotelId || adminCheck.rows[0].role === 'super_admin') {
+        return res.status(403).json({ success: false, message: "Unauthorized: Manager belongs to another hotel." });
+      }
     }
 
     // Check if admin exists
@@ -1116,9 +1381,20 @@ router.put("/change-password", requireAdmin, async (req, res) => {
 });
 
 // Get order acceptance status
-router.get("/order-accept-status", async (req, res) => {
+router.get("/order-accept-status", requireAdmin, async (req, res) => {
   try {
-    const result = await db.query("SELECT is_order_accept FROM admins LIMIT 1");
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req).then(id => { if (id === -1) throw new Error('Hotel slug not found'); return id; })
+      : req.admin.hotelId;
+    let query = "SELECT is_order_accept FROM admins";
+    const params = [];
+    if (hotelId) {
+      query += " WHERE hotel_id = $1";
+      params.push(hotelId);
+    }
+    query += " LIMIT 1";
+
+    const result = await db.query(query, params);
     const isOrderAccept = result.rows.length > 0 ? result.rows[0].is_order_accept : true;
     return res.json({ success: true, isOrderAccept });
   } catch (error) {
@@ -1131,7 +1407,18 @@ router.get("/order-accept-status", async (req, res) => {
 router.post("/toggle-order-accept", requireAdmin, async (req, res) => {
   try {
     const { enabled } = req.body;
-    await db.query("UPDATE admins SET is_order_accept = $1", [enabled]);
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req).then(id => id === -1 ? null : id)
+      : req.admin.hotelId;
+
+    let query = "UPDATE admins SET is_order_accept = $1";
+    const params = [enabled];
+    if (hotelId) {
+      query += " WHERE hotel_id = $2";
+      params.push(hotelId);
+    }
+
+    await db.query(query, params);
     return res.json({
       success: true,
       message: enabled ? "Orders enabled" : "Orders disabled",

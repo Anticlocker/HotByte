@@ -79,12 +79,12 @@ router.get("/orders", requireAuth, async (req, res) => {
       LEFT JOIN payments p ON o.order_id = p.order_id
       LEFT JOIN order_items oi ON o.order_id = oi.order_id
       LEFT JOIN menu_items mi ON oi.item_id = mi.item_id
-      WHERE o.customer_id = $1
+      WHERE o.customer_id = $1 AND o.hotel_id = $2
       GROUP BY o.order_id, o.table_number, o.total_amount, o.status, o.created_at,
                p.payment_status, p.payment_method, p.razorpay_payment_id
       ORDER BY o.created_at DESC
-      LIMIT $2 OFFSET $3`,
-      [customerId, limit, offset]
+      LIMIT $3 OFFSET $4`,
+      [customerId, req.customer.hotelId, limit, offset]
     );
 
     const ordersWithItems = ordersResult.rows.map(order => ({

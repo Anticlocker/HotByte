@@ -8,6 +8,7 @@ require("dotenv").config();
 
 const SESSION_EXPIRY_HOURS = 90 * 24;
 const ADMIN_SESSION_EXPIRY_HOURS = 24;
+const SUPER_ADMIN_SESSION_EXPIRY_HOURS = 90 * 24;
 const OTP_EXPIRY_MINUTES = 10;
 const MAX_OTP_ATTEMPTS = 5;
 const otpStore = new Map();
@@ -44,7 +45,7 @@ const verifySession = async (sessionId) => {
   if (!sessionId) return null;
   
   const result = await db.query(
-    "SELECT s.customer_id, c.name, c.phone FROM sessions s INNER JOIN customers c ON s.customer_id = c.customer_id WHERE s.session_id = $1 AND s.expires_at > NOW()",
+    "SELECT s.customer_id, c.name, c.phone, c.hotel_id FROM sessions s INNER JOIN customers c ON s.customer_id = c.customer_id WHERE s.session_id = $1 AND s.expires_at > NOW()",
     [sessionId]
   );
   
@@ -55,13 +56,14 @@ const verifySession = async (sessionId) => {
   return {
     customerId: result.rows[0].customer_id,
     name: result.rows[0].name,
-    phone: result.rows[0].phone
+    phone: result.rows[0].phone,
+    hotelId: result.rows[0].hotel_id
   };
 };
 
 router.post("/send-otp", async (req, res) => {
   try {
-    const { phone, type, name } = req.body;
+    const { phone, type, name, hotelSlug } = req.body;
     
     if (!phone || !type) {
       return res.status(400).json({ success: false, message: "Phone number and type required." });
@@ -76,14 +78,26 @@ router.post("/send-otp", async (req, res) => {
       return res.status(400).json({ success: false, message: "Valid name required." });
     }
 
-    const existing = await db.query("SELECT customer_id FROM customers WHERE phone = $1", [mobile]);
+    // Resolve targeted hotel_id from hotelSlug
+    const targetSlug = hotelSlug || "hotbyte";
+    const hotelResult = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [targetSlug]);
+    if (hotelResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found" });
+    }
+    const hotelId = hotelResult.rows[0].hotel_id;
+
+    // Scope checking strictly to phone AND hotel_id
+    const existing = await db.query(
+      "SELECT customer_id FROM customers WHERE phone = $1 AND hotel_id = $2",
+      [mobile, hotelId]
+    );
     
     if (type === "login" && existing.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Customer not found. Please register." });
+      return res.status(404).json({ success: false, message: "You are not registered with this hotel. Please create an account." });
     }
     
     if (type === "register" && existing.rows.length > 0) {
-      return res.status(409).json({ success: false, message: "Customer exists. Please login." });
+      return res.status(409).json({ success: false, message: "An account with this phone number is already registered at this hotel. Please sign in." });
     }
 
     const otpKey = `${mobile}_${type}`;
@@ -100,7 +114,8 @@ router.post("/send-otp", async (req, res) => {
       attempts: 0,
       expiresAt: Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
       verified: false,
-      verificationId: smsResult.verificationId
+      verificationId: smsResult.verificationId,
+      hotelId
     });
     
     return res.json({ success: true, message: "OTP sent successfully" });
@@ -160,17 +175,17 @@ router.post("/verify-otp", async (req, res) => {
     let customer;
     if (type === "register") {
       const result = await db.query(
-        "INSERT INTO customers (name, phone) VALUES ($1, $2) RETURNING customer_id, name, phone",
-        [otpRecord.name, mobile]
+        "INSERT INTO customers (name, phone, hotel_id) VALUES ($1, $2, $3) RETURNING customer_id, name, phone, hotel_id",
+        [otpRecord.name, mobile, otpRecord.hotelId]
       );
       customer = result.rows[0];
     } else {
       const result = await db.query(
-        "SELECT customer_id, name, phone FROM customers WHERE phone = $1",
-        [mobile]
+        "SELECT customer_id, name, phone, hotel_id FROM customers WHERE phone = $1 AND hotel_id = $2",
+        [mobile, otpRecord.hotelId]
       );
       if (result.rows.length === 0) {
-        return res.status(404).json({ success: false, message: "Customer not found." });
+        return res.status(404).json({ success: false, message: "Customer account not found at this hotel." });
       }
       customer = result.rows[0];
     }
@@ -192,7 +207,7 @@ router.post("/verify-otp", async (req, res) => {
     return res.json({
       success: true,
       message: type === "register" ? "Registration successful" : "Login successful",
-      customer: { id: customer.customer_id, name: customer.name, phone: customer.phone }
+      customer: { id: customer.customer_id, name: customer.name, phone: customer.phone, hotelId: customer.hotel_id }
     });
   } catch (error) {
     console.error("Verify OTP error:", error);
@@ -209,6 +224,17 @@ router.get("/session-check", async (req, res) => {
       return res.json({ authenticated: false });
     }
     
+    // Scoped tenancy validation: check if requested hotel_slug matches their registered hotel_id
+    if (req.query.hotel_slug) {
+      const hotelResult = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [req.query.hotel_slug]);
+      if (hotelResult.rows.length === 0 || hotelResult.rows[0].hotel_id !== session.hotelId) {
+        return res.json({ authenticated: false });
+      }
+    }
+
+    const hotelRes = await db.query("SELECT slug FROM public.hotels WHERE hotel_id = $1", [session.hotelId]);
+    const hotelSlug = hotelRes.rows.length > 0 ? hotelRes.rows[0].slug : null;
+
     const result = await db.query("SELECT dob FROM customers WHERE customer_id = $1", [session.customerId]);
     const hasDob = result.rows.length > 0 && result.rows[0].dob !== null;
     
@@ -218,7 +244,9 @@ router.get("/session-check", async (req, res) => {
         id: session.customerId,
         name: session.name,
         phone: session.phone,
-        hasDob
+        hasDob,
+        hotelId: session.hotelId,
+        hotelSlug
       }
     });
   } catch (error) {
@@ -258,9 +286,10 @@ const requireAuth = async (req, res, next) => {
   }
 };
 
-const createAdminSession = async (adminId, req) => {
+const createAdminSession = async (adminId, role, req) => {
   const sessionId = generateSessionId();
-  const expiresAt = new Date(Date.now() + ADMIN_SESSION_EXPIRY_HOURS * 60 * 60 * 1000);
+  const hours = role === "super_admin" ? SUPER_ADMIN_SESSION_EXPIRY_HOURS : ADMIN_SESSION_EXPIRY_HOURS;
+  const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
   const userAgent = req.headers["user-agent"] || "";
   
   await db.query("DELETE FROM sessions WHERE admin_id = $1", [adminId]);
@@ -282,7 +311,7 @@ const verifyAdminSession = async (sessionId, req) => {
   const currentUserAgent = req.headers["user-agent"] || "";
 
   const result = await db.query(
-    `SELECT s.admin_id, a.username
+    `SELECT s.admin_id, a.username, a.hotel_id, a.role
      FROM sessions s
      JOIN admins a ON a.admin_id = s.admin_id
      WHERE s.session_id = $1
@@ -297,7 +326,9 @@ const verifyAdminSession = async (sessionId, req) => {
 
   return {
     adminId: session.admin_id,
-    username: session.username
+    username: session.username,
+    hotelId: session.hotel_id,
+    role: session.role
   };
 };
 
@@ -347,14 +378,18 @@ router.post("/admin/signup", async (req, res) => {
 
 router.post("/admin/login", async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, role } = req.body;
     
-    if (!username || !password) {
-      return res.status(400).json({ success: false, message: "Username and password required." });
+    if (!username || !password || !role) {
+      return res.status(400).json({ success: false, message: "Username, password, and role required." });
+    }
+
+    if (role !== "admin" && role !== "super_admin") {
+      return res.status(400).json({ success: false, message: "Invalid role specified." });
     }
 
     const result = await db.query(
-      "SELECT admin_id, username FROM admins WHERE username = $1 AND password = $2",
+      "SELECT admin_id, username, hotel_id, role FROM admins WHERE username = $1 AND password = $2",
       [username, hashPassword(password)]
     );
     
@@ -364,22 +399,56 @@ router.post("/admin/login", async (req, res) => {
 
     const admin = result.rows[0];
     
-    const { sessionId } = await createAdminSession(admin.admin_id, req);
+    if (admin.role !== role) {
+      return res.status(401).json({ success: false, message: "Incorrect role for this login portal." });
+    }
+
+    if (role === "admin") {
+      if (!admin.hotel_id) {
+        return res.status(401).json({ success: false, message: "Admin account is not assigned to any hotel." });
+      }
+
+      if (req.body.hotelSlug) {
+        const hotelCheck = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [req.body.hotelSlug]);
+        if (hotelCheck.rows.length === 0) {
+          return res.status(400).json({ success: false, message: "The specified hotel was not found." });
+        }
+        if (admin.hotel_id !== hotelCheck.rows[0].hotel_id) {
+          return res.status(403).json({ success: false, message: "Access denied. You are not authorized as an administrator for this hotel." });
+        }
+      }
+    }
+
+    const { sessionId } = await createAdminSession(admin.admin_id, admin.role, req);
     
-    res.cookie("adminSessionId", sessionId, {
+    const hours = admin.role === "super_admin" ? SUPER_ADMIN_SESSION_EXPIRY_HOURS : ADMIN_SESSION_EXPIRY_HOURS;
+    const cookieName = admin.role === "super_admin" ? "superAdminSessionId" : "adminSessionId";
+    const clearName = admin.role === "super_admin" ? "adminSessionId" : "superAdminSessionId";
+
+    res.clearCookie(clearName);
+
+    res.cookie(cookieName, sessionId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: ADMIN_SESSION_EXPIRY_HOURS * 60 * 60 * 1000,
+      maxAge: hours * 60 * 60 * 1000,
       path: "/"
     });
     
-    console.log(`Admin login: ${admin.username}`);
+    console.log(`Admin login: ${admin.username} (${admin.role})`);
+    
+    let hotelSlug = null;
+    if (admin.hotel_id) {
+      const hotelRes = await db.query("SELECT slug FROM public.hotels WHERE hotel_id = $1", [admin.hotel_id]);
+      if (hotelRes.rows.length > 0) {
+        hotelSlug = hotelRes.rows[0].slug;
+      }
+    }
     
     return res.json({
       success: true,
       message: "Admin login successful",
-      admin: { id: admin.admin_id, username: admin.username }
+      admin: { id: admin.admin_id, username: admin.username, hotelId: admin.hotel_id, role: admin.role, hotelSlug }
     });
   } catch (error) {
     console.error("Admin login error:", error);
@@ -387,58 +456,258 @@ router.post("/admin/login", async (req, res) => {
   }
 });
 
+router.post("/admin/forgot-otp", async (req, res) => {
+  try {
+    let { username, phone } = req.body;
+    if (!username) username = "Admin";
+    if (!phone) phone = "9356918260";
+
+    const mobile = String(phone).replace(/\D/g, "");
+    if (!validateMobile(mobile)) {
+      return res.status(400).json({ success: false, message: "Invalid mobile number." });
+    }
+
+    // Check if admin exists and is super_admin and matches the phone number
+    const result = await db.query(
+      "SELECT admin_id, username, role, phone FROM public.admins WHERE username = $1",
+      [username.trim()]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Super Admin username not found." });
+    }
+
+    const admin = result.rows[0];
+    if (admin.role !== 'super_admin') {
+      return res.status(403).json({ success: false, message: "Unauthorized. Action restricted to Super Admin." });
+    }
+
+    if (!admin.phone || String(admin.phone).replace(/\D/g, "") !== mobile) {
+      return res.status(400).json({ success: false, message: "Phone number does not match this Super Admin account." });
+    }
+
+    const otpKey = `${mobile}_admin_forgot`;
+    otpStore.delete(otpKey);
+
+    const smsResult = await messageCentral.sendOTP(mobile);
+    if (!smsResult.success) {
+      return res.status(500).json({ success: false, message: smsResult.error || "Failed to send OTP via Message Central." });
+    }
+
+    otpStore.set(otpKey, {
+      type: "admin_forgot",
+      username: admin.username,
+      attempts: 0,
+      expiresAt: Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
+      verified: false,
+      verificationId: smsResult.verificationId
+    });
+
+    return res.json({ success: true, message: "OTP sent successfully to Super Admin's phone number." });
+  } catch (error) {
+    console.error("Super Admin Forgot OTP error:", error);
+    return res.status(500).json({ success: false, message: "Failed to process forgot OTP request." });
+  }
+});
+
+router.post("/admin/reset-password", async (req, res) => {
+  try {
+    let { username, phone, otp, password } = req.body;
+    if (!username) username = "Admin";
+    if (!phone) phone = "9356918260";
+
+    if (!otp || !password) {
+      return res.status(400).json({ success: false, message: "OTP and new passkey are required." });
+    }
+
+    const mobile = String(phone).replace(/\D/g, "");
+    const cleanOTP = String(otp).replace(/\D/g, "");
+
+    if (!validateMobile(mobile)) {
+      return res.status(400).json({ success: false, message: "Invalid mobile number." });
+    }
+
+    if (!validateOTP(cleanOTP)) {
+      return res.status(400).json({ success: false, message: "OTP must be 6 digits." });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: "Passkey must be at least 6 characters." });
+    }
+
+    // Verify username is super admin
+    const adminRes = await db.query(
+      "SELECT admin_id, username, role, phone FROM public.admins WHERE username = $1",
+      [username.trim()]
+    );
+
+    if (adminRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Super Admin username not found." });
+    }
+
+    const admin = adminRes.rows[0];
+    if (admin.role !== 'super_admin') {
+      return res.status(403).json({ success: false, message: "Unauthorized. Action restricted to Super Admin." });
+    }
+
+    if (!admin.phone || String(admin.phone).replace(/\D/g, "") !== mobile) {
+      return res.status(400).json({ success: false, message: "Phone number does not match this Super Admin account." });
+    }
+
+    const otpKey = `${mobile}_admin_forgot`;
+    const otpRecord = otpStore.get(otpKey);
+
+    if (!otpRecord || otpRecord.verified) {
+      return res.status(400).json({ success: false, message: "No active OTP request found. Please request a new OTP." });
+    }
+
+    if (otpRecord.username !== admin.username) {
+      return res.status(400).json({ success: false, message: "Username mismatch for this OTP transaction." });
+    }
+
+    if (Date.now() > otpRecord.expiresAt) {
+      otpStore.delete(otpKey);
+      return res.status(400).json({ success: false, message: "OTP has expired. Please request a new OTP." });
+    }
+
+    if (otpRecord.attempts >= MAX_OTP_ATTEMPTS) {
+      otpStore.delete(otpKey);
+      return res.status(429).json({ success: false, message: "Too many incorrect OTP attempts. Please try again." });
+    }
+
+    const verifyResult = await messageCentral.verifyOTP(mobile, cleanOTP, otpRecord.verificationId);
+
+    if (!verifyResult.success || !verifyResult.verified) {
+      otpRecord.attempts++;
+      return res.status(401).json({
+        success: false,
+        message: "Invalid OTP code.",
+        attemptsLeft: MAX_OTP_ATTEMPTS - otpRecord.attempts
+      });
+    }
+
+    // OTP Verified! Reset password
+    const hashed = hashPassword(password);
+    await db.query(
+      "UPDATE public.admins SET password = $1 WHERE admin_id = $2",
+      [hashed, admin.admin_id]
+    );
+
+    // Delete any active sessions for the super admin
+    await db.query("DELETE FROM sessions WHERE admin_id = $1", [admin.admin_id]);
+
+    otpStore.delete(otpKey);
+
+    return res.json({ success: true, message: "Super Admin passkey reset successful. Please login with your new passkey." });
+  } catch (error) {
+    console.error("Super Admin reset password error:", error);
+    return res.status(500).json({ success: false, message: "Failed to reset Super Admin passkey." });
+  }
+});
+
 router.get("/admin/session-check", async (req, res) => {
   try {
-    const sessionId = req.cookies.adminSessionId;
+    const sessionId = req.cookies.superAdminSessionId || req.cookies.adminSessionId;
     const session = await verifyAdminSession(sessionId, req);
     
     if (!session) {
       res.clearCookie("adminSessionId");
+      res.clearCookie("superAdminSessionId");
       return res.json({ authenticated: false });
+    }
+    
+    let isFrozen = false;
+    let hotelSlug = null;
+    let hotelName = null;
+    if (session.hotelId) {
+      const hotelRes = await db.query("SELECT name, slug, is_frozen FROM public.hotels WHERE hotel_id = $1", [session.hotelId]);
+      if (hotelRes.rows.length > 0) {
+        hotelSlug = hotelRes.rows[0].slug;
+        hotelName = hotelRes.rows[0].name;
+        if (hotelRes.rows[0].is_frozen && session.role !== 'super_admin') {
+          isFrozen = true;
+        }
+      }
     }
     
     return res.json({
       authenticated: true,
-      admin: { id: session.adminId, username: session.username }
+      admin: { id: session.adminId, username: session.username, hotelId: session.hotelId, role: session.role, hotelSlug, hotelName },
+      isFrozen
     });
   } catch (error) {
     console.error("Admin session check error:", error);
     res.clearCookie("adminSessionId");
+    res.clearCookie("superAdminSessionId");
     return res.json({ authenticated: false });
   }
 });
 
 router.post("/admin/logout", async (req, res) => {
   try {
-    const sessionId = req.cookies.adminSessionId;
+    const sessionId = req.cookies.superAdminSessionId || req.cookies.adminSessionId;
     
     if (sessionId) {
       await db.query("DELETE FROM sessions WHERE session_id = $1 AND admin_id IS NOT NULL", [sessionId]);
     }
     
     res.clearCookie("adminSessionId");
+    res.clearCookie("superAdminSessionId");
     return res.json({ success: true, message: "Admin logged out successfully" });
   } catch (error) {
     res.clearCookie("adminSessionId");
+    res.clearCookie("superAdminSessionId");
     return res.json({ success: true, message: "Admin logged out successfully" });
   }
 });
 
 const requireAdmin = async (req, res, next) => {
   try {
-    const sessionId = req.cookies.adminSessionId;
+    const sessionId = req.cookies.superAdminSessionId || req.cookies.adminSessionId;
     const session = await verifyAdminSession(sessionId, req);
     
     if (!session) {
       res.clearCookie("adminSessionId");
+      res.clearCookie("superAdminSessionId");
       return res.status(401).json({ success: false, message: "Admin authentication required" });
     }
+
+    if (session.role !== "admin" && session.role !== "super_admin") {
+      res.clearCookie("adminSessionId");
+      res.clearCookie("superAdminSessionId");
+      return res.status(403).json({ success: false, message: "Access denied. Invalid role." });
+    }
+
+    if (session.role === "admin") {
+      if (!session.hotelId) {
+        res.clearCookie("adminSessionId");
+        res.clearCookie("superAdminSessionId");
+        return res.status(403).json({ success: false, message: "Access denied. Admin account must be assigned to a specific hotel." });
+      }
+
+      // Check if hotel is frozen
+      const hotelRes = await db.query("SELECT is_frozen FROM public.hotels WHERE hotel_id = $1", [session.hotelId]);
+      if (hotelRes.rows.length === 0) {
+        res.clearCookie("adminSessionId");
+        res.clearCookie("superAdminSessionId");
+        return res.status(403).json({ success: false, message: "Access denied. Assigned hotel not found." });
+      }
+
+      const isFrozen = hotelRes.rows[0].is_frozen;
+      if (isFrozen && ["POST", "PUT", "DELETE"].includes(req.method)) {
+        return res.status(403).json({
+          success: false,
+          message: "Your hotel account is temporarily frozen. Mutating operations are locked."
+        });
+      }
+    }
     
-    req.admin = { id: session.adminId, username: session.username };
+    req.admin = { id: session.adminId, username: session.username, hotelId: session.hotelId, role: session.role };
     next();
   } catch (error) {
     console.error("Admin auth middleware error:", error);
     res.clearCookie("adminSessionId");
+    res.clearCookie("superAdminSessionId");
     return res.status(401).json({ success: false, message: "Admin authentication required" });
   }
 };

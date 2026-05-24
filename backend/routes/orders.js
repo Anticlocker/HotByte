@@ -64,14 +64,28 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
       });
     }
 
-    // ---------------- TABLE AVAILABILITY CHECK ----------------
+    // ---------------- HOTEL RESOLVING & TABLE AVAILABILITY CHECK ----------------
+    
+    const hotelSlug = req.body.hotel_slug || "hotbyte";
+    const hotelResult = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [hotelSlug]);
+    if (hotelResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found" });
+    }
+    const hotelId = hotelResult.rows[0].hotel_id;
+
+    if (req.customer.hotelId !== hotelId) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not registered with this hotel."
+      });
+    }
 
     const tableCheck = await db.query(
       `SELECT order_id FROM orders
-       WHERE table_number = $1
+       WHERE table_number = $1 AND hotel_id = $2
        AND status IN ('pending','preparing','ready')
        AND DATE(created_at) = CURRENT_DATE`,
-      [table_number.trim()]
+      [table_number.trim(), hotelId]
     );
 
     if (tableCheck.rows.length > 0) {
@@ -101,10 +115,10 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
     try {
       // 1️⃣ CREATE ORDER
       const orderResult = await db.query(
-        `INSERT INTO orders (customer_id, table_number, total_amount, status)
-         VALUES ($1, $2, $3, 'pending')
+        `INSERT INTO orders (customer_id, table_number, total_amount, status, hotel_id)
+         VALUES ($1, $2, $3, 'pending', $4)
          RETURNING order_id, table_number, total_amount, status, created_at`,
-        [customerId, table_number.trim(), totalAmount]
+        [customerId, table_number.trim(), totalAmount, hotelId]
       );
 
       const order = orderResult.rows[0];
@@ -150,15 +164,37 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
 
 router.get("/table-availability", requireAuth, async (req, res) => {
   try {
+    const hotelSlug = req.query.hotel_slug || "hotbyte";
+    const hotelResult = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [hotelSlug]);
+    if (hotelResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found" });
+    }
+    const hotelId = hotelResult.rows[0].hotel_id;
+
+    if (req.customer.hotelId !== hotelId) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not registered with this hotel."
+      });
+    }
+
     const result = await db.query(
       `SELECT DISTINCT table_number 
        FROM orders 
-       WHERE status IN ('pending', 'preparing', 'ready')
-       AND DATE(created_at) = CURRENT_DATE`
+       WHERE hotel_id = $1 AND status IN ('pending', 'preparing', 'ready')
+       AND DATE(created_at) = CURRENT_DATE`,
+      [hotelId]
     );
 
+    // Fetch hotel's configurable table count (default 5)
+    const hotelData = await db.query(
+      'SELECT table_count FROM public.hotels WHERE hotel_id = $1',
+      [hotelId]
+    );
+    const tableCount = hotelData.rows.length > 0 ? (hotelData.rows[0].table_count || 5) : 5;
+    const allTables = Array.from({ length: tableCount }, (_, i) => `T-${i + 1}`);
+
     const occupiedTables = result.rows.map(row => row.table_number);
-    const allTables = ['T-1', 'T-2', 'T-3', 'T-4', 'T-5'];
     const availableTables = allTables.filter(table => !occupiedTables.includes(table));
     
     return res.json({
@@ -189,13 +225,27 @@ router.post("/create", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: "Table number is required." });
     }
 
+    const hotelSlug = req.body.hotel_slug || "hotbyte";
+    const hotelResult = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [hotelSlug]);
+    if (hotelResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found" });
+    }
+    const hotelId = hotelResult.rows[0].hotel_id;
+
+    if (req.customer.hotelId !== hotelId) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not registered with this hotel."
+      });
+    }
+
     const tableCheck = await db.query(
       `SELECT order_id FROM orders 
-       WHERE table_number = $1 
+       WHERE table_number = $1 AND hotel_id = $2
        AND status IN ('pending', 'preparing', 'ready')
        AND DATE(created_at) = CURRENT_DATE
        LIMIT 1`,
-      [table_number.trim()]
+      [table_number.trim(), hotelId]
     );
 
     if (tableCheck.rows.length > 0) {
@@ -217,10 +267,10 @@ router.post("/create", requireAuth, async (req, res) => {
 
     try {
       const orderResult = await db.query(
-        `INSERT INTO orders (customer_id, table_number, total_amount, status) 
-         VALUES ($1, $2, $3, 'pending') 
+        `INSERT INTO orders (customer_id, table_number, total_amount, status, hotel_id) 
+         VALUES ($1, $2, $3, 'pending', $4) 
          RETURNING order_id, customer_id, table_number, total_amount, status, created_at`,
-        [customerId, table_number.trim(), totalAmount]
+        [customerId, table_number.trim(), totalAmount, hotelId]
       );
 
       const order = orderResult.rows[0];

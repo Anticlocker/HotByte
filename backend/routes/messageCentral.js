@@ -73,6 +73,21 @@ class MessageCentralOTP {
     } catch (error) {
       console.error("❌ Message Central Send OTP Error:", error.response?.data || error.message);
 
+      const errData = error.response?.data;
+      if (errData) {
+        const resCode = errData.responseCode || errData.data?.responseCode;
+        const errMsg = errData.message || errData.data?.errorMessage;
+        const activeId = errData.verificationId || errData.data?.verificationId;
+
+        if ((resCode === 506 || resCode === "506" || errMsg === "REQUEST_ALREADY_EXISTS") && activeId) {
+          console.log("⚠️ Message Central: Request already exists, reusing active verificationId:", activeId);
+          return {
+            success: true,
+            verificationId: activeId
+          };
+        }
+      }
+
       // Error type ke basis pe appropriate message bhejo
       if (error.response?.status === 401) {
         throw new Error("Authentication failed with Message Central");

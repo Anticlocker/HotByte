@@ -1,0 +1,244 @@
+# 🍽️ HotByte — Project Structure & Workflow
+
+HotByte is a **multi-tenant SaaS platform** sold to hotels. You (the platform owner) run one
+shared backend + database. Each hotel that subscribes gets its own isolated storefront, admin
+panel, and data — all living inside the same system.
+
+---
+
+## 🏗️ High-Level Architecture
+
+```
+HotByte Monorepo (npm workspaces)
+├── frontend/   →  Next.js 15 (App Router, TypeScript)
+└── backend/    →  Express.js REST API (Node.js)
+                   └── PostgreSQL (shared single DB, multi-tenant by hotel_id)
+```
+
+Both are started together with `npm run dev` (via `concurrently`).
+
+---
+
+## 🌐 Who Uses What — The 4 User Types
+
+| User | What They See | URL Pattern |
+|---|---|---|
+| **Visitor (anyone)** | SaaS promotional landing page | `/` |
+| **Hotel Customer** | Hotel's menu, cart, checkout | `/[hotel_slug]/menu` |
+| **Hotel Admin / Manager** | Hotel's own management panel | `/admin` |
+| **Super Admin (you)** | Platform-wide control panel | `/super-admin` |
+
+---
+
+## 📁 Frontend Pages Breakdown
+
+### 1. `/` — SaaS Promotional Landing Page
+- **File:** [`page.tsx`](file:///c:/Users/Admin/OneDrive/Desktop/HotByte/frontend/src/app/page.tsx)
+- This is **NOT a hotel** — this is HotByte's own marketing page
+- Shown to hotels/businesses considering subscribing to HotByte
+- Purpose: Sell the SaaS product to hotel owners
+
+---
+
+### 2. `/[hotel_slug]/...` — Hotel Customer Pages (Multi-Tenant)
+
+Each subscribing hotel gets its own URL namespace via a **slug** (e.g. `/grand-palace/menu`).
+
+```
+/[hotel_slug]/
+├── menu/        →  Public menu browsing + cart
+├── admin/       →  Hotel admin login redirect
+└── upgrade/     →  Upgrade plan page (per hotel)
+```
+
+**How it works:**
+- The slug in the URL (e.g. `grand-palace`) identifies which hotel the customer belongs to
+- Frontend sends `X-Hotel-Slug: grand-palace` header to the backend with every API call
+- Backend middleware [`validateHotelHeader.js`](file:///c:/Users/Admin/OneDrive/Desktop/HotByte/backend/middleware/validateHotelHeader.js) looks up the hotel by slug and attaches `req.hotel.id`
+- All queries are then filtered by `hotel_id` → **complete data isolation between hotels**
+
+---
+
+### 3. `/admin/...` — Hotel Admin Panel
+
+Used by the **hotel's own managers** to run their restaurant day-to-day.
+
+```
+/admin/
+├── login/          →  Admin login page
+├── page.tsx        →  Dashboard (orders, live view)
+├── kitchen/        →  Kitchen order display (KDS)
+├── oldorders/      →  Order history
+├── ratings/        →  Customer reviews
+├── report/         →  Reports
+├── sales-report/   →  Revenue & sales analytics
+├── settings/       →  Hotel settings (menu, categories)
+└── users/          →  Customer management
+```
+
+---
+
+### 4. `/super-admin/...` — Platform Super Admin (You)
+
+Used by you (HotByte owner) to manage the entire SaaS platform.
+
+```
+/super-admin/
+├── login/       →  Super admin login
+└── dashboard/   →  All hotels overview, add/edit/delete hotels & managers
+```
+
+---
+
+### 5. `/login` and `/profile` — Customer Auth Pages
+- `/login` — Customer OTP-based login
+- `/profile` — Customer's order history and profile
+
+---
+
+## ⚙️ Backend API Breakdown
+
+**Base URL:** `http://localhost:8000/api/...`
+
+| Route File | Prefix | Purpose |
+|---|---|---|
+| [`auth.js`](file:///c:/Users/Admin/OneDrive/Desktop/HotByte/backend/routes/auth.js) | `/api/auth` | OTP login, session management for customers & admins |
+| [`menu.js`](file:///c:/Users/Admin/OneDrive/Desktop/HotByte/backend/routes/menu.js) | `/api/menu` | Public menu items & categories (per hotel) |
+| [`orders.js`](file:///c:/Users/Admin/OneDrive/Desktop/HotByte/backend/routes/orders.js) | `/api/orders` | Place & track orders |
+| [`payments.js`](file:///c:/Users/Admin/OneDrive/Desktop/HotByte/backend/routes/payments.js) | `/api/payments` | Razorpay payment gateway |
+| [`admin.js`](file:///c:/Users/Admin/OneDrive/Desktop/HotByte/backend/routes/admin.js) | `/api/admin` | Hotel admin operations (menu mgmt, kitchen, sales) |
+| [`superadmin.js`](file:///c:/Users/Admin/OneDrive/Desktop/HotByte/backend/routes/superadmin.js) | `/api/superadmin` | Platform-level: register hotels, assign managers |
+| [`sales.js`](file:///c:/Users/Admin/OneDrive/Desktop/HotByte/backend/routes/sales.js) | `/api/sales` | Sales reports & analytics |
+| [`ratings.js`](file:///c:/Users/Admin/OneDrive/Desktop/HotByte/backend/routes/ratings.js) | `/api/ratings` | Customer ratings & reviews |
+| [`profile.js`](file:///c:/Users/Admin/OneDrive/Desktop/HotByte/backend/routes/profile.js) | `/api` | Customer profile & order history |
+| [`bunnyCDN.js`](file:///c:/Users/Admin/OneDrive/Desktop/HotByte/backend/routes/bunnyCDN.js) | — | Image CDN upload (menu item images) |
+| [`messageCentral.js`](file:///c:/Users/Admin/OneDrive/Desktop/HotByte/backend/routes/messageCentral.js) | — | OTP SMS via Message Central provider |
+
+---
+
+## 🗄️ Database Schema (PostgreSQL — Single Shared DB)
+
+Multi-tenancy is achieved by adding `hotel_id` as a foreign key to every relevant table.
+
+```
+hotels              ← Core tenant table (one row = one subscribed hotel)
+  └── hotel_id (PK)
+  └── name, slug, phone, address, is_frozen
+
+admins              ← Hotel managers + super admin
+  └── hotel_id (FK → hotels)
+  └── role: 'admin' | 'super_admin'
+
+customers           ← End-users (hotel guests)
+  └── hotel_id (FK → hotels)   ← scoped per hotel
+
+menu_category       ← Food categories (per hotel)
+  └── hotel_id (FK → hotels)
+
+menu_items          ← Menu dishes (per hotel)
+  └── hotel_id (FK → hotels)
+  └── category_id (FK → menu_category)
+
+orders              ← Customer orders (per hotel)
+  └── hotel_id (FK → hotels)
+  └── customer_id (FK → customers)
+  └── table_number, status, total_amount
+
+order_items         ← Line items inside an order
+  └── order_id (FK → orders)
+  └── item_id (FK → menu_items)
+
+payments            ← Razorpay payment records
+  └── order_id (FK → orders)
+
+ratings             ← Customer reviews
+  └── customer_id, item_id, order_id
+
+sessions            ← Auth sessions (for both customers and admins)
+  └── customer_id OR admin_id
+```
+
+---
+
+## 🔄 Complete Request Workflow
+
+### Customer Journey (End-to-End)
+
+```
+1. Customer scans QR code at table
+   → Opens: hotbyte.com/grand-palace/menu
+
+2. Next.js frontend loads menu page
+   → Sends: GET /api/menu  with header X-Hotel-Slug: grand-palace
+
+3. Backend middleware (validateHotelHeader.js)
+   → Looks up hotel by slug → attaches req.hotel.id = 5
+
+4. menu.js route handler
+   → SELECT * FROM menu_items WHERE hotel_id = 5
+
+5. Customer adds items to cart, clicks Order
+   → POST /api/orders  { items, tableNumber }  + X-Hotel-Slug header
+
+6. Order saved to DB with hotel_id = 5
+
+7. Customer pays via Razorpay
+   → POST /api/payments/create-order → Razorpay → /api/payments/verify
+
+8. Hotel admin's kitchen screen refreshes
+   → GET /api/admin/orders?status=pending  (filtered by admin's hotel_id from session)
+
+9. Admin marks order as "completed"
+   → PATCH /api/admin/orders/:id/status
+```
+
+---
+
+### SaaS Onboarding Flow (New Hotel Signs Up)
+
+```
+1. Hotel owner visits hotbyte.com  (SaaS promo page)
+   → Decides to subscribe
+
+2. You (Super Admin) log in at /super-admin/login
+
+3. Super Admin Dashboard:
+   → POST /api/superadmin/hotels  { name, slug, phone, address }
+      → Hotel row created in DB (e.g. slug = "grand-palace")
+
+   → POST /api/superadmin/admins  { username, password, hotelId }
+      → Manager account created, linked to that hotel
+
+4. Hotel manager logs in at /admin/login
+   → Manages their menu, sees their orders, pulls their sales reports
+
+5. Hotel customers visit /grand-palace/menu
+   → Fully isolated from other hotels
+```
+
+---
+
+## 🔐 Authentication & Security Layers
+
+| Layer | Mechanism |
+|---|---|
+| Customer login | OTP via SMS (Message Central), session cookie |
+| Admin login | Username + SHA-256 password, session cookie |
+| Super admin | Same as admin but `role = 'super_admin'` check |
+| Multi-tenancy isolation | `hotel_id` filter on every DB query + `X-Hotel-Slug` header validation |
+| Rate limiting | OTP: 5/15min · Payments: 10/15min |
+| Hotel freeze | `is_frozen` flag → can suspend a hotel without deleting it |
+
+---
+
+## 🧩 Key Design Decisions
+
+> [!IMPORTANT]
+> The `/` root page is HotByte's **own SaaS marketing page** — not a hotel's storefront. Hotels are accessed only via `/{hotel_slug}/...`
+
+> [!NOTE]
+> **Single database, multi-tenant**: All hotels share one PostgreSQL database. Data isolation is enforced via `hotel_id` on every table — NOT via separate databases or schemas per hotel.
+
+> [!TIP]
+> The `is_frozen` flag on `hotels` lets you suspend a hotel (e.g., unpaid subscription) without deleting their data.
+

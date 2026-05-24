@@ -6,10 +6,26 @@ const db = require("./database");
 
 router.get("/categories", async (req, res) => {
   try {
-    const result = await db.query("SELECT category_id, category_name FROM menu_category ORDER BY category_name");
+    const hotelSlug = req.query.hotel_slug || "hotbyte";
+    const hotelResult = await db.query("SELECT hotel_id, is_frozen, table_count FROM public.hotels WHERE slug = $1", [hotelSlug]);
+    
+    if (hotelResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found" });
+    }
+    const { hotel_id: hotelId, is_frozen: isFrozen, table_count: tableCount } = hotelResult.rows[0];
+
+    if (isFrozen) {
+      return res.status(403).json({ success: false, isFrozen: true, message: "This hotel account is frozen due to payment / subscription trial expiration." });
+    }
+
+    const result = await db.query(
+      "SELECT category_id, category_name FROM menu_category WHERE hotel_id = $1 ORDER BY category_name",
+      [hotelId]
+    );
     return res.json({
       success: true,
       categories: result.rows,
+      tableCount: tableCount || 5
     });
   } catch (error) {
     console.error("Get categories error:", error);
@@ -19,7 +35,18 @@ router.get("/categories", async (req, res) => {
 
 router.get("/items", async (req, res) => {
   try {
+    const hotelSlug = req.query.hotel_slug || "hotbyte";
     const categoryId = req.query.category_id;
+
+    const hotelResult = await db.query("SELECT hotel_id, is_frozen FROM public.hotels WHERE slug = $1", [hotelSlug]);
+    if (hotelResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found" });
+    }
+    const { hotel_id: hotelId, is_frozen: isFrozen } = hotelResult.rows[0];
+    
+    if (isFrozen) {
+      return res.status(403).json({ success: false, isFrozen: true, message: "This hotel account is frozen due to payment / subscription trial expiration." });
+    }
     
     let query = `
       SELECT 
@@ -37,12 +64,12 @@ router.get("/items", async (req, res) => {
       FROM menu_items mi
       INNER JOIN menu_category mc ON mi.category_id = mc.category_id
       LEFT JOIN ratings r ON mi.item_id = r.item_id
-      WHERE mi.is_available = true
+      WHERE mi.is_available = true AND mi.hotel_id = $1
     `;
     
-    const params = [];
+    const params = [hotelId];
     if (categoryId && categoryId !== "all") {
-      query += " AND mi.category_id = $1";
+      query += " AND mi.category_id = $2";
       params.push(categoryId);
     }
     

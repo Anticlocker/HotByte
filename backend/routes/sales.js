@@ -4,6 +4,16 @@ const router = express.Router();
 const db = require("./database");
 const { requireAdmin } = require("./auth");
 
+// ─── Helper: resolve hotel_slug → hotel_id for super_admin scoped queries ───────
+const resolveHotelSlug = async (req) => {
+  if (req.admin.role !== 'super_admin') return req.admin.hotelId;
+  const slug = req.query.hotel_slug || req.body?.hotel_slug;
+  if (!slug) return null;
+  const result = await db.query('SELECT hotel_id FROM public.hotels WHERE slug = $1', [slug]);
+  if (result.rows.length === 0) return -1;
+  return result.rows[0].hotel_id;
+};
+
 // Overview statistics
 router.get("/stats/overview", requireAdmin, async (req, res) => {
   try {
@@ -18,6 +28,20 @@ router.get("/stats/overview", requireAdmin, async (req, res) => {
       dateFilter = "WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'";
     }
 
+    let hotelFilter = "";
+    const params = [];
+    if (req.admin.role !== 'super_admin') {
+      hotelFilter = dateFilter ? "AND hotel_id = $1" : "WHERE hotel_id = $1";
+      params.push(req.admin.hotelId);
+    } else {
+      const hotelId = await resolveHotelSlug(req);
+      if (hotelId === -1) return res.status(404).json({ success: false, message: 'Hotel slug not found.' });
+      if (hotelId) {
+        hotelFilter = dateFilter ? "AND hotel_id = $1" : "WHERE hotel_id = $1";
+        params.push(hotelId);
+      }
+    }
+
     const result = await db.query(`
       SELECT 
         COUNT(*) as total_orders,
@@ -25,8 +49,8 @@ router.get("/stats/overview", requireAdmin, async (req, res) => {
         COALESCE(SUM(total_amount), 0) as total_revenue,
         COALESCE(AVG(total_amount), 0) as avg_order_value
       FROM orders 
-      ${dateFilter}
-    `);
+      ${dateFilter} ${hotelFilter}
+    `, params);
 
     res.json({ success: true, stats: result.rows[0] });
   } catch (error) {
@@ -50,6 +74,20 @@ router.get("/stats/best-sellers", requireAdmin, async (req, res) => {
       dateFilter = "AND o.created_at >= CURRENT_DATE - INTERVAL '30 days'";
     }
 
+    let hotelFilter = "";
+    const params = [limit];
+    if (req.admin.role !== 'super_admin') {
+      hotelFilter = "AND o.hotel_id = $2";
+      params.push(req.admin.hotelId);
+    } else {
+      const hotelId = await resolveHotelSlug(req);
+      if (hotelId === -1) return res.status(404).json({ success: false, message: 'Hotel slug not found.' });
+      if (hotelId) {
+        hotelFilter = "AND o.hotel_id = $2";
+        params.push(hotelId);
+      }
+    }
+
     const result = await db.query(`
       SELECT 
         i.item_id,
@@ -63,11 +101,11 @@ router.get("/stats/best-sellers", requireAdmin, async (req, res) => {
       JOIN menu_items i ON oi.item_id = i.item_id
       LEFT JOIN menu_category mc ON i.category_id = mc.category_id
       JOIN orders o ON oi.order_id = o.order_id
-      WHERE 1=1 ${dateFilter}
+      WHERE 1=1 ${dateFilter} ${hotelFilter}
       GROUP BY i.item_id, i.item_name, i.price, mc.category_name, i.image_url
       ORDER BY total_quantity_sold DESC
       LIMIT $1
-    `, [limit]);
+    `, params);
 
     res.json({ success: true, items: result.rows });
   } catch (error) {
@@ -91,6 +129,20 @@ router.get("/stats/worst-sellers", requireAdmin, async (req, res) => {
       dateFilter = "AND o.created_at >= CURRENT_DATE - INTERVAL '30 days'";
     }
 
+    let hotelFilter = "";
+    const params = [limit];
+    if (req.admin.role !== 'super_admin') {
+      hotelFilter = "AND i.hotel_id = $2";
+      params.push(req.admin.hotelId);
+    } else {
+      const hotelId = await resolveHotelSlug(req);
+      if (hotelId === -1) return res.status(404).json({ success: false, message: 'Hotel slug not found.' });
+      if (hotelId) {
+        hotelFilter = "AND i.hotel_id = $2";
+        params.push(hotelId);
+      }
+    }
+
     const result = await db.query(`
       SELECT 
         i.item_id,
@@ -104,11 +156,11 @@ router.get("/stats/worst-sellers", requireAdmin, async (req, res) => {
       LEFT JOIN menu_category mc ON i.category_id = mc.category_id
       LEFT JOIN order_items oi ON i.item_id = oi.item_id
       LEFT JOIN orders o ON oi.order_id = o.order_id ${dateFilter.replace('WHERE', 'AND')}
-      WHERE i.is_available = true
+      WHERE i.is_available = true ${hotelFilter}
       GROUP BY i.item_id, i.item_name, i.price, mc.category_name, i.image_url
       ORDER BY total_quantity_sold ASC
       LIMIT $1
-    `, [limit]);
+    `, params);
 
     res.json({ success: true, items: result.rows });
   } catch (error) {
@@ -131,6 +183,19 @@ router.get("/stats/by-category", requireAdmin, async (req, res) => {
       dateFilter = "AND o.created_at >= CURRENT_DATE - INTERVAL '30 days'";
     }
 
+    let hotelFilter = "";
+    const params = [];
+    if (req.admin.role !== 'super_admin') {
+      hotelFilter = "AND o.hotel_id = $1";
+      params.push(req.admin.hotelId);
+    } else {
+      const queryHotelId = req.query.hotel_id ? parseInt(req.query.hotel_id) : null;
+      if (queryHotelId) {
+        hotelFilter = "AND o.hotel_id = $1";
+        params.push(queryHotelId);
+      }
+    }
+
     const result = await db.query(`
       SELECT 
         COALESCE(mc.category_name, 'Uncategorized') as category,
@@ -139,10 +204,10 @@ router.get("/stats/by-category", requireAdmin, async (req, res) => {
       JOIN menu_items i ON oi.item_id = i.item_id
       LEFT JOIN menu_category mc ON i.category_id = mc.category_id
       JOIN orders o ON oi.order_id = o.order_id
-      WHERE 1=1 ${dateFilter}
+      WHERE 1=1 ${dateFilter} ${hotelFilter}
       GROUP BY mc.category_name
       ORDER BY total_revenue DESC
-    `);
+    `, params);
 
     res.json({ success: true, categories: result.rows });
   } catch (error) {
@@ -156,15 +221,29 @@ router.get("/stats/revenue-trend", requireAdmin, async (req, res) => {
   try {
     const days = parseInt(req.query.days) || 7;
 
+    let hotelFilter = "";
+    const params = [days];
+    if (req.admin.role !== 'super_admin') {
+      hotelFilter = "AND hotel_id = $2";
+      params.push(req.admin.hotelId);
+    } else {
+      const hotelId = await resolveHotelSlug(req);
+      if (hotelId === -1) return res.status(404).json({ success: false, message: 'Hotel slug not found.' });
+      if (hotelId) {
+        hotelFilter = "AND hotel_id = $2";
+        params.push(hotelId);
+      }
+    }
+
     const result = await db.query(`
       SELECT 
         DATE(created_at) as date,
         COALESCE(SUM(total_amount), 0) as revenue
       FROM orders
-      WHERE created_at >= CURRENT_DATE - ($1 || ' days')::INTERVAL
+      WHERE created_at >= CURRENT_DATE - ($1 || ' days')::INTERVAL ${hotelFilter}
       GROUP BY DATE(created_at)
       ORDER BY date ASC
-    `, [days]);
+    `, params);
 
     res.json({ success: true, trend: result.rows });
   } catch (error) {
@@ -187,16 +266,29 @@ router.get("/stats/payment-methods", requireAdmin, async (req, res) => {
       dateFilter = "AND o.created_at >= CURRENT_DATE - INTERVAL '30 days'";
     }
 
+    let hotelFilter = "";
+    const params = [];
+    if (req.admin.role !== 'super_admin') {
+      hotelFilter = "AND o.hotel_id = $1";
+      params.push(req.admin.hotelId);
+    } else {
+      const queryHotelId = req.query.hotel_id ? parseInt(req.query.hotel_id) : null;
+      if (queryHotelId) {
+        hotelFilter = "AND o.hotel_id = $1";
+        params.push(queryHotelId);
+      }
+    }
+
     const result = await db.query(`
       SELECT 
         COALESCE(p.payment_method, 'cash') as payment_method,
         COALESCE(SUM(o.total_amount), 0) as total_amount
       FROM orders o
       LEFT JOIN payments p ON o.order_id = p.order_id
-      WHERE 1=1 ${dateFilter}
+      WHERE 1=1 ${dateFilter} ${hotelFilter}
       GROUP BY p.payment_method
       ORDER BY total_amount DESC
-    `);
+    `, params);
 
     res.json({ success: true, payment_methods: result.rows });
   } catch (error) {
@@ -219,15 +311,29 @@ router.get("/stats/peak-hours", requireAdmin, async (req, res) => {
       dateFilter = "AND created_at >= CURRENT_DATE - INTERVAL '30 days'";
     }
 
+    let hotelFilter = "";
+    const params = [];
+    if (req.admin.role !== 'super_admin') {
+      hotelFilter = "AND hotel_id = $1";
+      params.push(req.admin.hotelId);
+    } else {
+      const hotelId = await resolveHotelSlug(req);
+      if (hotelId === -1) return res.status(404).json({ success: false, message: 'Hotel slug not found.' });
+      if (hotelId) {
+        hotelFilter = "AND hotel_id = $1";
+        params.push(hotelId);
+      }
+    }
+
     const result = await db.query(`
       SELECT 
         EXTRACT(HOUR FROM created_at)::integer as hour,
         COUNT(*) as order_count
       FROM orders
-      WHERE 1=1 ${dateFilter}
+      WHERE 1=1 ${dateFilter} ${hotelFilter}
       GROUP BY EXTRACT(HOUR FROM created_at)
       ORDER BY hour ASC
-    `);
+    `, params);
 
     res.json({ success: true, peak_hours: result.rows });
   } catch (error) {
@@ -250,6 +356,19 @@ router.get("/stats/customers", requireAdmin, async (req, res) => {
       dateFilter = "AND o.created_at >= CURRENT_DATE - INTERVAL '30 days'";
     }
 
+    let hotelFilter = "";
+    const params = [];
+    if (req.admin.role !== 'super_admin') {
+      hotelFilter = "AND o.hotel_id = $1";
+      params.push(req.admin.hotelId);
+    } else {
+      const queryHotelId = req.query.hotel_id ? parseInt(req.query.hotel_id) : null;
+      if (queryHotelId) {
+        hotelFilter = "AND o.hotel_id = $1";
+        params.push(queryHotelId);
+      }
+    }
+
     const result = await db.query(`
       SELECT 
         c.customer_id,
@@ -260,11 +379,11 @@ router.get("/stats/customers", requireAdmin, async (req, res) => {
         MAX(o.created_at) as last_order_date
       FROM customers c
       JOIN orders o ON c.customer_id = o.customer_id
-      WHERE 1=1 ${dateFilter}
+      WHERE 1=1 ${dateFilter} ${hotelFilter}
       GROUP BY c.customer_id, c.name, c.phone
       ORDER BY total_spent DESC
       LIMIT 20
-    `);
+    `, params);
 
     res.json({ success: true, top_customers: result.rows });
   } catch (error) {

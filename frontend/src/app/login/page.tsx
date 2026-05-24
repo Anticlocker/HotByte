@@ -1,37 +1,39 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import CustomerNavbar from "@/components/CustomerNavbar";
 import { Phone, User, KeyRound, ArrowRight, ShieldCheck } from "lucide-react";
 import Swal from "sweetalert2";
 
-export default function Login() {
+function LoginContent() {
   const router = useRouter();
-  
+  const searchParams = useSearchParams();
+  const hotelSlug = searchParams.get("hotel") || "hotbyte";
+
   // Tabs: 'login' or 'register'
   const [tab, setTab] = useState<"login" | "register">("login");
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
-  
+
   const [otpSent, setOtpSent] = useState(false);
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const [timer, setTimer] = useState(0);
   const [loading, setLoading] = useState(false);
-  
+
   const otpInputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
-    // Session check to redirect logged-in users to /menu
-    fetch("/api/auth/session-check")
+    // Session check to redirect logged-in users to their correct menu
+    fetch(`/api/auth/session-check?hotel_slug=${hotelSlug}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.authenticated) {
-          router.push("/menu");
+          router.push(`/${hotelSlug}/menu`);
         }
       })
-      .catch(() => {});
-  }, [router]);
+      .catch(() => { });
+  }, [router, hotelSlug]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -46,12 +48,12 @@ export default function Login() {
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanPhone = phone.replace(/\D/g, "");
-    
+
     if (cleanPhone.length !== 10) {
       Swal.fire("Invalid Input", "Please enter a valid 10-digit mobile number.", "warning");
       return;
     }
-    
+
     if (tab === "register" && name.trim().length < 2) {
       Swal.fire("Invalid Name", "Please enter a valid name (min 2 chars).", "warning");
       return;
@@ -66,10 +68,11 @@ export default function Login() {
           phone: cleanPhone,
           type: tab,
           name: tab === "register" ? name.trim() : undefined,
+          hotelSlug,
         }),
       });
       const data = await res.json();
-      
+
       if (data.success) {
         setOtpSent(true);
         setTimer(60);
@@ -111,7 +114,7 @@ export default function Login() {
         }),
       });
       const data = await res.json();
-      
+
       if (data.success) {
         Swal.fire({
           title: tab === "register" ? "Registered!" : "Logged In!",
@@ -120,7 +123,7 @@ export default function Login() {
           timer: 1500,
           showConfirmButton: false,
         });
-        router.push("/menu");
+        router.push(`/${hotelSlug}/menu`);
       } else {
         Swal.fire("Verification Failed", data.message || "Incorrect verification code.", "error");
       }
@@ -155,7 +158,7 @@ export default function Login() {
 
       <main className="flex-grow flex items-center justify-center py-10 px-6">
         <div className="w-full max-w-md glass-card p-8 rounded-3xl animate-fade-in-up">
-          
+
           {/* Form Header */}
           <div className="text-center space-y-2 mb-8">
             <div className="w-12 h-12 rounded-2xl bg-orange-100/50 text-[var(--orange)] flex items-center justify-center mx-auto text-xl shadow-inner animate-pulse">
@@ -175,21 +178,19 @@ export default function Login() {
               <div className="flex bg-gray-100/80 p-1.5 rounded-2xl mb-8 relative">
                 <button
                   onClick={() => setTab("login")}
-                  className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 cursor-pointer ${
-                    tab === "login"
+                  className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 cursor-pointer ${tab === "login"
                       ? "bg-white text-gray-950 shadow-sm"
                       : "text-gray-500 hover:text-gray-800"
-                  }`}
+                    }`}
                 >
                   Sign In
                 </button>
                 <button
                   onClick={() => setTab("register")}
-                  className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 cursor-pointer ${
-                    tab === "register"
+                  className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 cursor-pointer ${tab === "register"
                       ? "bg-white text-gray-950 shadow-sm"
                       : "text-gray-500 hover:text-gray-800"
-                  }`}
+                    }`}
                 >
                   Create Account
                 </button>
@@ -346,5 +347,18 @@ export default function Login() {
         </p>
       </footer>
     </div>
+  );
+}
+
+export default function Login() {
+  return (
+    <Suspense fallback={
+      <div className="bg-[#0A0A0A] min-h-screen text-white flex flex-col items-center justify-center gap-4">
+        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-xs font-bold uppercase tracking-widest text-gray-500 animate-pulse">Loading login terminal...</p>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   );
 }
