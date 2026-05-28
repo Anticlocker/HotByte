@@ -1,47 +1,67 @@
-# Dependencies
+# ─── Dependencies ────────────────────────────────────────────────────────────
 node_modules/
-package-lock.json
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
 
-# Environment variables
+# ─── Environment Variables ────────────────────────────────────────────────────
 .env
+.env.*
+!.env.example
 
-# Logs
+# ─── Next.js ─────────────────────────────────────────────────────────────────
+frontend/.next/
+frontend/out/
+frontend/.vercel
+
+# ─── Production Builds ───────────────────────────────────────────────────────
+build/
+dist/
+.dist/
+
+# ─── TypeScript ──────────────────────────────────────────────────────────────
+*.tsbuildinfo
+next-env.d.ts
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.pnpm-debug.log*
 
-# OS files
+# ─── OS Files ────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+__MACOSX/
 
-# IDE
+# ─── Editor / IDE ────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+*.pem
 
-# Build files
-.dist/
-build/
-dist/
+# ─── Testing / Coverage ──────────────────────────────────────────────────────
+/coverage
 
-# Temporary files
+# ─── Temporary Files ─────────────────────────────────────────────────────────
 *.tmp
 *.temp
+temp/
 
-# Database
+# ─── Database ────────────────────────────────────────────────────────────────
 *.sql.backup
 *.db
 
-# Uploads (if storing locally)
-uploads/
-temp/
+# ─── Uploads (local storage) ─────────────────────────────────────────────────
+backend/public/uploads/
 
-# Next.js Build Output
-.next/
-.env.local
-.env.production
-.env.development
-
+# ─── Package Lock (root only – workspaces handle their own) ──────────────────
+# Uncomment below if you don't want to commit the root lock file
+# package-lock.json
