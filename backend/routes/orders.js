@@ -7,12 +7,25 @@ const { requireAuth } = require("./auth");
 const crypto = require("crypto");
 require("dotenv").config();
 
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "dev_secret_key_fallback";
 
-if (!RAZORPAY_KEY_SECRET && process.env.NODE_ENV === 'production') {
+if (!process.env.RAZORPAY_KEY_SECRET && process.env.NODE_ENV === 'production') {
   console.error("RAZORPAY_KEY_SECRET must be set in production");
   process.exit(1);
 }
+
+// ── Haversine distance helper (returns meters) ─────────────────────────
+const haversineDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371000; // Earth radius in metres
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
 
 router.post("/create-after-payment", requireAuth, async (req, res) => {
   try {
@@ -21,7 +34,9 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
       table_number,
       razorpay_order_id,
       razorpay_payment_id,
-      razorpay_signature
+      razorpay_signature,
+      customerLat,
+      customerLng
     } = req.body;
 
     const customerId = req.customer.customerId;
@@ -67,11 +82,39 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
     // ---------------- HOTEL RESOLVING & TABLE AVAILABILITY CHECK ----------------
     
     const hotelSlug = req.body.hotel_slug || "hotbyte";
-    const hotelResult = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [hotelSlug]);
+    const hotelResult = await db.query("SELECT hotel_id, is_open, latitude, longitude, order_radius FROM public.hotels WHERE slug = $1", [hotelSlug]);
     if (hotelResult.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Hotel not found" });
     }
-    const hotelId = hotelResult.rows[0].hotel_id;
+    const { hotel_id: hotelId, is_open: isOpen, latitude: hotelLat, longitude: hotelLng, order_radius: orderRadius } = hotelResult.rows[0];
+
+    if (isOpen === false) {
+      return res.status(400).json({
+        success: false,
+        message: "This hotel is currently closed and not accepting new orders."
+      });
+    }
+
+    // ── Server-side proximity check ───────────────────────────────────────
+    if (hotelLat !== null && hotelLng !== null) {
+      const cLat = parseFloat(customerLat);
+      const cLng = parseFloat(customerLng);
+      if (isNaN(cLat) || isNaN(cLng)) {
+        return res.status(400).json({
+          success: false,
+          message: "Your location is required to place an order. Please enable GPS and try again."
+        });
+      }
+      const dist = haversineDistance(cLat, cLng, parseFloat(hotelLat), parseFloat(hotelLng));
+      const radius = orderRadius || 30;
+      if (dist > radius) {
+        return res.status(403).json({
+          success: false,
+          locationError: true,
+          message: `You must be within ${radius} meters of the hotel to place an order. (Current distance: ${Math.round(dist)}m)`
+        });
+      }
+    }
 
     if (req.customer.hotelId !== hotelId) {
       return res.status(403).json({
@@ -214,7 +257,7 @@ router.get("/table-availability", requireAuth, async (req, res) => {
 
 router.post("/create", requireAuth, async (req, res) => {
   try {
-    const { items, table_number } = req.body;
+    const { items, table_number, customerLat, customerLng } = req.body;
     const customerId = req.customer.customerId;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -226,11 +269,39 @@ router.post("/create", requireAuth, async (req, res) => {
     }
 
     const hotelSlug = req.body.hotel_slug || "hotbyte";
-    const hotelResult = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [hotelSlug]);
+    const hotelResult = await db.query("SELECT hotel_id, is_open, latitude, longitude, order_radius FROM public.hotels WHERE slug = $1", [hotelSlug]);
     if (hotelResult.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Hotel not found" });
     }
-    const hotelId = hotelResult.rows[0].hotel_id;
+    const { hotel_id: hotelId, is_open: isOpen, latitude: hotelLat, longitude: hotelLng, order_radius: orderRadius } = hotelResult.rows[0];
+
+    if (isOpen === false) {
+      return res.status(400).json({
+        success: false,
+        message: "This hotel is currently closed and not accepting new orders."
+      });
+    }
+
+    // ── Server-side proximity check ───────────────────────────────────────
+    if (hotelLat !== null && hotelLng !== null) {
+      const cLat = parseFloat(customerLat);
+      const cLng = parseFloat(customerLng);
+      if (isNaN(cLat) || isNaN(cLng)) {
+        return res.status(400).json({
+          success: false,
+          message: "Your location is required to place an order. Please enable GPS and try again."
+        });
+      }
+      const dist = haversineDistance(cLat, cLng, parseFloat(hotelLat), parseFloat(hotelLng));
+      const radius = orderRadius || 30;
+      if (dist > radius) {
+        return res.status(403).json({
+          success: false,
+          locationError: true,
+          message: `You must be within ${radius} meters of the hotel to place an order. (Current distance: ${Math.round(dist)}m)`
+        });
+      }
+    }
 
     if (req.customer.hotelId !== hotelId) {
       return res.status(403).json({

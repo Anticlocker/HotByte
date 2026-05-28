@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAdminSession } from "@/context/AdminSessionContext";
 import {
   DollarSign,
   Users,
@@ -52,41 +53,49 @@ interface DashboardStats {
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const { admin } = useAdminSession();
+  const hotelName = (admin as any)?.hotelName || "";
+  const hotelSlug = admin?.hotelSlug || "";
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [hotelName, setHotelName] = useState("");
-  const [hotelSlug, setHotelSlug] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (showRefreshIndicator = false) => {
+    if (!admin) return;
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    if (showRefreshIndicator) {
+      setRefreshing(true);
+    }
+
     try {
-      // 1. Fetch Admin Session Check
-      const sessionRes = await fetch("/api/auth/admin/session-check");
-      const sessionData = await sessionRes.json();
-      if (!sessionData.authenticated || sessionData.admin?.role !== "admin") {
-        router.push("/admin/login");
-        return;
-      }
-      setHotelName(sessionData.admin?.hotelName || "");
-      setHotelSlug(sessionData.admin?.hotelSlug || "");
+      // Fetch stats and active orders in parallel
+      const [statsRes, ordersRes] = await Promise.all([
+        fetch("/api/admin/dashboard/stats", { signal: controller.signal }),
+        fetch("/api/admin/orders?view_type=active", { signal: controller.signal })
+      ]);
 
-      // 2. Fetch Stats
-      const statsRes = await fetch("/api/admin/dashboard/stats");
       const statsData = await statsRes.json();
+      const ordersData = await ordersRes.json();
+
       if (statsData.success) {
         setStats(statsData.stats);
       }
-
-      // 3. Fetch Active Orders
-      const ordersRes = await fetch("/api/admin/orders?view_type=active");
-      const ordersData = await ordersRes.json();
       if (ordersData.success) {
         setOrders(ordersData.orders);
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      if (err.name !== "AbortError") {
+        console.error("Dashboard load failed:", err);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -94,16 +103,21 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    fetchDashboardData();
-    
-    // Auto-refresh orders every 10 seconds
-    const interval = setInterval(() => {
-      setRefreshing(true);
+    if (admin) {
       fetchDashboardData();
-    }, 10000);
+      
+      const interval = setInterval(() => {
+        fetchDashboardData(true);
+      }, 10000);
 
-    return () => clearInterval(interval);
-  }, [router]);
+      return () => {
+        clearInterval(interval);
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+      };
+    }
+  }, [admin]);
 
   const handleUpdateStatus = async (orderId: number, nextStatus: string) => {
     try {

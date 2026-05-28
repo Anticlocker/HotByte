@@ -174,7 +174,8 @@ export default function CustomerNavbar() {
         </button>
 
         {(() => {
-          const hotelSlug = pathname.split("/")[1];
+          const path = pathname || "";
+          const hotelSlug = path.split("/")[1];
           const isHotelMenu = hotelSlug && !["admin", "super-admin", "login", "profile", "menu"].includes(hotelSlug);
           const resolvedMenuSlug = isHotelMenu ? hotelSlug : (customer?.hotelSlug || "hotbyte");
           const menuHref = `/${resolvedMenuSlug}/menu`;
@@ -221,7 +222,8 @@ export default function CustomerNavbar() {
         ) : (
           <>
             {(() => {
-              const hotelSlug = pathname.split("/")[1];
+              const path = pathname || "";
+              const hotelSlug = path.split("/")[1];
               const isHotelMenu = hotelSlug && !["admin", "super-admin", "login", "profile", "menu"].includes(hotelSlug);
               const loginHref = isHotelMenu ? `/login?hotel=${hotelSlug}` : "/login";
               return (
@@ -238,13 +240,21 @@ export default function CustomerNavbar() {
                 </Link>
               );
             })()}
-            <Link
-              href={pathname.split("/")[1] && !["admin", "super-admin", "login", "profile"].includes(pathname.split("/")[1]) ? `/admin/login?hotel=${pathname.split("/")[1]}` : "/admin/login"}
-              className="nav-link px-4 py-2 text-white text-sm font-bold rounded-xl flex items-center gap-1.5 btn-orange"
-            >
-              <ShieldAlert size={14} className="opacity-95" />
-              <span>Admin</span>
-            </Link>
+            {(() => {
+              const path = pathname || "";
+              const firstSegment = path.split("/")[1];
+              const isAdminRoute = firstSegment && !["admin", "super-admin", "login", "profile"].includes(firstSegment);
+              const adminHref = isAdminRoute ? `/admin/login?hotel=${firstSegment}` : "/admin/login";
+              return (
+                <Link
+                  href={adminHref}
+                  className="nav-link px-4 py-2 text-white text-sm font-bold rounded-xl flex items-center gap-1.5 btn-orange"
+                >
+                  <ShieldAlert size={14} className="opacity-95" />
+                  <span>Admin</span>
+                </Link>
+              );
+            })()}
           </>
         )}
       </div>

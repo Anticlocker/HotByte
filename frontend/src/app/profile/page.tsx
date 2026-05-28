@@ -71,7 +71,7 @@ export default function Profile() {
       }
 
       // 3. Fetch Orders List
-      const ordersRes = await fetch("/api/orders");
+      const ordersRes = await fetch("/api/profile/orders");
       const ordersData = await ordersRes.json();
       if (ordersData.success) {
         setOrders(ordersData.orders);

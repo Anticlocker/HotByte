@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ChefHat, Flame, Bell, CheckCircle2, Clock, Check, Utensils } from "lucide-react";
 import Swal from "sweetalert2";
+import { useAdminSession } from "@/context/AdminSessionContext";
 
 interface OrderItem {
   order_item_id: number;
@@ -22,22 +23,16 @@ interface Order {
 
 export default function KitchenKDS() {
   const router = useRouter();
+  const { admin } = useAdminSession();
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const prevPendingCountRef = useRef(0);
 
   const fetchKitchenOrders = async () => {
+    if (!admin) return;
     try {
-      // 1. Session Check
-      const sessionRes = await fetch("/api/auth/admin/session-check");
-      const sessionData = await sessionRes.json();
-      if (!sessionData.authenticated) {
-        router.push("/admin/login");
-        return;
-      }
-
-      // 2. Fetch Active Cooking Queue (pending + preparing)
+      // Fetch Active Cooking Queue (pending + preparing)
       const res = await fetch("/api/admin/orders?status=pending,preparing");
       const data = await res.json();
 
@@ -63,12 +58,14 @@ export default function KitchenKDS() {
   };
 
   useEffect(() => {
-    fetchKitchenOrders();
+    if (admin) {
+      fetchKitchenOrders();
 
-    // Fast-polling kitchen display system dashboard (5 seconds intervals)
-    const interval = setInterval(fetchKitchenOrders, 5000);
-    return () => clearInterval(interval);
-  }, [router]);
+      // Fast-polling kitchen display system dashboard (5 seconds intervals)
+      const interval = setInterval(fetchKitchenOrders, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [admin]);
 
   const handleUpdateStatus = async (orderId: number, nextStatus: "preparing" | "ready") => {
     try {

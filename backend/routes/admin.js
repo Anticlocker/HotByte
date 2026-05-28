@@ -42,10 +42,8 @@ const upload = multer({
 });
 
 // Get all categories
-router.get("/categories", requireAdmin, async (req, res) => 
-  {
-  try
-  {
+router.get("/categories", requireAdmin, async (req, res) => {
+  try {
     let result;
     if (req.admin.role !== 'super_admin') {
       result = await db.query("SELECT category_id, category_name FROM menu_category WHERE hotel_id = $1 ORDER BY category_name", [req.admin.hotelId]);
@@ -60,8 +58,7 @@ router.get("/categories", requireAdmin, async (req, res) =>
     }
     return res.json({ success: true, categories: result.rows });
   }
-  catch(error)
-  {
+  catch (error) {
     console.error("Get categories error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch categories" });
   }
@@ -224,9 +221,9 @@ router.post("/items", requireAdmin, (req, res, next) => {
 
     // Upload image to Bunny CDN (or fall back to local storage if credentials are missing)
     if (req.file) {
-      const isBunnyConfigured = process.env.BUNNY_ACCESS_KEY && 
-                                !process.env.BUNNY_ACCESS_KEY.startsWith("your_");
-      
+      const isBunnyConfigured = process.env.BUNNY_ACCESS_KEY &&
+        !process.env.BUNNY_ACCESS_KEY.startsWith("your_");
+
       if (isBunnyConfigured) {
         const uploadResult = await bunnyCDN.uploadImage(
           req.file.buffer,
@@ -339,15 +336,15 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
 
     // Upload new image (with Bunny CDN detection and local fallback)
     if (req.file) {
-      const isBunnyConfigured = process.env.BUNNY_ACCESS_KEY && 
-                                !process.env.BUNNY_ACCESS_KEY.startsWith("your_");
-      
+      const isBunnyConfigured = process.env.BUNNY_ACCESS_KEY &&
+        !process.env.BUNNY_ACCESS_KEY.startsWith("your_");
+
       if (isBunnyConfigured) {
         // Delete old image from Bunny CDN if exists
         if (existing_image_url && existing_image_url.includes(bunnyCDN.cdnUrl)) {
           await bunnyCDN.deleteImage(existing_image_url);
         }
-        
+
         const uploadResult = await bunnyCDN.uploadImage(
           req.file.buffer,
           req.file.originalname,
@@ -370,7 +367,7 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
             console.error("Local delete error:", deleteError);
           }
         }
-        
+
         // Fallback to local upload
         try {
           const uploadsDir = path.join(__dirname, "../public/uploads/menu-items");
@@ -1132,50 +1129,14 @@ router.get("/ratings", requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error("Get ratings error:", error);
-    return res.status(500).json({ 
-      success: false, 
-      message: "Failed to fetch ratings" 
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch ratings"
     });
   }
 });
 
-// Delete rating
-router.delete("/ratings/:id", requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // Tenant authorization check
-    if (req.admin.role !== 'super_admin') {
-      const checkResult = await db.query(
-        `SELECT r.rating_id 
-         FROM ratings r
-         LEFT JOIN menu_items mi ON r.item_id = mi.item_id
-         LEFT JOIN orders o ON r.order_id = o.order_id
-         WHERE r.rating_id = $1 AND (mi.hotel_id = $2 OR o.hotel_id = $2)`,
-        [id, req.admin.hotelId]
-      );
-      if (checkResult.rows.length === 0) {
-        return res.status(403).json({ success: false, message: "Unauthorized: Rating belongs to another hotel." });
-      }
-    }
-
-    const result = await db.query(
-      "DELETE FROM ratings WHERE rating_id = $1 RETURNING rating_id",
-      [id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Rating not found or unauthorized" });
-    }
-
-    return res.json({ success: true, message: "Rating deleted successfully" });
-  } catch (error) {
-    console.error("Delete rating error:", error);
-    return res.status(500).json({ success: false, message: "Failed to delete rating" });
-  }
-});
-
-// Get rating statistics
+// Get rating statistics — MUST be registered BEFORE /ratings/:id to avoid param capture
 router.get("/ratings/stats", requireAdmin, async (req, res) => {
   try {
     let statsQuery = `
@@ -1223,6 +1184,42 @@ router.get("/ratings/stats", requireAdmin, async (req, res) => {
   } catch (error) {
     console.error("Get rating stats error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch rating statistics" });
+  }
+});
+
+// Delete rating — registered AFTER /ratings/stats to avoid conflict
+router.delete("/ratings/:id", requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Tenant authorization check
+    if (req.admin.role !== 'super_admin') {
+      const checkResult = await db.query(
+        `SELECT r.rating_id 
+         FROM ratings r
+         LEFT JOIN menu_items mi ON r.item_id = mi.item_id
+         LEFT JOIN orders o ON r.order_id = o.order_id
+         WHERE r.rating_id = $1 AND (mi.hotel_id = $2 OR o.hotel_id = $2)`,
+        [id, req.admin.hotelId]
+      );
+      if (checkResult.rows.length === 0) {
+        return res.status(403).json({ success: false, message: "Unauthorized: Rating belongs to another hotel." });
+      }
+    }
+
+    const result = await db.query(
+      "DELETE FROM ratings WHERE rating_id = $1 RETURNING rating_id",
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Rating not found or unauthorized" });
+    }
+
+    return res.json({ success: true, message: "Rating deleted successfully" });
+  } catch (error) {
+    console.error("Delete rating error:", error);
+    return res.status(500).json({ success: false, message: "Failed to delete rating" });
   }
 });
 
@@ -1427,6 +1424,411 @@ router.post("/toggle-order-accept", requireAdmin, async (req, res) => {
   } catch (error) {
     console.error("Toggle order accept error:", error);
     return res.status(500).json({ success: false, message: "Failed to toggle orders" });
+  }
+});
+
+// Get hotel Open/Close status
+router.get("/hotel-status", requireAdmin, async (req, res) => {
+  try {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req)
+      : req.admin.hotelId;
+
+    if (hotelId === -1 || !hotelId) {
+      return res.status(404).json({ success: false, message: "Hotel not resolved." });
+    }
+
+    const result = await db.query("SELECT is_open FROM public.hotels WHERE hotel_id = $1", [hotelId]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found" });
+    }
+
+    return res.json({ success: true, isOpen: result.rows[0].is_open !== false });
+  } catch (error) {
+    console.error("Get hotel status error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch hotel status" });
+  }
+});
+
+// Toggle hotel Open/Close status
+router.post("/toggle-hotel-status", requireAdmin, async (req, res) => {
+  try {
+    const { isOpen } = req.body;
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req)
+      : req.admin.hotelId;
+
+    if (hotelId === -1 || !hotelId) {
+      return res.status(404).json({ success: false, message: "Hotel not resolved." });
+    }
+
+    await db.query("UPDATE public.hotels SET is_open = $1 WHERE hotel_id = $2", [isOpen === true, hotelId]);
+
+    return res.json({
+      success: true,
+      isOpen: isOpen === true,
+      message: isOpen ? "Hotel is now OPEN and accepting orders." : "Hotel is now CLOSED and not accepting orders."
+    });
+  } catch (error) {
+    console.error("Toggle hotel status error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update hotel status" });
+  }
+});
+
+// ─── Settings: GET /settings ───────────────────────────────────────
+router.get("/settings", requireAdmin, async (req, res) => {
+  try {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req)
+      : req.admin.hotelId;
+
+    if (hotelId === -1 || !hotelId) {
+      return res.status(404).json({ success: false, message: "Hotel not resolved." });
+    }
+
+    // Get hotel details
+    const hotelResult = await db.query(
+      `SELECT hotel_id, name, slug, phone, address, email, logo_url, banner_url, description, tagline, 
+              show_logo, show_banner, primary_color, secondary_color, enable_online_orders, enable_qr_ordering, 
+              settings_json, is_open, table_count 
+       FROM public.hotels WHERE hotel_id = $1`,
+      [hotelId]
+    );
+
+    if (hotelResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found" });
+    }
+
+    // Get admin details
+    const adminResult = await db.query(
+      `SELECT admin_id, username, name, email, phone FROM public.admins WHERE admin_id = $1`,
+      [req.admin.id]
+    );
+
+    // Get recent login history from sessions
+    const sessionsResult = await db.query(
+      `SELECT id, ip_address, user_agent, created_at, last_activity, expires_at 
+       FROM public.sessions 
+       WHERE admin_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT 10`,
+      [req.admin.id]
+    );
+
+    return res.json({
+      success: true,
+      hotel: hotelResult.rows[0],
+      admin: adminResult.rows[0] || null,
+      sessions: sessionsResult.rows
+    });
+  } catch (error) {
+    console.error("Get admin settings error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch settings" });
+  }
+});
+
+// ─── Settings: POST /settings ──────────────────────────────────────
+router.post("/settings", requireAdmin, async (req, res) => {
+  try {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req)
+      : req.admin.hotelId;
+
+    if (hotelId === -1 || !hotelId) {
+      return res.status(404).json({ success: false, message: "Hotel not resolved." });
+    }
+
+    const {
+      name, description, address, phone, email, tagline,
+      show_logo, show_banner, primary_color, secondary_color,
+      enable_online_orders, enable_qr_ordering, table_count, settings_json
+    } = req.body;
+
+    if (!name?.trim()) {
+      return res.status(400).json({ success: false, message: "Hotel Name is required" });
+    }
+
+    await db.query(
+      `UPDATE public.hotels 
+       SET name = $1, description = $2, address = $3, phone = $4, email = $5, tagline = $6, 
+           show_logo = $7, show_banner = $8, primary_color = $9, secondary_color = $10, 
+           enable_online_orders = $11, enable_qr_ordering = $12, table_count = $13, settings_json = $14
+       WHERE hotel_id = $15`,
+      [
+        name.trim(), description || null, address || null, phone || null, email || null, tagline || 'Served with Love ❤️',
+        show_logo !== false, show_banner !== false, primary_color || '#FF5A1F', secondary_color || '#FF5A1F',
+        enable_online_orders !== false, enable_qr_ordering !== false, parseInt(table_count) || 5, settings_json || {},
+        hotelId
+      ]
+    );
+
+    return res.json({ success: true, message: "Hotel settings updated successfully" });
+  } catch (error) {
+    console.error("Save admin settings error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update hotel settings" });
+  }
+});
+
+// ─── Settings: POST /settings/account ──────────────────────────────
+router.post("/settings/account", requireAdmin, async (req, res) => {
+  try {
+    const { name, email, phone, currentPassword, newPassword } = req.body;
+
+    if (!email?.trim()) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
+
+    // Check unique constraints for email and phone (excluding current admin)
+    const emailCheck = await db.query(
+      "SELECT admin_id FROM public.admins WHERE email = $1 AND admin_id <> $2",
+      [email.trim().toLowerCase(), req.admin.id]
+    );
+    if (emailCheck.rows.length > 0) {
+      return res.status(400).json({ success: false, message: "Email address is already in use by another admin" });
+    }
+
+    if (phone?.trim()) {
+      const phoneCheck = await db.query(
+        "SELECT admin_id FROM public.admins WHERE phone = $1 AND admin_id <> $2",
+        [phone.trim(), req.admin.id]
+      );
+      if (phoneCheck.rows.length > 0) {
+        return res.status(400).json({ success: false, message: "Phone number is already in use by another admin" });
+      }
+    }
+
+    // Handle password update if newPassword is provided
+    let hashedNewPassword = null;
+    if (newPassword) {
+      if (!currentPassword) {
+        return res.status(400).json({ success: false, message: "Current password is required to set a new password" });
+      }
+      if (newPassword.length < 6) {
+        return res.status(400).json({ success: false, message: "New password must be at least 6 characters" });
+      }
+
+      // Verify current password
+      const hashedCurrentPassword = hashPassword(currentPassword);
+      const adminCheck = await db.query(
+        "SELECT password FROM public.admins WHERE admin_id = $1",
+        [req.admin.id]
+      );
+
+      if (adminCheck.rows.length === 0 || adminCheck.rows[0].password !== hashedCurrentPassword) {
+        return res.status(401).json({ success: false, message: "Current password is incorrect" });
+      }
+
+      hashedNewPassword = hashPassword(newPassword);
+    }
+
+    if (hashedNewPassword) {
+      await db.query(
+        `UPDATE public.admins 
+         SET name = $1, email = $2, phone = $3, password = $4
+         WHERE admin_id = $5`,
+        [name?.trim() || null, email.trim().toLowerCase(), phone?.trim() || null, hashedNewPassword, req.admin.id]
+      );
+    } else {
+      await db.query(
+        `UPDATE public.admins 
+         SET name = $1, email = $2, phone = $3
+         WHERE admin_id = $4`,
+        [name?.trim() || null, email.trim().toLowerCase(), phone?.trim() || null, req.admin.id]
+      );
+    }
+
+    return res.json({ success: true, message: "Account settings updated successfully" });
+  } catch (error) {
+    console.error("Save account settings error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update account settings" });
+  }
+});
+
+// ─── Settings: POST /settings/logout-devices ───────────────────────
+router.post("/settings/logout-devices", requireAdmin, async (req, res) => {
+  try {
+    const activeSessionId = req.cookies.superAdminSessionId || req.cookies.adminSessionId;
+    if (!activeSessionId) {
+      return res.status(400).json({ success: false, message: "No active session session ID found" });
+    }
+
+    await db.query(
+      "DELETE FROM public.sessions WHERE admin_id = $1 AND session_id <> $2",
+      [req.admin.id, activeSessionId]
+    );
+
+    return res.json({ success: true, message: "Logged out from all other devices successfully" });
+  } catch (error) {
+    console.error("Logout from other devices error:", error);
+    return res.status(500).json({ success: false, message: "Failed to logout from other devices" });
+  }
+});
+
+// ─── Settings: POST /settings/upload ───────────────────────────────
+router.post("/settings/upload", requireAdmin, upload.single("image"), async (req, res) => {
+  try {
+    const { type } = req.body; // 'logo' or 'banner'
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ success: false, message: "No image file uploaded" });
+    }
+
+    if (type !== "logo" && type !== "banner") {
+      return res.status(400).json({ success: false, message: "Invalid upload type. Must be 'logo' or 'banner'" });
+    }
+
+    // Image size check (logo: 2MB, banner: 5MB)
+    const maxSize = type === "logo" ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      return res.status(400).json({
+        success: false,
+        message: `${type === 'logo' ? 'Logo' : 'Banner'} file size must be less than ${type === 'logo' ? '2MB' : '5MB'}`
+      });
+    }
+
+    // Verify MIME types
+    const allowedMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      return res.status(400).json({
+        success: false,
+        message: "Only JPEG, PNG, or WEBP image files are allowed"
+      });
+    }
+
+    // Generate unique name — resolve hotel ID for super_admin
+    let hotelId;
+    if (req.admin.role === 'super_admin') {
+      hotelId = await resolveHotelSlug(req);
+      if (!hotelId || hotelId === -1) {
+        return res.status(400).json({ success: false, message: "hotel_slug is required for Super Admin uploads" });
+      }
+    } else {
+      hotelId = req.admin.hotelId;
+    }
+    const fileExt = path.extname(file.originalname).toLowerCase() || ".png";
+    const fileName = `${type}_${hotelId}_${Date.now()}${fileExt}`;
+
+    // Upload to CDN
+    const uploadResult = await bunnyCDN.uploadImage(file.buffer, fileName, "branding");
+    if (!uploadResult.success) {
+      return res.status(500).json({ success: false, message: uploadResult.error || "Failed to upload to CDN" });
+    }
+
+    // Update database for hotel
+    const dbColumn = type === "logo" ? "logo_url" : "banner_url";
+    await db.query(
+      `UPDATE public.hotels SET ${dbColumn} = $1 WHERE hotel_id = $2`,
+      [uploadResult.url, hotelId]
+    );
+
+    return res.json({
+      success: true,
+      url: uploadResult.url,
+      message: `${type === 'logo' ? 'Logo' : 'Banner'} uploaded successfully`
+    });
+  } catch (error) {
+    console.error("Settings upload error:", error);
+    return res.status(500).json({ success: false, message: "Failed to upload visual asset" });
+  }
+});
+
+
+router.get('/subscription-plans', requireAdmin, async (req, res) => {
+  try {
+    // Subscription plans are global; no hotel scoping needed
+    const result = await db.query('SELECT plan_id, name, price_monthly, price_yearly, features FROM public.subscription_plans ORDER BY plan_id');
+    return res.json({ success: true, plans: result.rows });
+  } catch (error) {
+    console.error('Fetch subscription plans error:', error);
+    // If the table does not exist, create it and seed default plans
+    if (error.code === '42P01') {
+      try {
+        await db.query(`
+          CREATE TABLE IF NOT EXISTS public.subscription_plans (
+            plan_id serial PRIMARY KEY,
+            name varchar(100) NOT NULL,
+            price_monthly numeric(10,2) NOT NULL,
+            price_yearly numeric(10,2),
+            features jsonb,
+            trial_days integer DEFAULT 14
+          );
+        `);
+        // Seed default plans if table empty
+        const seedCheck = await db.query('SELECT COUNT(*) FROM public.subscription_plans');
+        if (parseInt(seedCheck.rows[0].count) === 0) {
+          await db.query(`
+            INSERT INTO public.subscription_plans (name, price_monthly, price_yearly, features) VALUES
+              ('trial', 0, 0, '{"menu_items":20,"admin_managers":1,"qr_dining":true,"checkout_dashboard":true,"sandbox":true}'),
+              ('basic', 999, 11988, '{"menu_items":"unlimited","admin_managers":3,"razorpay":true,"kds":true,"dynamic_qr":true,"pdf_reports":true}'),
+              ('pro', 2499, 29988, '{"all_basic":true,"unlimited_staff":true,"advanced_analytics":true,"occupancy_tracking":true,"priority_support":true,"menu_assistant":true}');
+          `);
+        }
+        // Re-run the original query now that table exists
+        const retryResult = await db.query('SELECT plan_id, name, price_monthly, price_yearly, features FROM public.subscription_plans ORDER BY plan_id');
+        return res.json({ success: true, plans: retryResult.rows });
+      } catch (creationError) {
+        console.error('Error creating subscription_plans table:', creationError);
+        return res.status(500).json({ success: false, message: 'Failed to fetch subscription plans' });
+      }
+    }
+    return res.status(500).json({ success: false, message: 'Failed to fetch subscription plans' });
+  }
+});
+// New endpoint: return current hotel's subscription status
+router.get('/hotel-subscription', requireAdmin, async (req, res) => {
+  try {
+    const hotelId = req.admin.hotelId;
+    const result = await db.query(
+      `SELECT s.plan_id, s.start_date, s.expiry_date, s.status, sp.name, sp.price_monthly, sp.price_yearly, sp.features
+       FROM subscriptions s
+       JOIN subscription_plans sp ON s.plan_id = sp.plan_id
+       WHERE s.hotel_id = $1
+       ORDER BY s.expiry_date DESC
+       LIMIT 1`,
+      [hotelId]
+    );
+    if (result.rows.length === 0) {
+      return res.json({ success: true, subscription: null });
+    }
+    return res.json({ success: true, subscription: result.rows[0] });
+  } catch (error) {
+    console.error('Fetch hotel subscription error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch hotel subscription' });
+  }
+});
+
+// ─── Settings: PUT /settings/location ───────────────────────────────
+router.put("/settings/location", requireAdmin, async (req, res) => {
+  try {
+    const { latitude, longitude, address, orderRadius } = req.body;
+    const hotelId = req.admin.role === 'super_admin' ? (await resolveHotelSlug(req)) : req.admin.hotelId;
+
+    if (!hotelId || hotelId === -1) {
+      return res.status(403).json({ success: false, message: "Authorized hotel context required." });
+    }
+
+    const lat = latitude !== undefined && latitude !== null && latitude !== '' ? parseFloat(latitude) : null;
+    const lng = longitude !== undefined && longitude !== null && longitude !== '' ? parseFloat(longitude) : null;
+    const radius = parseInt(orderRadius) > 0 ? parseInt(orderRadius) : 30;
+
+    const sets = [];
+    const params = [];
+    if (lat !== null) { params.push(lat); sets.push(`latitude = $${params.length}`); }
+    if (lng !== null) { params.push(lng); sets.push(`longitude = $${params.length}`); }
+    params.push(radius); sets.push(`order_radius = $${params.length}`);
+    if (address) { params.push(address.trim()); sets.push(`address = $${params.length}`); }
+    params.push(hotelId);
+
+    await db.query(
+      `UPDATE public.hotels SET ${sets.join(', ')} WHERE hotel_id = $${params.length}`,
+      params
+    );
+
+    return res.json({ success: true, message: "Hotel location updated successfully." });
+  } catch (error) {
+    console.error("Update location error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update hotel location." });
   }
 });
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   QrCode, Utensils, Play, ChevronDown, Check, ArrowRight, ShieldCheck,
   Sparkles, Star, Smartphone, ChefHat, BarChart3, Clock, Flame,
@@ -10,6 +11,7 @@ import {
 import Swal from "sweetalert2";
 
 export default function Home() {
+  const router = useRouter();
   // Navigation & Splash Screen
   const [splashState, setSplashState] = useState<"visible" | "fading" | "hidden">("visible");
   const [embers, setEmbers] = useState<{ id: number; color: string; tx: string; ty: string; width: string }[]>([]);
@@ -19,6 +21,265 @@ export default function Home() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
   const [activeDemoTab, setActiveDemoTab] = useState<"menu" | "kitchen" | "analytics">("menu");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [processingPayment, setProcessingPayment] = useState(false);
+
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handleSubscriptionPurchase = async (rawPlanName: string) => {
+    const planName = rawPlanName.toLowerCase().replace(" plan", "").replace(" free trial", "").trim();
+
+    if (planName === "trial") {
+      // Sandbox Free Trial launching
+      Swal.fire({
+        title: "Launch Sandbox?",
+        text: "Redirecting you to our Admin login portal to setup your sandbox trial account.",
+        icon: "info",
+        showCancelButton: true,
+        confirmButtonColor: "#ff5a1f",
+        confirmButtonText: "Let's Go"
+      }).then((result) => {
+        if (result.isConfirmed) {
+          router.push("/admin/login");
+        }
+      });
+      return;
+    }
+
+    if (processingPayment) return;
+
+    try {
+      setProcessingPayment(true);
+
+      Swal.fire({
+        title: "Verifying Session...",
+        text: "Checking for active administrator session.",
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
+      // 1. Check if authenticated as a hotel admin
+      const sessionRes = await fetch("/api/auth/admin/session-check");
+      const sessionData = await sessionRes.json();
+      let activeSlug = "";
+      let hotelName = "";
+
+      if (sessionData.authenticated && sessionData.admin?.role === "admin") {
+        activeSlug = sessionData.admin.hotelSlug;
+        hotelName = sessionData.admin.hotelName;
+      } else {
+        // Not logged in! Show inline auth modal
+        Swal.close();
+
+        const { value: loginValues } = await Swal.fire({
+          title: "Hotel Authentication Required",
+          html: `
+            <div class="space-y-4 text-left">
+              <p class="text-xs text-gray-400 font-semibold mb-4 leading-normal">
+                To link the subscription to your hotel, please log in using your Administrator credentials:
+              </p>
+              <div>
+                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Hotel Slug</label>
+                <input id="login-slug" placeholder="e.g. hotbyte" class="w-full p-3 bg-gray-900 border border-gray-800 rounded-xl outline-none focus:border-orange-500 text-sm font-bold text-white" />
+              </div>
+              <div class="mt-3">
+                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Username</label>
+                <input id="login-user" placeholder="e.g. ravi" class="w-full p-3 bg-gray-900 border border-gray-800 rounded-xl outline-none focus:border-orange-500 text-sm font-bold text-white" />
+              </div>
+              <div class="mt-3">
+                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Password</label>
+                <input id="login-pass" type="password" placeholder="••••••••" class="w-full p-3 bg-gray-900 border border-gray-800 rounded-xl outline-none focus:border-orange-500 text-sm font-bold text-white" />
+              </div>
+            </div>
+          `,
+          focusConfirm: false,
+          showCancelButton: true,
+          confirmButtonText: "Sign In & Subscribe",
+          confirmButtonColor: "#ff5a1f",
+          preConfirm: () => {
+            return {
+              // @ts-ignore
+              hotelSlug: document.getElementById("login-slug").value.trim().toLowerCase(),
+              // @ts-ignore
+              username: document.getElementById("login-user").value.trim(),
+              // @ts-ignore
+              password: document.getElementById("login-pass").value
+            };
+          }
+        });
+
+        if (!loginValues) {
+          setProcessingPayment(false);
+          return;
+        }
+
+        if (!loginValues.hotelSlug || !loginValues.username || !loginValues.password) {
+          Swal.fire("Authentication Error", "All credential fields are required.", "error");
+          setProcessingPayment(false);
+          return;
+        }
+
+        Swal.fire({
+          title: "Authenticating...",
+          allowOutsideClick: false,
+          didOpen: () => {
+            Swal.showLoading();
+          }
+        });
+
+        // Try to log in dynamically
+        const loginRes = await fetch("/api/auth/admin/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: loginValues.username,
+            password: loginValues.password,
+            hotelSlug: loginValues.hotelSlug,
+            role: "admin"
+          })
+        });
+
+        const loginData = await loginRes.json();
+        if (!loginData.success) {
+          Swal.fire("Authentication Failed", loginData.message || "Invalid credentials.", "error");
+          setProcessingPayment(false);
+          return;
+        }
+
+        activeSlug = loginValues.hotelSlug;
+        hotelName = loginData.admin?.hotelName || "Your Hotel";
+      }
+
+      Swal.fire({
+        title: "Initializing Checkout...",
+        text: "Connecting to Razorpay secure payment gateway.",
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
+      // 2. Create Razorpay order from backend
+      const orderRes = await fetch("/api/payments/create-subscription-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan: planName,
+          hotel_slug: activeSlug,
+          billing_cycle: billingCycle
+        })
+      });
+      const orderData = await orderRes.json();
+
+      if (!orderData.success) {
+        Swal.fire("Checkout Failed", orderData.message || "Could not prepare subscription order.", "error");
+        setProcessingPayment(false);
+        return;
+      }
+
+      // 3. Fetch admin Razorpay key
+      const keyRes = await fetch("/api/payments/admin-razorpay-key");
+      const keyData = await keyRes.json();
+
+      if (!keyData.success) {
+        Swal.fire("Billing Error", "Failed to retrieve billing credentials.", "error");
+        setProcessingPayment(false);
+        return;
+      }
+
+      const razorpayKey = window.atob(keyData.key);
+
+      // 4. Load Razorpay script
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        Swal.fire("Billing Error", "Failed to load Razorpay payment runtime.", "error");
+        setProcessingPayment(false);
+        return;
+      }
+
+      Swal.close();
+
+      // 5. Open Razorpay widget immediately
+      const options = {
+        key: razorpayKey,
+        amount: orderData.razorpay_order.amount,
+        currency: orderData.razorpay_order.currency,
+        name: "HotByte SaaS",
+        description: `Upgrade ${hotelName} to ${planName.toUpperCase()} (${billingCycle})`,
+        order_id: orderData.razorpay_order.id,
+        handler: async function (response: any) {
+          Swal.fire({
+            title: "Confirming Transaction...",
+            text: "Securing your active database subscription ledger.",
+            allowOutsideClick: false,
+            didOpen: () => {
+              Swal.showLoading();
+            }
+          });
+
+          // Verify subscription on backend
+          const verifyRes = await fetch("/api/payments/verify-subscription", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              plan: planName,
+              hotel_slug: activeSlug,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              billing_cycle: billingCycle
+            })
+          });
+          const verifyData = await verifyRes.json();
+
+          if (verifyData.success) {
+            Swal.fire({
+              title: "Subscription Activated! 🎉",
+              text: `Success! ${hotelName} is now fully upgraded and active on the ${planName.toUpperCase()} plan.`,
+              icon: "success",
+              confirmButtonColor: "#ff5a1f",
+              confirmButtonText: "Enter Dashboard"
+            }).then(() => {
+              router.push(`/admin?hotel=${activeSlug}`);
+            });
+          } else {
+            Swal.fire("Verification Failed", verifyData.message || "Failed to confirm payment signature.", "error");
+          }
+          setProcessingPayment(false);
+        },
+        modal: {
+          ondismiss: function () {
+            Swal.fire("Cancelled", "Payment session was cancelled by user.", "info");
+            setProcessingPayment(false);
+          }
+        },
+        prefill: {
+          name: "Hotel Admin",
+          email: "billing@hotbyte.in"
+        },
+        theme: {
+          color: "#ff5a1f"
+        }
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+
+    } catch (error) {
+      console.error("Subscription checkout failed:", error);
+      Swal.fire("Billing Error", "A network error occurred during your payment checkout.", "error");
+      setProcessingPayment(false);
+    }
+  };
 
   // Simulated Live App States
   const [demoCart, setDemoCart] = useState<{ id: number; name: string; price: number; quantity: number }[]>([]);
@@ -723,13 +984,16 @@ export default function Home() {
                   </div>
 
                   <div className="mt-8 border-t border-gray-900/60 pt-6">
-                    <a
-                      href={`mailto:admin@hotbyte.in?subject=Registration%20Inquiry%20-${plan.name}&body=Hi%20Super%20Admin,%0D%0AI%20am%20interested%20in%20onboarding%20our%20restaurant%20to%20HotByte%20using%20the%20${plan.name}%20(${billingCycle}%20billing).%20Please%20assist.`}
-                      className={`w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${plan.ctaCls}`}
+                    <button
+                      onClick={() => handleSubscriptionPurchase(plan.name)}
+                      disabled={processingPayment}
+                      className={`w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        processingPayment ? "opacity-50 cursor-not-allowed" : ""
+                      } ${plan.ctaCls}`}
                     >
-                      <span>{plan.cta}</span>
+                      <span>{processingPayment ? "Processing..." : plan.cta}</span>
                       <ChevronRight size={12} />
-                    </a>
+                    </button>
                   </div>
                 </div>
               );

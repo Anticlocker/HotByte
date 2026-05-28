@@ -55,6 +55,32 @@ export default function MenuPage({ params }: PageProps) {
   const [isVegOnly, setIsVegOnly] = useState(false);
   const [customer, setCustomer] = useState<any>(null);
   const [isFrozen, setIsFrozen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
+  const [hotelName, setHotelName] = useState("HotByte");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  
+  // Custom Branding States
+  const [tagline, setTagline] = useState("Served with Love ❤️");
+  const [showLogo, setShowLogo] = useState(true);
+  const [showBanner, setShowBanner] = useState(true);
+  const [primaryColor, setPrimaryColor] = useState("#FF5A1F");
+  const [secondaryColor, setSecondaryColor] = useState("#FF5A1F");
+  const [enableOnlineOrders, setEnableOnlineOrders] = useState(true);
+  const [enableQrOrdering, setEnableQrOrdering] = useState(true);
+
+  // Hotel geofence data
+  const [hotelLatitude, setHotelLatitude] = useState<number | null>(null);
+  const [hotelLongitude, setHotelLongitude] = useState<number | null>(null);
+  const [orderRadius, setOrderRadius] = useState(30);
+
+
+  useEffect(() => {
+    if (primaryColor) {
+      document.documentElement.style.setProperty("--orange", primaryColor);
+      document.documentElement.style.setProperty("--orange-light", `${primaryColor}15`);
+    }
+  }, [primaryColor]);
   
   // Cart state
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -82,9 +108,21 @@ export default function MenuPage({ params }: PageProps) {
           setIsFrozen(true);
         } else if (data.success) {
           setCategories(["All", ...data.categories.map((c: any) => c.category_name || c.name || "")]);
-          if (data.tableCount) {
-            setTableCount(data.tableCount);
-          }
+          setIsOpen(data.isOpen !== false);
+          if (data.hotelName) setHotelName(data.hotelName);
+          if (data.logoUrl) setLogoUrl(data.logoUrl);
+          if (data.bannerUrl) setBannerUrl(data.bannerUrl);
+          if (data.tagline) setTagline(data.tagline);
+          setShowLogo(data.showLogo !== false);
+          setShowBanner(data.showBanner !== false);
+          if (data.primaryColor) setPrimaryColor(data.primaryColor);
+          if (data.secondaryColor) setSecondaryColor(data.secondaryColor);
+          setEnableOnlineOrders(data.enableOnlineOrders !== false);
+          setEnableQrOrdering(data.enableQrOrdering !== false);
+          if (data.tableCount) setTableCount(data.tableCount);
+          if (data.hotelLatitude !== null && data.hotelLatitude !== undefined) setHotelLatitude(data.hotelLatitude);
+          if (data.hotelLongitude !== null && data.hotelLongitude !== undefined) setHotelLongitude(data.hotelLongitude);
+          if (data.orderRadius) setOrderRadius(data.orderRadius);
         }
       })
       .catch(() => {});
@@ -127,8 +165,34 @@ export default function MenuPage({ params }: PageProps) {
       router.replace(`/${hotelSlug}/menu`);
     }
 
+    // 5-second interval poll for real-time status propagation
+    const intervalId = setInterval(() => {
+      fetch(`/api/menu/status?hotel_slug=${hotelSlug}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setIsOpen(data.isOpen !== false);
+            if (data.hotelName) setHotelName(data.hotelName);
+            if (data.logoUrl) setLogoUrl(data.logoUrl);
+            if (data.bannerUrl) setBannerUrl(data.bannerUrl);
+            if (data.tagline) setTagline(data.tagline);
+            setShowLogo(data.showLogo !== false);
+            setShowBanner(data.showBanner !== false);
+            if (data.primaryColor) setPrimaryColor(data.primaryColor);
+            if (data.secondaryColor) setSecondaryColor(data.secondaryColor);
+            setEnableOnlineOrders(data.enableOnlineOrders !== false);
+            setEnableQrOrdering(data.enableQrOrdering !== false);
+            if (data.isFrozen) {
+              setIsFrozen(true);
+            }
+          }
+        })
+        .catch(() => {});
+    }, 5000);
+
     return () => {
       window.removeEventListener("openMenuCart", handleOpenMenuCart);
+      clearInterval(intervalId);
     };
   }, [router, hotelSlug]);
 
@@ -140,6 +204,15 @@ export default function MenuPage({ params }: PageProps) {
   };
 
   const handleAddToCart = (item: MenuItem) => {
+    if (!isOpen) {
+      Swal.fire({
+        title: "Hotel Closed",
+        text: "This hotel is currently closed and not accepting new orders.",
+        icon: "warning",
+        confirmButtonColor: "#FF5A1F",
+      });
+      return;
+    }
     if (!item.is_available) return;
     const existing = cart.find((i) => i.item_id === item.item_id);
     if (existing) {
@@ -156,6 +229,15 @@ export default function MenuPage({ params }: PageProps) {
   };
 
   const handleDecreaseQuantity = (itemId: number) => {
+    if (!isOpen) {
+      Swal.fire({
+        title: "Hotel Closed",
+        text: "This hotel is currently closed and not accepting new orders.",
+        icon: "warning",
+        confirmButtonColor: "#FF5A1F",
+      });
+      return;
+    }
     const existing = cart.find((i) => i.item_id === itemId);
     if (!existing) return;
     if (existing.quantity === 1) {
@@ -203,7 +285,26 @@ export default function MenuPage({ params }: PageProps) {
     });
   };
 
+  // Haversine distance (returns meters)
+  const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371000;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
   const handleCheckout = async () => {
+    if (!isOpen) {
+      Swal.fire({
+        title: "Hotel Closed",
+        text: "This hotel is currently closed and not accepting new orders.",
+        icon: "warning",
+        confirmButtonColor: "#FF5A1F",
+      });
+      return;
+    }
     if (cart.length === 0) {
       Swal.fire("Cart Empty", "Please add items to your cart before checking out.", "info");
       return;
@@ -219,10 +320,43 @@ export default function MenuPage({ params }: PageProps) {
         cancelButtonColor: "#aaa",
         confirmButtonText: "Go to Login",
       });
-      if (result.isConfirmed) {
-        router.push("/login");
-      }
+      if (result.isConfirmed) router.push("/login");
       return;
+    }
+
+    // ── Frontend GPS proximity check ──────────────────────────────
+    let customerLat: number | null = null;
+    let customerLng: number | null = null;
+
+    if (hotelLatitude !== null && hotelLongitude !== null) {
+      try {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
+        );
+        customerLat = position.coords.latitude;
+        customerLng = position.coords.longitude;
+        const dist = haversineDistance(customerLat, customerLng, hotelLatitude, hotelLongitude);
+        if (dist > orderRadius) {
+          await Swal.fire({
+            title: "Too Far Away 📍",
+            html: `<div style="font-size:13px;color:#aaa;line-height:1.7">
+              You must be within <b style="color:#FF5A1F">${orderRadius} meters</b> of the hotel to place an order.<br/>
+              Your current distance: <b style="color:#ef4444">${Math.round(dist)}m away</b>
+            </div>`,
+            icon: "error",
+            confirmButtonColor: "#FF5A1F",
+          });
+          return;
+        }
+      } catch (err: any) {
+        await Swal.fire({
+          title: "Location Required 📍",
+          html: `<div style="font-size:13px;color:#aaa">${err?.code === 1 ? "Location access is blocked. Please enable GPS in your browser settings and try again." : "Could not get your GPS location. Please ensure location services are enabled."}</div>`,
+          icon: "warning",
+          confirmButtonColor: "#FF5A1F",
+        });
+        return;
+      }
     }
 
     const result = await Swal.fire({
@@ -230,6 +364,7 @@ export default function MenuPage({ params }: PageProps) {
       html: `
         <div class="text-gray-400 mb-5 text-sm text-center">Select your preferred payment method for table <span class="text-orange-500 font-bold font-mono">${tableNumber}</span>:</div>
         <div class="flex flex-col gap-3 mt-2 text-left">
+          ${enableQrOrdering ? `
           <button id="pay-cash-btn" class="flex items-center justify-between p-4 rounded-xl border border-gray-800 bg-gray-900/40 hover:bg-gray-850 hover:border-orange-500 transition-all duration-300 text-left w-full group focus:outline-none">
             <div class="flex items-center gap-4">
               <div class="p-3 rounded-xl bg-orange-500/10 text-orange-500 group-hover:bg-orange-500 group-hover:text-white transition-all duration-300">
@@ -244,7 +379,9 @@ export default function MenuPage({ params }: PageProps) {
               <div class="w-2.5 h-2.5 rounded-full bg-transparent group-hover:bg-orange-500 transition-all duration-300"></div>
             </div>
           </button>
+          ` : ''}
           
+          ${enableOnlineOrders ? `
           <button id="pay-online-btn" class="flex items-center justify-between p-4 rounded-xl border border-gray-800 bg-gray-900/40 hover:bg-gray-850 hover:border-orange-500 transition-all duration-300 text-left w-full group focus:outline-none">
             <div class="flex items-center gap-4">
               <div class="p-3 rounded-xl bg-orange-500/10 text-orange-500 group-hover:bg-orange-500 group-hover:text-white transition-all duration-300">
@@ -259,6 +396,7 @@ export default function MenuPage({ params }: PageProps) {
               <div class="w-2.5 h-2.5 rounded-full bg-transparent group-hover:bg-orange-500 transition-all duration-300"></div>
             </div>
           </button>
+          ` : ''}
         </div>
       `,
       showConfirmButton: false,
@@ -314,6 +452,8 @@ export default function MenuPage({ params }: PageProps) {
           body: JSON.stringify({
             table_number: tableNumber,
             hotel_slug: hotelSlug,
+            customerLat,
+            customerLng,
             items: cart.map((i) => ({
               item_id: i.item_id,
               price: i.price,
@@ -399,6 +539,8 @@ export default function MenuPage({ params }: PageProps) {
                 body: JSON.stringify({
                   table_number: tableNumber,
                   hotel_slug: hotelSlug,
+                  customerLat,
+                  customerLng,
                   items: cart.map((i) => ({
                     item_id: i.item_id,
                     price: i.price,
@@ -478,66 +620,154 @@ export default function MenuPage({ params }: PageProps) {
   }
 
   return (
-    <div className="mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700">
+    <div className="mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700 bg-white dark:bg-[#0b0d11] transition-colors duration-300">
       <CustomerNavbar />
 
-      {/* Hero Header */}
-      <div className="w-full bg-white/40 border-b border-gray-150/40 py-8 px-6 lg:px-16">
-        <div className="max-w-[1280px] mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="space-y-1.5 text-center md:text-left">
-            <h1 className="text-3xl font-black tracking-tight text-gray-900 flex items-center justify-center md:justify-start gap-2">
-              <Utensils className="text-[var(--orange)]" />
-              <span>Explore Our Menu</span>
-            </h1>
-            <p className="text-sm font-semibold text-gray-500">
-              Select category and browse freshly prepared delicacies.
-            </p>
+      {!isOpen && (
+        <div className="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white py-3.5 px-6 font-sans border-b border-red-800 shadow-md z-20">
+          <div className="max-w-[1280px] mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-lg animate-pulse">
+                🏪
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-extrabold uppercase tracking-wide">Hotel is Currently Closed</span>
+                <span className="text-xs font-semibold opacity-90 mt-0.5">We are not accepting new orders at the moment. You can still browse our menu.</span>
+              </div>
+            </div>
           </div>
+        </div>
+      )}
 
-          {/* Quick Filters */}
+      {/* Visual Masterpiece Full-Bleed Cover & Brand Header */}
+      {showBanner ? (
+        <div className="relative w-full h-[220px] md:h-[300px] overflow-hidden select-none border-b border-gray-150/40 dark:border-zinc-800/40">
+          {/* Cover Banner Image */}
+          {bannerUrl ? (
+            <img 
+              src={bannerUrl} 
+              alt={hotelName} 
+              className="w-full h-full object-cover transform scale-102 transition-transform duration-700 hover:scale-105"
+            />
+          ) : (
+            /* Aesthetic Fallback Cover Image (stunning high-res dining spread) */
+            <div className="w-full h-full bg-[url('https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1600&q=80')] bg-cover bg-center transform scale-102 transition-transform duration-700 hover:scale-105" />
+          )}
+          
+          {/* Modern dark radial overlay to ensure readability */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0e1017] via-black/45 to-black/35 dark:from-[#0b0d11] transition-colors duration-300" />
+          
+          {/* Floating Brand Elements Container */}
+          <div className="absolute bottom-6 left-6 right-6 lg:left-16 lg:right-16 max-w-[1280px] mx-auto flex flex-col md:flex-row items-center md:items-end justify-between gap-4 md:gap-6 z-10">
+            <div className="flex flex-col md:flex-row items-center md:items-end gap-4 md:gap-6 text-center md:text-left w-full">
+              {/* Elegant overlapping brand logo badge */}
+              {showLogo && (
+                <div className="w-20 h-20 md:w-24 md:h-24 rounded-3xl bg-white dark:bg-zinc-900 p-1 border-2 border-orange-500 shadow-xl flex-shrink-0 flex items-center justify-center overflow-hidden transition-all duration-300 transform hover:scale-105 animate-fade-in">
+                  {logoUrl ? (
+                    <img 
+                      src={logoUrl} 
+                      alt={`${hotelName} Logo`} 
+                      className="w-full h-full object-cover rounded-2xl"
+                    />
+                  ) : (
+                    /* Sleek Monogram Initials Fallback if no logo is available */
+                    <span className="text-xl md:text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-amber-500">
+                      {hotelName ? hotelName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase() : "HB"}
+                    </span>
+                  )}
+                </div>
+              )}
+              
+              {/* Typography block */}
+              <div className="space-y-1 md:pb-1">
+                <h1 className="text-2xl md:text-4xl lg:text-5xl font-black tracking-tight text-white drop-shadow-md">
+                  {hotelName || "HotByte"}
+                </h1>
+                <p className="text-xs md:text-sm font-bold tracking-widest text-orange-400 flex items-center justify-center md:justify-start gap-1.5 drop-shadow-sm uppercase">
+                  <span>{tagline || "Served with Love"}</span>
+                  <span className="text-red-500 animate-pulse text-[13px] md:text-base">❤️</span>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Dynamic premium compact header area when banner is hidden */
+        <div className="bg-white dark:bg-zinc-900/60 border-b border-gray-150/40 dark:border-zinc-800/40 py-6 px-6 lg:px-16 animate-fade-in">
+          <div className="max-w-[1280px] mx-auto flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
+            {showLogo && (
+              <div className="w-16 h-16 rounded-2xl bg-gray-50 dark:bg-zinc-800 p-1 border-2 border-orange-500 shadow-md flex-shrink-0 flex items-center justify-center overflow-hidden">
+                {logoUrl ? (
+                  <img src={logoUrl} alt={`${hotelName} Logo`} className="w-full h-full object-cover rounded-xl" />
+                ) : (
+                  <span className="text-lg font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-amber-500">
+                    {hotelName ? hotelName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase() : "HB"}
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="space-y-1">
+              <h1 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white">
+                {hotelName || "HotByte"}
+              </h1>
+              <p className="text-xs font-bold tracking-widest text-orange-500 flex items-center justify-center sm:justify-start gap-1 uppercase">
+                <span>{tagline || "Served with Love"}</span>
+                <span className="text-red-500 animate-pulse text-xs">❤️</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Browse Section */}
+      <main className="flex-grow max-w-[1280px] mx-auto w-full px-6 py-8 flex flex-col gap-8 bg-transparent">
+        
+        {/* Sleek Search & Quick Filter Controls Bar */}
+        <div className="w-full flex flex-col md:flex-row items-center justify-between gap-4 bg-white dark:bg-zinc-900/60 p-4 border border-gray-150/40 dark:border-zinc-800/40 rounded-3xl shadow-sm backdrop-blur-md transition-all duration-300">
           <div className="w-full md:w-auto flex flex-col sm:flex-row items-center gap-3">
             {/* Search Input */}
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3.5 top-3.5 text-gray-400" size={16} />
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute left-3.5 top-3.5 text-gray-400 dark:text-gray-550" size={16} />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search food item..."
-                className="w-full pl-10 pr-4 py-3 rounded-2xl bg-white border border-gray-205 focus:border-[var(--orange)] outline-none text-sm font-semibold text-gray-800 transition-all shadow-sm"
+                placeholder="Search chef's specials..."
+                className="w-full pl-10 pr-4 py-3 rounded-2xl bg-gray-50 dark:bg-zinc-850/80 border border-gray-205 dark:border-zinc-800 focus:border-[var(--orange)] dark:focus:border-[var(--orange)] outline-none text-sm font-semibold text-gray-800 dark:text-gray-200 transition-all shadow-inner"
               />
             </div>
 
             {/* Veg Only Toggle */}
             <button
               onClick={() => setIsVegOnly(!isVegOnly)}
-              className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border text-sm font-bold transition-all cursor-pointer shadow-sm ${
+              className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border text-sm font-bold transition-all cursor-pointer shadow-sm select-none ${
                 isVegOnly
-                  ? "bg-emerald-50 border-emerald-350 text-emerald-700"
-                  : "bg-white border-gray-205 text-gray-650 hover:bg-gray-50"
+                  ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-350 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-400"
+                  : "bg-white dark:bg-zinc-900 border-gray-205 dark:border-zinc-800 text-gray-650 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
               }`}
             >
-              <Leaf size={16} className={isVegOnly ? "fill-emerald-700" : ""} />
+              <Leaf size={16} className={isVegOnly ? "fill-emerald-750" : ""} />
               <span>Veg Only</span>
             </button>
           </div>
-        </div>
-      </div>
 
-      {/* Main Browse Section */}
-      <main className="flex-grow max-w-[1280px] mx-auto w-full px-6 py-8 flex flex-col gap-8">
+          <div className="hidden md:flex items-center gap-2.5 text-xs font-bold text-gray-450 dark:text-gray-500 uppercase tracking-widest bg-gray-50 dark:bg-zinc-850/30 px-3.5 py-2 rounded-xl">
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-ping"></span>
+            <span>Digital QR Station: {tableNumber}</span>
+          </div>
+        </div>
         
         {/* Dynamic Category Selector Scroll */}
         {categories.length > 0 && (
-          <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-none">
+          <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-none select-none">
             {categories.map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
                 className={`px-5 py-3 rounded-2xl text-xs font-bold whitespace-nowrap tracking-wide transition-all cursor-pointer shadow-sm ${
                   selectedCategory === cat
-                    ? "bg-[var(--orange)] text-white shadow-lg shadow-orange-500/10"
-                    : "bg-white border border-gray-200/80 text-gray-600 hover:text-gray-900 hover:border-gray-350"
+                    ? "bg-[var(--orange)] text-white shadow-lg shadow-orange-500/20"
+                    : "bg-white dark:bg-zinc-900 border border-gray-200/80 dark:border-zinc-800/60 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:border-gray-350 dark:hover:border-zinc-750"
                 }`}
               >
                 {cat === "All" && <Sparkles size={12} className="inline mr-1" />}
@@ -571,9 +801,9 @@ export default function MenuPage({ params }: PageProps) {
             {filteredItems.map((item) => (
               <div
                 key={item.item_id}
-                className={`glass-card rounded-3xl overflow-hidden flex flex-col relative transition-all duration-300 ${
+                className={`bg-white dark:bg-zinc-900 border border-gray-150/40 dark:border-zinc-800/55 rounded-3xl overflow-hidden flex flex-col relative transition-all duration-300 ${
                   item.is_available
-                    ? "hover:shadow-xl hover:shadow-orange-100 hover:-translate-y-1.5"
+                    ? "hover:shadow-xl hover:shadow-orange-100 dark:hover:shadow-orange-950/10 hover:-translate-y-1.5"
                     : "opacity-75"
                 }`}
               >
@@ -602,7 +832,7 @@ export default function MenuPage({ params }: PageProps) {
                 )}
 
                 {/* Food Image Container */}
-                <div className="aspect-[4/3] bg-gray-100 w-full relative overflow-hidden">
+                <div className="aspect-[4/3] bg-gray-100 dark:bg-zinc-800 w-full relative overflow-hidden">
                   {item.image_url ? (
                     <img
                       src={item.image_url}
@@ -610,7 +840,7 @@ export default function MenuPage({ params }: PageProps) {
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
+                    <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 dark:text-gray-650">
                       <Utensils size={48} />
                     </div>
                   )}
@@ -626,38 +856,45 @@ export default function MenuPage({ params }: PageProps) {
                 </div>
 
                 {/* Card details */}
-                <div className="p-5 flex-1 flex flex-col justify-between gap-4">
+                <div className="p-5 flex-1 flex flex-col justify-between gap-4 bg-white dark:bg-zinc-900">
                   <div className="space-y-1">
-                    <h3 className="font-extrabold text-base text-gray-900 leading-snug line-clamp-1">
+                    <h3 className="font-extrabold text-base text-gray-900 dark:text-white leading-snug line-clamp-1">
                       {item.name}
                     </h3>
-                    <p className="text-xs font-semibold text-gray-400 line-clamp-2">
+                    <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 line-clamp-2">
                       {item.description}
                     </p>
                   </div>
 
                   <div className="flex items-center justify-between pt-1">
                     <div className="flex flex-col leading-none">
-                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Price</span>
-                      <span className="text-lg font-black text-gray-900 mt-0.5">₹{item.price}</span>
+                      <span className="text-[10px] text-gray-400 dark:text-gray-550 font-bold uppercase tracking-wider">Price</span>
+                      <span className="text-lg font-black text-gray-900 dark:text-white mt-0.5 font-mono">₹{item.price}</span>
                     </div>
 
-                    {item.is_available ? (
+                    {!isOpen ? (
+                      <button
+                        disabled
+                        className="px-4 py-2.5 text-gray-400 dark:text-gray-500 font-bold text-xs bg-gray-150 dark:bg-zinc-800 border border-gray-250 dark:border-zinc-800 rounded-xl flex items-center gap-1.5 cursor-not-allowed uppercase"
+                      >
+                        Closed
+                      </button>
+                    ) : item.is_available ? (
                       cart.find((i) => i.item_id === item.item_id) ? (
                         /* Quantity adjusters */
-                        <div className="flex items-center gap-2.5 bg-orange-50 border border-orange-200 rounded-xl p-1 shadow-sm">
+                        <div className="flex items-center gap-2.5 bg-orange-50 dark:bg-orange-950/15 border border-orange-200 dark:border-orange-900/30 rounded-xl p-1 shadow-sm">
                           <button
                             onClick={() => handleDecreaseQuantity(item.item_id)}
-                            className="w-8 h-8 rounded-lg hover:bg-orange-100 flex items-center justify-center text-orange-600 transition-colors cursor-pointer"
+                            className="w-8 h-8 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-950/40 flex items-center justify-center text-orange-600 dark:text-orange-400 transition-colors cursor-pointer"
                           >
                             <Minus size={14} />
                           </button>
-                          <span className="text-sm font-extrabold text-orange-950">
+                          <span className="text-sm font-extrabold text-orange-950 dark:text-orange-100">
                             {cart.find((i) => i.item_id === item.item_id)?.quantity}
                           </span>
                           <button
                             onClick={() => handleAddToCart(item)}
-                            className="w-8 h-8 rounded-lg hover:bg-orange-100 flex items-center justify-center text-orange-600 transition-colors cursor-pointer"
+                            className="w-8 h-8 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-950/40 flex items-center justify-center text-orange-600 dark:text-orange-400 transition-colors cursor-pointer"
                           >
                             <Plus size={14} />
                           </button>
@@ -675,7 +912,7 @@ export default function MenuPage({ params }: PageProps) {
                     ) : (
                       <button
                         disabled
-                        className="px-4 py-2.5 text-gray-400 font-bold text-xs bg-gray-100 border border-gray-200 rounded-xl flex items-center gap-1.5"
+                        className="px-4 py-2.5 text-gray-400 font-bold text-xs bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-800 rounded-xl flex items-center gap-1.5"
                       >
                         Unavailable
                       </button>
@@ -720,35 +957,35 @@ export default function MenuPage({ params }: PageProps) {
           ></div>
 
           {/* Drawer Panel */}
-          <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col z-10 animate-fade-in-up">
+          <div className="relative w-full max-w-md bg-white dark:bg-[#12141c] border-l border-gray-150/40 dark:border-zinc-800/40 h-full shadow-2xl flex flex-col z-10 animate-fade-in-up">
             
             {/* Drawer Header */}
-            <div className="p-6 border-b border-gray-150 flex items-center justify-between">
+            <div className="p-6 border-b border-gray-150 dark:border-zinc-800/50 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ShoppingCart className="text-[var(--orange)]" />
-                <h2 className="text-lg font-black text-gray-900">Your Basket</h2>
-                <span className="px-2 py-0.5 bg-orange-100 text-[var(--orange)] rounded-lg text-xs font-bold">
+                <h2 className="text-lg font-black text-gray-900 dark:text-white">Your Basket</h2>
+                <span className="px-2 py-0.5 bg-orange-100 dark:bg-orange-950/20 text-[var(--orange)] dark:text-orange-400 rounded-lg text-xs font-bold">
                   {cartCount} Items
                 </span>
               </div>
               <button
                 onClick={() => setIsCartOpen(false)}
-                className="p-1 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-800 cursor-pointer"
+                className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white cursor-pointer"
               >
                 <X size={20} />
               </button>
             </div>
 
             {/* Table Number & Quick Options */}
-            <div className="p-6 bg-gray-50 border-b border-gray-150 flex items-center justify-between gap-4">
+            <div className="p-6 bg-gray-50 dark:bg-zinc-900/40 border-b border-gray-150 dark:border-zinc-800/50 flex items-center justify-between gap-4">
               <div className="flex flex-col">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Dining Station</span>
-                <span className="text-sm font-extrabold text-gray-800 mt-0.5">Enter Table Number</span>
+                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-550 uppercase tracking-wider">Dining Station</span>
+                <span className="text-sm font-extrabold text-gray-800 dark:text-gray-200 mt-0.5">Enter Table Number</span>
               </div>
               <select
                 value={tableNumber}
                 onChange={(e) => setTableNumber(e.target.value)}
-                className="px-4 py-2 bg-white rounded-xl border border-gray-205 text-sm font-bold text-gray-800 outline-none focus:border-[var(--orange)] shadow-sm"
+                className="px-4 py-2 bg-white dark:bg-zinc-950 rounded-xl border border-gray-205 dark:border-zinc-850 text-sm font-bold text-gray-800 dark:text-gray-300 outline-none focus:border-[var(--orange)] shadow-sm"
               >
                 {Array.from({ length: tableCount }, (_, i) => `T-${i + 1}`).map((t) => (
                   <option key={t} value={t}>
@@ -763,10 +1000,10 @@ export default function MenuPage({ params }: PageProps) {
               {cart.map((item) => (
                 <div
                   key={item.item_id}
-                  className="flex items-center justify-between gap-4 border-b border-gray-100 pb-4 last:border-0"
+                  className="flex items-center justify-between gap-4 border-b border-gray-100 dark:border-zinc-800/40 pb-4 last:border-0"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-12 h-12 rounded-xl bg-gray-150 overflow-hidden flex-shrink-0">
+                    <div className="w-12 h-12 rounded-xl bg-gray-150 dark:bg-zinc-800 overflow-hidden flex-shrink-0">
                       <img
                         src={item.image_url}
                         alt={item.name}
@@ -774,33 +1011,39 @@ export default function MenuPage({ params }: PageProps) {
                       />
                     </div>
                     <div className="min-w-0">
-                      <h4 className="font-extrabold text-sm text-gray-900 leading-snug truncate">
+                      <h4 className="font-extrabold text-sm text-gray-900 dark:text-white leading-snug truncate">
                         {item.name}
                       </h4>
-                      <p className="text-xs font-bold text-gray-450 mt-0.5">₹{item.price}</p>
+                      <p className="text-xs font-bold text-gray-450 dark:text-gray-500 mt-0.5 font-mono">₹{item.price}</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3">
                     {/* Quantity controls */}
-                    <div className="flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-lg p-0.5">
+                    <div className="flex items-center gap-2.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-805 rounded-lg p-0.5">
                       <button
                         onClick={() => handleDecreaseQuantity(item.item_id)}
-                        className="w-6 h-6 rounded-md hover:bg-gray-200 flex items-center justify-center text-gray-600 cursor-pointer"
+                        disabled={!isOpen}
+                        className={`w-6 h-6 rounded-md flex items-center justify-center text-gray-600 dark:text-gray-400 ${
+                          isOpen ? "hover:bg-gray-200 dark:hover:bg-zinc-800 cursor-pointer" : "opacity-50 cursor-not-allowed"
+                        }`}
                       >
                         <Minus size={10} />
                       </button>
-                      <span className="text-xs font-bold text-gray-800">{item.quantity}</span>
+                      <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{item.quantity}</span>
                       <button
                         onClick={() => handleAddToCart(item)}
-                        className="w-6 h-6 rounded-md hover:bg-gray-200 flex items-center justify-center text-gray-600 cursor-pointer"
+                        disabled={!isOpen}
+                        className={`w-6 h-6 rounded-md flex items-center justify-center text-gray-600 dark:text-gray-400 ${
+                          isOpen ? "hover:bg-gray-200 dark:hover:bg-zinc-800 cursor-pointer" : "opacity-50 cursor-not-allowed"
+                        }`}
                       >
                         <Plus size={10} />
                       </button>
                     </div>
 
                     {/* Total Price & Delete */}
-                    <span className="text-sm font-black text-gray-950 w-14 text-right">
+                    <span className="text-sm font-black text-gray-955 dark:text-white w-14 text-right font-mono">
                       ₹{item.price * item.quantity}
                     </span>
                   </div>
@@ -809,11 +1052,11 @@ export default function MenuPage({ params }: PageProps) {
             </div>
 
             {/* Drawer Checkout Footer */}
-            <div className="p-6 border-t border-gray-150 bg-white space-y-4">
+            <div className="p-6 border-t border-gray-150 dark:border-zinc-800/50 bg-white dark:bg-[#12141c] space-y-4">
               <div className="flex justify-between items-end">
                 <div className="flex flex-col leading-none">
-                  <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Subtotal bill</span>
-                  <span className="text-2xl font-black text-gray-900 mt-1">₹{cartTotal}</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-550 font-bold uppercase tracking-wider">Subtotal bill</span>
+                  <span className="text-2xl font-black text-gray-900 dark:text-white mt-1 font-mono">₹{cartTotal}</span>
                 </div>
                 <button
                   onClick={handleClearCart}
@@ -825,9 +1068,21 @@ export default function MenuPage({ params }: PageProps) {
 
               <button
                 onClick={handleCheckout}
-                className="w-full btn-orange py-4 rounded-2xl font-black text-white flex items-center justify-center gap-2.5 shadow-lg shadow-orange-500/20 cursor-pointer"
+                disabled={!(isOpen && (enableQrOrdering || enableOnlineOrders))}
+                className={`w-full py-4 rounded-2xl font-black text-white flex items-center justify-center gap-2.5 transition-all ${
+                  isOpen && (enableQrOrdering || enableOnlineOrders)
+                    ? "btn-orange shadow-lg shadow-orange-500/20 cursor-pointer" 
+                    : "bg-gray-400 border border-gray-300 dark:border-zinc-800 text-gray-200 dark:text-gray-400 cursor-not-allowed"
+                }`}
               >
-                <span>Checkout Dining Order</span>
+                <span>
+                  {!isOpen 
+                    ? "Closed - Cannot Place Order" 
+                    : (!enableQrOrdering && !enableOnlineOrders)
+                      ? "Ordering is currently disabled"
+                      : "Checkout Dining Order"
+                  }
+                </span>
                 <ArrowRight size={18} />
               </button>
             </div>
@@ -837,9 +1092,9 @@ export default function MenuPage({ params }: PageProps) {
       )}
 
       {/* Footer */}
-      <footer className="w-full py-4 border-t border-gray-150/40 bg-white/60 text-center">
-        <p className="text-[10px] font-bold text-gray-450 uppercase tracking-[0.2em]">
-          &copy; 2026 HotByte. Tables QR Integrated.
+      <footer className="w-full py-6 border-t border-gray-150/40 dark:border-zinc-800/40 bg-white/60 dark:bg-zinc-950/20 text-center transition-colors">
+        <p className="text-[10px] font-bold text-gray-450 dark:text-gray-500 uppercase tracking-[0.2em]">
+          &copy; 2026 {hotelName || "HotByte"}. Tables QR Integrated.
         </p>
       </footer>
     </div>

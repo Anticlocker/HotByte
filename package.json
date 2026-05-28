@@ -8,15 +8,24 @@
     "backend"
   ],
   "scripts": {
-    "dev:backend": "npm run dev --workspace=backend",
-    "dev:frontend": "npm run dev --workspace=frontend",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "predev:backend": "npx -y kill-port 5000",
+    "dev:backend": "npm run dev --workspace=backend --silent",
+    "predev:frontend": "npx -y kill-port 3000",
+    "dev:frontend": "npm run dev --workspace=frontend --silent",
+    "dev": "concurrently --names \"API,WEB\" --prefix-colors \"yellow.bold,cyan.bold\" --prefix \"[{name}]\" \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build:frontend": "npm run build --workspace=frontend"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
-    "next": "16.2.6",
+    "kill-port": "^2.0.1",
+    "next": "^16.2.6",
     "react": "19.2.4",
     "react-dom": "19.2.4"
+  },
+  "dependencies": {
+    "@lottiefiles/react-lottie-player": "^3.6.0",
+    "framer-motion": "^12.40.0",
+    "react-circular-progressbar": "^2.2.0",
+    "swr": "^2.4.1"
   }
 }

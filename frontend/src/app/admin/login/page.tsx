@@ -8,7 +8,7 @@ import Swal from "sweetalert2";
 function AdminLoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const hotelSlug = searchParams.get("hotel");
+  const hotelSlug = searchParams?.get("hotel") ?? null;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);

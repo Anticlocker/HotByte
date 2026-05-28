@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 
+import { useAdminSession } from "@/context/AdminSessionContext";
+
 interface OrderItem {
   order_item_id: number;
   item_name: string;
@@ -55,6 +57,7 @@ export default function CustomerDetailReport({
 }) {
   const router = useRouter();
   const { id } = use(params);
+  const { admin } = useAdminSession();
 
   const [customer, setCustomer] = useState<CustomerProfile | null>(null);
   const [orders, setOrders] = useState<HistoricOrder[]>([]);
@@ -62,16 +65,9 @@ export default function CustomerDetailReport({
   const [loading, setLoading] = useState(true);
 
   const fetchCustomerReport = async () => {
+    if (!admin) return;
     try {
-      // 1. Session check
-      const sessionRes = await fetch("/api/auth/admin/session-check");
-      const sessionData = await sessionRes.json();
-      if (!sessionData.authenticated) {
-        router.push("/admin/login");
-        return;
-      }
-
-      // 2. Fetch specific customer data
+      // 1. Fetch specific customer data
       const res = await fetch(`/api/admin/users/${id}`);
       const data = await res.json();
 
@@ -91,8 +87,10 @@ export default function CustomerDetailReport({
   };
 
   useEffect(() => {
-    fetchCustomerReport();
-  }, [router, id]);
+    if (admin) {
+      fetchCustomerReport();
+    }
+  }, [admin, id]);
 
   const totalSpent = orders
     .filter((o) => o.status === "completed")

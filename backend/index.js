@@ -5,12 +5,22 @@
 // Express.js framework use karta hai
 
 const express = require('express');
+const helmet = require('helmet');
+const morgan = require('morgan');
 const app = express();
+
+// Security headers
+app.use(helmet());
+
+// HTTP request logger
+app.use(morgan('combined'));
+
+
 const path = require('path');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const cors = require('cors');
-require('dotenv').config(); // Environment variables load karta hai (.env file se)
+require('dotenv').config({ path: require('path').join(__dirname, '.env') }); // Environment variables load karta hai (.env file se)
 
 // ⏰ IST Timezone set karo (India Standard Time)
 // Saare timestamps IST me honge
@@ -161,7 +171,7 @@ app.use('/api/payments', paymentLimiter); // Payment requests ki limit
 app.use('/api/auth', require('./routes/auth'));
 
 // Customer profile aur orders
-app.use('/api', require('./routes/profile'));
+app.use('/api/profile', require('./routes/profile'));
 
 // Menu items aur categories (Public access)
 app.use('/api/menu', require('./routes/menu'));
@@ -183,6 +193,29 @@ app.use('/api/sales', require('./routes/sales'));
 
 // Customer ratings aur reviews
 app.use('/api/ratings', require('./routes/ratings'));
+
+// Resolve short map links (e.g. maps.app.goo.gl) to bypass CORS and extract coordinates
+app.get('/api/geocode/resolve-short-url', async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url) {
+      return res.status(400).json({ success: false, message: "URL is required" });
+    }
+    
+    // We make a HEAD request and instruct Node fetch not to follow redirects automatically.
+    // This allows us to grab the exact "location" header redirect target.
+    const response = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'manual'
+    });
+    
+    const resolvedUrl = response.headers.get('location') || url;
+    return res.json({ success: true, resolvedUrl });
+  } catch (error) {
+    console.error("Resolve short URL redirect error:", error);
+    return res.status(500).json({ success: false, message: "Failed to resolve map URL redirect." });
+  }
+});
 
 // Unified Public Config (Obfuscated IDs)
 app.get('/api/config/public', (req, res) => {

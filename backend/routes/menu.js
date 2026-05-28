@@ -7,12 +7,41 @@ const db = require("./database");
 router.get("/categories", async (req, res) => {
   try {
     const hotelSlug = req.query.hotel_slug || "hotbyte";
-    const hotelResult = await db.query("SELECT hotel_id, is_frozen, table_count FROM public.hotels WHERE slug = $1", [hotelSlug]);
+    const hotelResult = await db.query(
+      `SELECT hotel_id, name, logo_url, banner_url, is_frozen, is_open, table_count,
+              tagline, description, show_logo, show_banner, primary_color, secondary_color,
+              enable_online_orders, enable_qr_ordering, settings_json, phone, email,
+              latitude, longitude, order_radius
+       FROM public.hotels WHERE slug = $1`,
+      [hotelSlug]
+    );
     
     if (hotelResult.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Hotel not found" });
     }
-    const { hotel_id: hotelId, is_frozen: isFrozen, table_count: tableCount } = hotelResult.rows[0];
+    const { 
+      hotel_id: hotelId, 
+      name: hotelName, 
+      logo_url: logoUrl, 
+      banner_url: bannerUrl, 
+      is_frozen: isFrozen, 
+      is_open: isOpen, 
+      table_count: tableCount,
+      tagline,
+      description,
+      show_logo: showLogo,
+      show_banner: showBanner,
+      primary_color: primaryColor,
+      secondary_color: secondaryColor,
+      enable_online_orders: enableOnlineOrders,
+      enable_qr_ordering: enableQrOrdering,
+      settings_json: settingsJson,
+      phone,
+      email,
+      latitude,
+      longitude,
+      order_radius: orderRadius
+    } = hotelResult.rows[0];
 
     if (isFrozen) {
       return res.status(403).json({ success: false, isFrozen: true, message: "This hotel account is frozen due to payment / subscription trial expiration." });
@@ -25,7 +54,25 @@ router.get("/categories", async (req, res) => {
     return res.json({
       success: true,
       categories: result.rows,
-      tableCount: tableCount || 5
+      tableCount: tableCount || 5,
+      isOpen: isOpen !== false,
+      hotelName: hotelName || "HotByte",
+      logoUrl: logoUrl || null,
+      bannerUrl: bannerUrl || null,
+      tagline: tagline || "Served with Love ❤️",
+      description: description || null,
+      showLogo: showLogo !== false,
+      showBanner: showBanner !== false,
+      primaryColor: primaryColor || "#FF5A1F",
+      secondaryColor: secondaryColor || "#FF5A1F",
+      enableOnlineOrders: enableOnlineOrders !== false,
+      enableQrOrdering: enableQrOrdering !== false,
+      settingsJson: settingsJson || {},
+      phone: phone || null,
+      email: email || null,
+      hotelLatitude: latitude ? parseFloat(latitude) : null,
+      hotelLongitude: longitude ? parseFloat(longitude) : null,
+      orderRadius: orderRadius || 30
     });
   } catch (error) {
     console.error("Get categories error:", error);
@@ -88,6 +135,62 @@ router.get("/items", async (req, res) => {
   } catch (error) {
     console.error("Get menu items error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch menu items" });
+  }
+});
+
+router.get("/status", async (req, res) => {
+  try {
+    const hotelSlug = req.query.hotel_slug || "hotbyte";
+    const result = await db.query(
+      `SELECT name, logo_url, banner_url, is_frozen, is_open,
+              tagline, description, show_logo, show_banner, primary_color, secondary_color,
+              enable_online_orders, enable_qr_ordering, settings_json, phone, email
+       FROM public.hotels WHERE slug = $1`,
+      [hotelSlug]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found" });
+    }
+    const { 
+      name: hotelName, 
+      logo_url: logoUrl, 
+      banner_url: bannerUrl, 
+      is_frozen: isFrozen, 
+      is_open: isOpen,
+      tagline,
+      description,
+      show_logo: showLogo,
+      show_banner: showBanner,
+      primary_color: primaryColor,
+      secondary_color: secondaryColor,
+      enable_online_orders: enableOnlineOrders,
+      enable_qr_ordering: enableQrOrdering,
+      settings_json: settingsJson,
+      phone,
+      email
+    } = result.rows[0];
+    return res.json({
+      success: true,
+      isFrozen: isFrozen || false,
+      isOpen: isOpen !== false,
+      hotelName: hotelName || "HotByte",
+      logoUrl: logoUrl || null,
+      bannerUrl: bannerUrl || null,
+      tagline: tagline || "Served with Love ❤️",
+      description: description || null,
+      showLogo: showLogo !== false,
+      showBanner: showBanner !== false,
+      primaryColor: primaryColor || "#FF5A1F",
+      secondaryColor: secondaryColor || "#FF5A1F",
+      enableOnlineOrders: enableOnlineOrders !== false,
+      enableQrOrdering: enableQrOrdering !== false,
+      settingsJson: settingsJson || {},
+      phone: phone || null,
+      email: email || null
+    });
+  } catch (error) {
+    console.error("Get hotel status error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch hotel status" });
   }
 });
 

@@ -9,7 +9,7 @@ import Swal from "sweetalert2";
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const hotelSlug = searchParams.get("hotel") || "hotbyte";
+  const hotelSlug = searchParams?.get("hotel") || "hotbyte";
 
   // Tabs: 'login' or 'register'
   const [tab, setTab] = useState<"login" | "register">("login");

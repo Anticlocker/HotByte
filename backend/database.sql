@@ -215,6 +215,37 @@ ALTER TABLE IF EXISTS public.sessions
 CREATE INDEX IF NOT EXISTS idx_sessions_customer_id
     ON public.sessions(customer_id);
 
+-- Subscription Plans Table
+CREATE TABLE IF NOT EXISTS public.subscription_plans (
+    plan_id serial NOT NULL,
+    name character varying(100) COLLATE pg_catalog."default" NOT NULL,
+    price_monthly numeric(10,2) NOT NULL,
+    price_yearly numeric(10,2),
+    features text COLLATE pg_catalog."default",
+    trial_days integer DEFAULT 14,
+    CONSTRAINT subscription_plans_pkey PRIMARY KEY (plan_id)
+);
+
+-- Subscriptions Table
+CREATE TABLE IF NOT EXISTS public.subscriptions (
+    subscription_id serial NOT NULL,
+    hotel_id integer NOT NULL,
+    plan_id integer NOT NULL,
+    start_date date NOT NULL DEFAULT CURRENT_DATE,
+    expiry_date date,
+    status varchar(20) NOT NULL DEFAULT 'active',
+    CONSTRAINT subscriptions_pkey PRIMARY KEY (subscription_id),
+    CONSTRAINT fk_subscriptions_hotel FOREIGN KEY (hotel_id) REFERENCES public.hotels (hotel_id) ON DELETE CASCADE,
+    CONSTRAINT fk_subscriptions_plan FOREIGN KEY (plan_id) REFERENCES public.subscription_plans (plan_id) ON DELETE RESTRICT
+);
+
+
+-- Subscription Plans Seed
+INSERT INTO public.subscription_plans (name, price_monthly, price_yearly, features) VALUES
+  ('trial', 0, 0, '{"menu_items":20,"admin_managers":1,"qr_dining":true,"checkout_dashboard":true,"sandbox":true}'),
+  ('basic', 999, 11988, '{"menu_items":"unlimited","admin_managers":3,"razorpay":true,"kds":true,"dynamic_qr":true,"pdf_reports":true}'),
+  ('pro', 2499, 29988, '{"all_basic":true,"unlimited_staff":true,"advanced_analytics":true,"occupancy_tracking":true,"priority_support":true,"menu_assistant":true}');
+
 -- Data Seeding
 INSERT INTO public.admins (username, password, name, email) 
 VALUES ('ravi', '8ff9538e65e6781d654b811f88161d12455935ffb8f470815063b6ab6cb7fdff', 'Ravi Admin', 'ravi@HotByte.in')

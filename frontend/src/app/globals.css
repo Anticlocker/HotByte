@@ -778,3 +778,14 @@ body {
   }
 }
 
+/* Fix for Leaflet maps in Tailwind environments */
+.leaflet-container img {
+  max-width: none !important;
+  max-height: none !important;
+}
+
+.leaflet-container {
+  font-family: var(--font-sans) !important;
+}
+
+

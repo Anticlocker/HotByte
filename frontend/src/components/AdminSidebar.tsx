@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
+  CreditCard,
   ChefHat,
   BarChart3,
   Users,
@@ -17,41 +18,57 @@ import {
   Lock,
 } from "lucide-react";
 import Swal from "sweetalert2";
-
-interface AdminInfo {
-  id: number;
-  username: string;
-  hotelId?: number;
-  role?: string;
-  hotelSlug?: string;
-}
+import { useAdminSession } from "@/context/AdminSessionContext";
 
 export default function AdminSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [admin, setAdmin] = useState<AdminInfo | null>(null);
+  const { admin, loading } = useAdminSession();
   const [isOpen, setIsOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [hotelOpen, setHotelOpen] = useState(true);
 
-  const hotelSlug = searchParams.get("hotel") || admin?.hotelSlug;
+  const hotelSlug = searchParams?.get("hotel") || admin?.hotelSlug;
 
   useEffect(() => {
-    fetch("/api/auth/admin/session-check")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.authenticated) {
-          setAdmin(data.admin);
-        } else {
-          router.push("/admin/login");
-        }
-        setLoading(false);
-      })
-      .catch(() => {
-        router.push("/admin/login");
-        setLoading(false);
+    if (admin) {
+      // Fetch operational status if assigned to a hotel
+      fetch("/api/admin/hotel-status")
+        .then((res) => res.json())
+        .then((statusData) => {
+          if (statusData.success) {
+            setHotelOpen(statusData.isOpen);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [admin]);
+
+  const handleToggleHotelStatus = async () => {
+    const nextStatus = !hotelOpen;
+    try {
+      const res = await fetch("/api/admin/toggle-hotel-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isOpen: nextStatus }),
       });
-  }, [router]);
+      const data = await res.json();
+      if (data.success) {
+        setHotelOpen(data.isOpen);
+        Swal.fire({
+          title: data.isOpen ? "Hotel Opened!" : "Hotel Closed!",
+          text: data.message,
+          icon: "success",
+          timer: 1500,
+          showConfirmButton: false,
+        });
+      } else {
+        Swal.fire("Error", data.message || "Failed to update status", "error");
+      }
+    } catch (err) {
+      Swal.fire("Error", "Network connection failed", "error");
+    }
+  };
 
   const handleLogout = async () => {
     const result = await Swal.fire({
@@ -90,8 +107,10 @@ export default function AdminSidebar() {
     { name: "Sales Report", href: "/admin/sales-report", icon: BarChart3 },
     { name: "Customer Log", href: "/admin/users", icon: Users },
     { name: "Order History", href: "/admin/oldorders", icon: History },
-    { name: "Menu & Categories", href: "/admin/settings", icon: Settings },
+    { name: "Menu & Categories", href: "/admin/menu", icon: Menu },
     { name: "Ratings & Reviews", href: "/admin/ratings", icon: Star },
+    { name: "Subscription Plans", href: "/admin/subscription-plans", icon: CreditCard },
+    { name: "Settings", href: "/admin/settings", icon: Settings },
   ];
 
   if (loading) {
@@ -119,18 +138,44 @@ export default function AdminSidebar() {
         }`}
       >
         {/* Brand Header */}
-        <div className="p-6 border-b border-gray-800 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white btn-orange shadow-lg">
-            <i className="fas fa-fire text-sm"></i>
+        <div className="p-6 border-b border-gray-800 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white btn-orange shadow-lg">
+              <i className="fas fa-fire text-sm"></i>
+            </div>
+            <div className="flex flex-col leading-none">
+              <span className="text-lg font-black tracking-tighter text-white">
+                Hot<span className="text-[var(--orange)]">Byte</span>
+              </span>
+              <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mt-0.5 opacity-80">
+                Admin Portal
+              </span>
+            </div>
           </div>
-          <div className="flex flex-col leading-none">
-            <span className="text-lg font-black tracking-tighter text-white">
-              Hot<span className="text-[var(--orange)]">Byte</span>
-            </span>
-            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mt-0.5 opacity-80">
-              Admin Portal
-            </span>
-          </div>
+
+          {/* Simple, sleek, cool toggle next to hotel brand name */}
+          {admin && (
+            <button
+              onClick={handleToggleHotelStatus}
+              title={hotelOpen ? "Hotel is OPEN (Accepting Orders). Click to Close." : "Hotel is CLOSED (Not Accepting Orders). Click to Open."}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-0 transition-all duration-300 ease-in-out outline-none focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:outline-none active:outline-none select-none p-0.5 ${
+                hotelOpen 
+                  ? "bg-gradient-to-r from-emerald-500 to-teal-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]" 
+                  : "bg-gradient-to-r from-red-500 to-rose-600 shadow-[0_0_15px_rgba(239,68,68,0.35)]"
+              }`}
+            >
+              <span
+                className={`pointer-events-none flex items-center justify-center h-5 w-5 transform rounded-full bg-white shadow-md transition duration-300 ease-in-out ${
+                  hotelOpen ? "translate-x-5" : "translate-x-0"
+                }`}
+              >
+                {/* Embedded micro-status indicator dot inside the physical toggle knob */}
+                <span className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                  hotelOpen ? "bg-emerald-500 animate-pulse" : "bg-red-500"
+                }`} />
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Current User Card */}

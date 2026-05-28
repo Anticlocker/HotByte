@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require("./database");
 const crypto = require("crypto");
 const { requireAdmin } = require("./auth");
+const { seedDefaultMenu } = require("./seedDefaultMenu");
 
 // Hashing helper for password
 const hashPassword = (pwd) => crypto.createHash('sha256').update(pwd).digest('hex');
@@ -37,6 +38,9 @@ router.get("/hotels", async (req, res) => {
         h.plan,
         h.trial_ends_at,
         h.table_count,
+        h.latitude,
+        h.longitude,
+        h.order_radius,
         (SELECT COUNT(*) FROM admins a WHERE a.hotel_id = h.hotel_id) as manager_count,
         (SELECT COUNT(*) FROM menu_items m WHERE m.hotel_id = h.hotel_id) as item_count,
         (SELECT COUNT(*) FROM orders o WHERE o.hotel_id = h.hotel_id) as order_count,
@@ -59,6 +63,9 @@ router.get("/hotels", async (req, res) => {
         plan: row.plan || 'trial',
         trialEndsAt: row.trial_ends_at,
         tableCount: row.table_count || 5,
+        latitude: row.latitude ? parseFloat(row.latitude) : null,
+        longitude: row.longitude ? parseFloat(row.longitude) : null,
+        orderRadius: row.order_radius || 30,
         managerCount: parseInt(row.manager_count),
         itemCount: parseInt(row.item_count),
         orderCount: parseInt(row.order_count),
@@ -76,40 +83,100 @@ router.get("/hotels", async (req, res) => {
  * Creates/Registers a new hotel tenant
  */
 router.post("/hotels", async (req, res) => {
+  const { 
+    name, slug, phone, address, plan, tableCount,
+    adminName, adminUsername, adminEmail, adminPassword,
+    latitude, longitude, orderRadius
+  } = req.body;
+
+  if (!name || !slug) {
+    return res.status(400).json({ success: false, message: "Hotel name and unique URL slug are required." });
+  }
+
+  if (!adminUsername || !adminPassword) {
+    return res.status(400).json({ success: false, message: "Hotel Admin username and password are required." });
+  }
+
+  if (adminPassword.length < 6) {
+    return res.status(400).json({ success: false, message: "Admin password must be at least 6 characters long." });
+  }
+
+  const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9\-]/g, "");
+  if (!cleanSlug) {
+    return res.status(400).json({ success: false, message: "Invalid URL slug. Use alphanumeric and hyphen characters only." });
+  }
+
   try {
-    const { name, slug, phone, address, plan, tableCount } = req.body;
-    
-    if (!name || !slug) {
-      return res.status(400).json({ success: false, message: "Hotel name and unique URL slug are required." });
-    }
-    
-    const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9\-]/g, "");
-    if (!cleanSlug) {
-      return res.status(400).json({ success: false, message: "Invalid URL slug. Use alphanumeric and hyphen characters only." });
+    // Check for existing slug
+    const existingSlug = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [cleanSlug]);
+    if (existingSlug.rows.length > 0) {
+      return res.status(409).json({ success: false, message: "A hotel with this URL slug already exists." });
     }
 
-    const existing = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [cleanSlug]);
-    if (existing.rows.length > 0) {
-      return res.status(409).json({ success: false, message: "A hotel with this URL slug already exists." });
+    // Check for existing admin username
+    const existingUsername = await db.query("SELECT admin_id FROM public.admins WHERE username = $1", [adminUsername.trim()]);
+    if (existingUsername.rows.length > 0) {
+      return res.status(409).json({ success: false, message: "This Hotel Admin username is already taken." });
+    }
+
+    // Check for existing admin email
+    if (adminEmail && adminEmail.trim() !== "") {
+      const existingEmail = await db.query("SELECT admin_id FROM public.admins WHERE email = $1", [adminEmail.trim()]);
+      if (existingEmail.rows.length > 0) {
+        return res.status(409).json({ success: false, message: "This email address is already registered." });
+      }
     }
 
     const hotelPlan = ['trial', 'basic', 'pro'].includes(plan) ? plan : 'trial';
     const trialEndsAt = hotelPlan === 'trial' ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) : null;
     const tables = parseInt(tableCount) > 0 ? parseInt(tableCount) : 5;
 
-    const result = await db.query(
-      "INSERT INTO public.hotels (name, slug, phone, address, plan, trial_ends_at, table_count) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING hotel_id, name, slug, phone, address, plan, trial_ends_at, table_count, created_at",
-      [name.trim(), cleanSlug, phone ? phone.trim() : null, address ? address.trim() : null, hotelPlan, trialEndsAt, tables]
-    );
+    // Start Transaction
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
 
-    return res.json({
-      success: true,
-      message: "Hotel registered successfully!",
-      hotel: result.rows[0]
-    });
+      // 1. Insert Hotel
+      const lat = latitude ? parseFloat(latitude) : null;
+      const lng = longitude ? parseFloat(longitude) : null;
+      const radius = parseInt(orderRadius) > 0 ? parseInt(orderRadius) : 30;
+      const hotelResult = await client.query(
+        "INSERT INTO public.hotels (name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING hotel_id, name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, created_at",
+        [name.trim(), cleanSlug, phone ? phone.trim() : null, address ? address.trim() : null, hotelPlan, trialEndsAt, tables, lat, lng, radius]
+      );
+      const newHotel = hotelResult.rows[0];
+
+      // 2. Insert Hotel Admin Manager mapped to this hotel with role = 'admin'
+      const adminResult = await client.query(
+        "INSERT INTO public.admins (name, username, email, password, hotel_id, role) VALUES ($1, $2, $3, $4, $5, 'admin') RETURNING admin_id, name, username, email, hotel_id, role, created_at",
+        [adminName ? adminName.trim() : null, adminUsername.trim(), adminEmail && adminEmail.trim() !== "" ? adminEmail.trim() : null, hashPassword(adminPassword), newHotel.hotel_id]
+      );
+      const newAdmin = adminResult.rows[0];
+
+      // 3. Auto-seed starter menu categories & items in the SAME transaction client
+      const seedResult = await seedDefaultMenu(client, newHotel.hotel_id, true);
+
+      await client.query("COMMIT");
+
+      return res.json({
+        success: true,
+        message: "Hotel and Admin registered successfully with starter menu items!",
+        hotel: newHotel,
+        admin: newAdmin,
+        defaultMenuSeeded: seedResult.seeded,
+        defaultMenuStats: seedResult.seeded
+          ? { categories: seedResult.categoriesCreated, items: seedResult.itemsCreated }
+          : null,
+      });
+    } catch (txnError) {
+      await client.query("ROLLBACK");
+      throw txnError;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     console.error("Superadmin register hotel error:", error);
-    return res.status(500).json({ success: false, message: "Failed to register hotel." });
+    return res.status(500).json({ success: false, message: "Failed to register hotel and admin: " + error.message });
   }
 });
 
@@ -211,7 +278,7 @@ router.post("/admins", async (req, res) => {
 router.put("/hotels/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, slug, phone, address, isFrozen, plan, tableCount } = req.body;
+    const { name, slug, phone, address, isFrozen, plan, tableCount, latitude, longitude, orderRadius } = req.body;
 
     if (!name || !slug) {
       return res.status(400).json({ success: false, message: "Hotel name and unique URL slug are required." });
@@ -233,16 +300,24 @@ router.put("/hotels/:id", async (req, res) => {
     const hotelPlan = ['trial', 'basic', 'pro'].includes(plan) ? plan : undefined;
     const tables = parseInt(tableCount) > 0 ? parseInt(tableCount) : undefined;
 
+    const lat = latitude !== undefined && latitude !== null && latitude !== '' ? parseFloat(latitude) : undefined;
+    const lng = longitude !== undefined && longitude !== null && longitude !== '' ? parseFloat(longitude) : undefined;
+    const radius = parseInt(orderRadius) > 0 ? parseInt(orderRadius) : undefined;
+
+    // Build dynamic SET clause
+    const setClause = [
+      'name = $1', 'slug = $2', 'phone = $3', 'address = $4', 'is_frozen = $5'
+    ];
+    const params = [name.trim(), cleanSlug, phone ? phone.trim() : null, address ? address.trim() : null, isFrozen === true, id];
+    if (hotelPlan) { params.splice(params.length - 1, 0, hotelPlan); setClause.push(`plan = $${params.length - 1}`); }
+    if (tables) { params.splice(params.length - 1, 0, tables); setClause.push(`table_count = $${params.length - 1}`); }
+    if (lat !== undefined) { params.splice(params.length - 1, 0, lat); setClause.push(`latitude = $${params.length - 1}`); }
+    if (lng !== undefined) { params.splice(params.length - 1, 0, lng); setClause.push(`longitude = $${params.length - 1}`); }
+    if (radius !== undefined) { params.splice(params.length - 1, 0, radius); setClause.push(`order_radius = $${params.length - 1}`); }
+
     const result = await db.query(
-      `UPDATE public.hotels 
-       SET name = $1, slug = $2, phone = $3, address = $4, is_frozen = $5
-           ${hotelPlan ? ', plan = $7' : ''}
-           ${tables ? `, table_count = ${hotelPlan ? '$8' : '$7'}` : ''}
-       WHERE hotel_id = $6 
-       RETURNING hotel_id, name, slug, phone, address, is_frozen, plan, trial_ends_at, table_count, created_at`,
-      [name.trim(), cleanSlug, phone ? phone.trim() : null, address ? address.trim() : null, isFrozen === true, id,
-       ...(hotelPlan ? [hotelPlan] : []),
-       ...(tables ? [tables] : [])]
+      `UPDATE public.hotels SET ${setClause.join(', ')} WHERE hotel_id = $${params.length} RETURNING hotel_id, name, slug, phone, address, is_frozen, plan, trial_ends_at, table_count, latitude, longitude, order_radius, created_at`,
+      params
     );
 
     if (result.rows.length === 0) {
@@ -263,6 +338,9 @@ router.put("/hotels/:id", async (req, res) => {
         plan: row.plan,
         trialEndsAt: row.trial_ends_at,
         tableCount: row.table_count,
+        latitude: row.latitude ? parseFloat(row.latitude) : null,
+        longitude: row.longitude ? parseFloat(row.longitude) : null,
+        orderRadius: row.order_radius || 30,
         createdAt: row.created_at
       }
     });

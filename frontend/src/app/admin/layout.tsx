@@ -1,44 +1,28 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, Suspense } from "react";
+import { usePathname } from "next/navigation";
+import { Suspense } from "react";
 import AdminSidebar from "@/components/AdminSidebar";
+import { AdminSessionProvider, useAdminSession } from "@/context/AdminSessionContext";
 
-export default function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
+  const { isFrozen, loading } = useAdminSession();
   const isLoginPage = pathname === "/admin/login";
-  const [isFrozen, setIsFrozen] = useState(false);
-
-  useEffect(() => {
-    if (isLoginPage) return;
-    
-    fetch("/api/auth/admin/session-check")
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data.authenticated || data.admin?.role !== "admin") {
-          router.push("/admin/login");
-          return;
-        }
-        if (data.isFrozen) {
-          setIsFrozen(true);
-        }
-        // Contextual URL preservation: automatically append ?hotel=slug if missing
-        const currentParams = new URLSearchParams(window.location.search);
-        if (data.admin?.hotelSlug && !currentParams.has("hotel")) {
-          currentParams.set("hotel", data.admin.hotelSlug);
-          router.replace(`${pathname}?${currentParams.toString()}`);
-        }
-      })
-      .catch(() => {});
-  }, [isLoginPage, router, pathname]);
 
   if (isLoginPage) {
     return <>{children}</>;
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0c0c0c] text-white flex flex-col items-center justify-center gap-4">
+        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
+          Loading Control Terminal...
+        </p>
+      </div>
+    );
   }
 
   if (isFrozen) {
@@ -94,5 +78,17 @@ export default function AdminLayout({
         </footer>
       </div>
     </div>
+  );
+}
+
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <AdminSessionProvider>
+      <AdminLayoutContent>{children}</AdminLayoutContent>
+    </AdminSessionProvider>
   );
 }

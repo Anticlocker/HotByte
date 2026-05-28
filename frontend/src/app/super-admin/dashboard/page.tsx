@@ -24,6 +24,9 @@ interface Hotel {
   plan: 'trial' | 'basic' | 'pro';
   trialEndsAt: string | null;
   tableCount: number;
+  latitude: number | null;
+  longitude: number | null;
+  orderRadius: number;
 }
 
 interface AdminManager {
@@ -58,6 +61,19 @@ export default function SuperAdminDashboard() {
   const [hotelPlan, setHotelPlan] = useState<'trial' | 'basic' | 'pro'>('trial');
   const [hotelTableCount, setHotelTableCount] = useState("5");
 
+  // Hotel Admin fields inside Create Hotel
+  const [adminName, setAdminName] = useState("");
+  const [adminUsername, setAdminUsername] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+
+  // Hotel location state
+  const [hotelLat, setHotelLat] = useState<number | null>(null);
+  const [hotelLng, setHotelLng] = useState<number | null>(null);
+  const [hotelOrderRadius, setHotelOrderRadius] = useState("30");
+  const [mapReady, setMapReady] = useState(false);
+  const [detectingLocation, setDetectingLocation] = useState(false);
+
   // Manager creation form state
   const [managerName, setManagerName] = useState("");
   const [managerUsername, setManagerUsername] = useState("");
@@ -74,6 +90,10 @@ export default function SuperAdminDashboard() {
     setHotelFrozen(hotel.isFrozen || false);
     setHotelPlan(hotel.plan || 'trial');
     setHotelTableCount(String(hotel.tableCount || 5));
+    setHotelLat(hotel.latitude || null);
+    setHotelLng(hotel.longitude || null);
+    setHotelOrderRadius(String(hotel.orderRadius || 30));
+    setMapReady(false); // will re-init map
   };
 
   const cancelEditHotel = () => {
@@ -85,6 +105,14 @@ export default function SuperAdminDashboard() {
     setHotelFrozen(false);
     setHotelPlan('trial');
     setHotelTableCount("5");
+    setHotelLat(null);
+    setHotelLng(null);
+    setHotelOrderRadius("30");
+    setMapReady(false);
+    setAdminName("");
+    setAdminUsername("");
+    setAdminEmail("");
+    setAdminPassword("");
   };
 
   // ── Plan helpers ──────────────────────────────────────────────────
@@ -262,6 +290,133 @@ export default function SuperAdminDashboard() {
     checkSessionAndFetch();
   }, [router]);
 
+  // ── Leaflet map for hotel location selection ──────────────────────────
+  useEffect(() => {
+    // Only load when the hotel form panel is visible
+    if (activeTab !== "hotels") return;
+
+    const mapContainerId = "hotel-location-map";
+    // Avoid re-initializing if already done
+    const existingMap = (window as any)._hotelLeafletMap;
+
+    let retryCount = 0;
+    const initMap = () => {
+      const L = (window as any).L;
+      if (!L) return;
+
+      const container = document.getElementById(mapContainerId);
+      if (!container) {
+        if (retryCount < 10) {
+          retryCount++;
+          setTimeout(initMap, 100);
+        }
+        return;
+      }
+
+      // Destroy previous map instance if exists
+      if ((window as any)._hotelLeafletMap) {
+        try {
+          (window as any)._hotelLeafletMap.remove();
+        } catch (_) {}
+        (window as any)._hotelLeafletMap = null;
+      }
+
+      const defaultLat = hotelLat || 20.5937;
+      const defaultLng = hotelLng || 78.9629;
+      const zoom = hotelLat ? 17 : 5;
+
+      const map = L.map(mapContainerId, { zoomControl: true }).setView([defaultLat, defaultLng], zoom);
+      (window as any)._hotelLeafletMap = map;
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
+        maxZoom: 19
+      }).addTo(map);
+
+      // Custom yellow marker icon
+      const icon = L.divIcon({
+        html: `<div style="width:28px;height:28px;background:#EAB308;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+        </div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+        className: ""
+      });
+
+      let marker: any = null;
+      if (hotelLat && hotelLng) {
+        marker = L.marker([hotelLat, hotelLng], { draggable: true, icon }).addTo(map);
+        marker.on("dragend", async (e: any) => {
+          const { lat, lng } = e.target.getLatLng();
+          setHotelLat(lat);
+          setHotelLng(lng);
+          await reverseGeocode(lat, lng);
+        });
+      }
+
+      map.on("click", async (e: any) => {
+        const { lat, lng } = e.latlng;
+        setHotelLat(lat);
+        setHotelLng(lng);
+        if (marker) marker.setLatLng([lat, lng]);
+        else {
+          marker = L.marker([lat, lng], { draggable: true, icon }).addTo(map);
+          marker.on("dragend", async (ev: any) => {
+            const { lat: la, lng: lo } = ev.target.getLatLng();
+            setHotelLat(la);
+            setHotelLng(lo);
+            await reverseGeocode(la, lo);
+          });
+        }
+        await reverseGeocode(lat, lng);
+      });
+
+      setMapReady(true);
+      map.invalidateSize();
+      setTimeout(() => map.invalidateSize(), 100);
+      setTimeout(() => map.invalidateSize(), 250);
+      setTimeout(() => map.invalidateSize(), 500);
+      setTimeout(() => map.invalidateSize(), 1000);
+    };
+
+    const reverseGeocode = async (lat: number, lng: number) => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+          { headers: { "Accept-Language": "en", "User-Agent": "HotByte-Admin/1.0" } }
+        );
+        const data = await res.json();
+        if (data.display_name) setHotelAddress(data.display_name);
+      } catch {}
+    };
+
+    // Load Leaflet CSS + JS if not already loaded
+    if (!(window as any).L) {
+      if (!document.getElementById("leaflet-css")) {
+        const link = document.createElement("link");
+        link.id = "leaflet-css";
+        link.rel = "stylesheet";
+        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+        document.head.appendChild(link);
+      }
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.onload = initMap;
+      document.head.appendChild(script);
+    } else {
+      initMap();
+    }
+
+    return () => {
+      if ((window as any)._hotelLeafletMap) {
+        (window as any)._hotelLeafletMap.remove();
+        (window as any)._hotelLeafletMap = null;
+        setMapReady(false);
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, editingHotel]);
+
   const handleLogout = async () => {
     const confirm = await Swal.fire({
       title: "Logout session?",
@@ -279,10 +434,167 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  // Geocodes address text or parses Google Maps / OpenStreetMap URLs to extract exact coordinates
+  const detectAndResolveLocation = async (inputText: string) => {
+    if (!inputText.trim()) {
+      Swal.fire("Address Required", "Please enter a plain address or paste a map link first.", "info");
+      return;
+    }
+
+    setDetectingLocation(true);
+    let coords: { lat: number; lng: number } | null = null;
+    let text = inputText.trim();
+
+    // 1. Detect if it's a URL
+    const isUrl = /^(https?:\/\/[^\s]+)/i.test(text);
+
+    if (isUrl) {
+      // Resolve short URL proxy
+      if (text.includes("maps.app.goo.gl") || text.includes("goo.gl/maps")) {
+        try {
+          const res = await fetch(`/api/geocode/resolve-short-url?url=${encodeURIComponent(text)}`);
+          const data = await res.json();
+          if (data.success && data.resolvedUrl) {
+            text = data.resolvedUrl;
+          }
+        } catch (err) {
+          console.error("Failed to resolve short URL:", err);
+        }
+      }
+
+      // Google Maps long URL contains coordinates in format @lat,lng
+      const googleAtRegex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
+      const matchAt = text.match(googleAtRegex);
+      if (matchAt) {
+        coords = { lat: parseFloat(matchAt[1]), lng: parseFloat(matchAt[2]) };
+      } else {
+        // Google Maps URL with q=lat,lng query parameters
+        const googleParamRegex = /[?&](q|ll|query|cbll)=(-?\d+\.\d+),(-?\d+\.\d+)/;
+        const matchParam = text.match(googleParamRegex);
+        if (matchParam) {
+          coords = { lat: parseFloat(matchParam[2]), lng: parseFloat(matchParam[3]) };
+        } else {
+          // OpenStreetMap map format map=zoom/lat/lng
+          const osmMapRegex = /(map=\d+|#map=\d+)\/(-?\d+\.\d+)\/(-?\d+\.\d+)/;
+          const matchOsm = text.match(osmMapRegex);
+          if (matchOsm) {
+            coords = { lat: parseFloat(matchOsm[2]), lng: parseFloat(matchOsm[3]) };
+          } else {
+            // OpenStreetMap query parameter format mlat=lat&mlon=lon
+            const osmQueryRegex = /[?&]mlat=(-?\d+\.\d+)[&]mlon=(-?\d+\.\d+)/;
+            const matchOsmQuery = text.match(osmQueryRegex);
+            if (matchOsmQuery) {
+              coords = { lat: parseFloat(matchOsmQuery[1]), lng: parseFloat(matchOsmQuery[2]) };
+            }
+          }
+        }
+      }
+
+      if (!coords) {
+        setDetectingLocation(false);
+        Swal.fire("Parsing Error 📍", "Pasted link format not recognized. Please make sure to copy a full Google Maps or OpenStreetMap location link, or drag the marker manually.", "error");
+        return;
+      }
+    } else {
+      // 2. Normal address text: trigger forward geocoding request to Nominatim API
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(text)}&limit=1`,
+          { headers: { "Accept-Language": "en", "User-Agent": "HotByte-Admin/1.0" } }
+        );
+        const data = await res.json();
+        if (data && data.length > 0) {
+          coords = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+          if (data[0].display_name) {
+            setHotelAddress(data[0].display_name);
+          }
+        }
+      } catch (err) {
+        console.error("Geocoding failed:", err);
+      }
+
+      if (!coords) {
+        setDetectingLocation(false);
+        Swal.fire("Geocoding Failed 📍", "We couldn't resolve this address to exact coordinates. Please check spelling, add city/country, or pin location manually.", "error");
+        return;
+      }
+    }
+
+    // 3. Update state
+    setHotelLat(coords.lat);
+    setHotelLng(coords.lng);
+    setDetectingLocation(false);
+
+    // 4. Update the Leaflet map marker
+    const map = (window as any)._hotelLeafletMap;
+    const L = (window as any).L;
+    if (map && L) {
+      map.setView([coords.lat, coords.lng], 17);
+      
+      // Clear previous markers
+      map.eachLayer((layer: any) => {
+        if (layer instanceof L.Marker) {
+          map.removeLayer(layer);
+        }
+      });
+
+      const icon = L.divIcon({
+        html: `<div style="width:28px;height:28px;background:#EAB308;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+        </div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+        className: ""
+      });
+
+      const newMarker = L.marker([coords.lat, coords.lng], { draggable: true, icon }).addTo(map);
+      newMarker.on("dragend", async (e: any) => {
+        const { lat, lng } = e.target.getLatLng();
+        setHotelLat(lat);
+        setHotelLng(lng);
+        try {
+          const r = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+            { headers: { "Accept-Language": "en", "User-Agent": "HotByte-Admin/1.0" } }
+          );
+          const d = await r.json();
+          if (d.display_name) setHotelAddress(d.display_name);
+        } catch {}
+      });
+
+      map.invalidateSize();
+    }
+
+    // 5. Success prompt
+    Swal.fire({
+      title: "Location detected successfully! 📍",
+      icon: "success",
+      toast: true,
+      position: "top-end",
+      timer: 3000,
+      showConfirmButton: false
+    });
+  };
+
   const handleCreateHotel = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!hotelName.trim() || !hotelSlug.trim()) {
       Swal.fire("Required Fields", "Please supply a hotel name and dynamic slug.", "warning");
+      return;
+    }
+
+    if (!editingHotel && (!adminUsername.trim() || !adminPassword.trim())) {
+      Swal.fire("Required Fields", "Please supply an Admin username and password.", "warning");
+      return;
+    }
+
+    if (!editingHotel && adminPassword.length < 6) {
+      Swal.fire("Short Password", "Admin password must be at least 6 characters.", "warning");
+      return;
+    }
+
+    if (hotelLat === null || hotelLng === null) {
+      Swal.fire("Location Required 📍", "Please pin the hotel's exact GPS location on the map or enter/paste a valid address/link before saving.", "warning");
       return;
     }
 
@@ -292,25 +604,37 @@ export default function SuperAdminDashboard() {
         : "/api/superadmin/hotels";
       const method = editingHotel ? "PUT" : "POST";
 
+      const bodyPayload: any = {
+        name: hotelName,
+        slug: hotelSlug,
+        phone: hotelPhone,
+        address: hotelAddress,
+        isFrozen: hotelFrozen,
+        plan: hotelPlan,
+        tableCount: parseInt(hotelTableCount) || 5,
+        latitude: hotelLat,
+        longitude: hotelLng,
+        orderRadius: parseInt(hotelOrderRadius) || 30,
+      };
+
+      if (!editingHotel) {
+        bodyPayload.adminName = adminName;
+        bodyPayload.adminUsername = adminUsername;
+        bodyPayload.adminEmail = adminEmail;
+        bodyPayload.adminPassword = adminPassword;
+      }
+
       const res = await fetch(url, {
         method: method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: hotelName,
-          slug: hotelSlug,
-          phone: hotelPhone,
-          address: hotelAddress,
-          isFrozen: hotelFrozen,
-          plan: hotelPlan,
-          tableCount: parseInt(hotelTableCount) || 5
-        })
+        body: JSON.stringify(bodyPayload)
       });
       const data = await res.json();
 
       if (data.success) {
         Swal.fire(
           editingHotel ? "Updated!" : "Registered!",
-          editingHotel ? `Hotel "${hotelName}" details were updated.` : `Hotel "${hotelName}" is now active on the ${hotelPlan} plan.`,
+          editingHotel ? `Hotel "${hotelName}" details were updated.` : `Hotel "${hotelName}" and its Admin account have been created successfully.`,
           "success"
         );
         cancelEditHotel();
@@ -642,14 +966,144 @@ export default function SuperAdminDashboard() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Hotel Address</label>
+                    <div className="flex justify-between items-center">
+                      <label className="text-[9px] font-bold uppercase tracking-wider text-gray-500">
+                        Hotel Address & Map Link <span className="text-yellow-600 normal-case">(auto-fills on map click)</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => detectAndResolveLocation(hotelAddress)}
+                        disabled={detectingLocation}
+                        className="text-[9px] font-black uppercase text-yellow-500 hover:text-yellow-400 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        {detectingLocation ? (
+                          <div className="w-2.5 h-2.5 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin mr-1"></div>
+                        ) : (
+                          "🔍 "
+                        )}
+                        <span>Detect Location</span>
+                      </button>
+                    </div>
                     <textarea 
-                      placeholder="Enter address details"
+                      placeholder="Enter plain address OR paste Google Maps/OSM location link here..."
                       value={hotelAddress}
                       onChange={(e) => setHotelAddress(e.target.value)}
-                      className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-gray-200 outline-none focus:border-yellow-500 h-16 resize-none"
+                      onBlur={() => {
+                        if (hotelAddress.trim().startsWith("http") && !hotelLat && !hotelLng) {
+                          detectAndResolveLocation(hotelAddress);
+                        }
+                      }}
+                      className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-gray-200 outline-none focus:border-yellow-500 h-18 resize-none"
                     />
                   </div>
+
+                  {/* ── Leaflet Location Map ── */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[9px] font-bold uppercase tracking-wider text-yellow-600 flex items-center gap-1.5">
+                        <MapPin size={10} />
+                        <span>Hotel GPS Location — Click Map to Pin</span>
+                      </label>
+                      {hotelLat && hotelLng && (
+                        <button
+                          type="button"
+                          onClick={() => { setHotelLat(null); setHotelLng(null); }}
+                          className="text-[8px] font-bold uppercase text-red-500 hover:text-red-400 transition-colors cursor-pointer"
+                        >
+                          ✕ Clear Pin
+                        </button>
+                      )}
+                    </div>
+                    <div
+                      id="hotel-location-map"
+                      style={{ height: "200px", borderRadius: "12px", overflow: "hidden", border: "1px solid #1f1f1f", zIndex: 1 }}
+                      className="w-full bg-gray-900"
+                    />
+                    {hotelLat && hotelLng ? (
+                      <div className="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-3 py-2">
+                        <MapPin size={10} className="text-yellow-500 shrink-0" />
+                        <span className="text-[9px] font-mono font-bold text-yellow-400">
+                          {hotelLat.toFixed(6)}, {hotelLng.toFixed(6)}
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="text-[9px] text-gray-600 font-semibold">No location pinned — orders will be accepted from any location.</p>
+                    )}
+                  </div>
+
+                  {/* Order Radius */}
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-gray-500">
+                      Ordering Radius (meters) <span className="text-gray-600 normal-case">— customer must be within this distance</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="10" max="500"
+                      placeholder="30"
+                      value={hotelOrderRadius}
+                      onChange={(e) => setHotelOrderRadius(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-gray-200 outline-none focus:border-yellow-500"
+                    />
+                  </div>
+
+                  {!editingHotel && (
+                    <div className="border-t border-gray-900 pt-4 mt-4 space-y-4">
+                      <div className="border-b border-gray-950 pb-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-yellow-500 flex items-center gap-1.5">
+                          <Users size={12} />
+                          <span>Hotel Admin Credentials</span>
+                        </span>
+                        <p className="text-[9px] text-gray-500 mt-0.5">Configure the primary manager account for this hotel.</p>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Admin Full Name</label>
+                        <input 
+                          type="text"
+                          placeholder="e.g. Ramesh Kumar"
+                          value={adminName}
+                          onChange={(e) => setAdminName(e.target.value)}
+                          className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-gray-200 outline-none focus:border-yellow-500"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Username ID (Required)</label>
+                        <input 
+                          type="text"
+                          required
+                          placeholder="e.g. ramesh"
+                          value={adminUsername}
+                          onChange={(e) => setAdminUsername(e.target.value)}
+                          className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-gray-200 outline-none focus:border-yellow-500"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Email Address</label>
+                          <input 
+                            type="email"
+                            placeholder="e.g. ramesh@gmail.com"
+                            value={adminEmail}
+                            onChange={(e) => setAdminEmail(e.target.value)}
+                            className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-gray-200 outline-none focus:border-yellow-500"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Security Password (Required)</label>
+                          <input 
+                            type="password"
+                            required
+                            placeholder="••••••••"
+                            value={adminPassword}
+                            onChange={(e) => setAdminPassword(e.target.value)}
+                            className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-gray-200 outline-none focus:border-yellow-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {editingHotel && (
                     <div className="flex items-start gap-2.5 bg-red-950/20 border border-red-500/10 rounded-xl p-3.5 mb-2">

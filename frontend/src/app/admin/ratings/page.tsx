@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 
+import { useAdminSession } from "@/context/AdminSessionContext";
+
 interface Rating {
   rating_id: number;
   customer_id: number;
@@ -38,22 +40,16 @@ interface RatingStats {
 
 export default function RatingsModeration() {
   const router = useRouter();
+  const { admin } = useAdminSession();
 
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [stats, setStats] = useState<RatingStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchRatingsData = async () => {
+    if (!admin) return;
     try {
-      // 1. Session Check
-      const sessionRes = await fetch("/api/auth/admin/session-check");
-      const sessionData = await sessionRes.json();
-      if (!sessionData.authenticated) {
-        router.push("/admin/login");
-        return;
-      }
-
-      // 2. Fetch Ratings and Stats
+      // 1. Fetch Ratings and Stats
       const res = await fetch("/api/admin/ratings");
       const data = await res.json();
 
@@ -69,8 +65,10 @@ export default function RatingsModeration() {
   };
 
   useEffect(() => {
-    fetchRatingsData();
-  }, [router]);
+    if (admin) {
+      fetchRatingsData();
+    }
+  }, [admin]);
 
   const handleDeleteRating = async (ratingId: number) => {
     const result = await Swal.fire({

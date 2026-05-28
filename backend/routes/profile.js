@@ -5,7 +5,7 @@ const router = express.Router();
 const db = require("./database");
 const { requireAuth } = require("./auth");
 
-router.get("/profile", requireAuth, async (req, res) => {
+router.get("/", requireAuth, async (req, res) => {
   try {
     const customerId = req.customer.customerId;
 
@@ -114,7 +114,7 @@ router.get("/orders", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/profile/dob", requireAuth, async (req, res) => {
+router.post("/dob", requireAuth, async (req, res) => {
   try {
     const customerId = req.customer.customerId;
     const { dob } = req.body;
