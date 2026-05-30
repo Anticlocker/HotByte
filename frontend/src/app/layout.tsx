@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
@@ -14,6 +14,17 @@ export const metadata: Metadata = {
     "HotByte transforms dining with a seamless digital menu experience. Order directly from your table with our smart, fast, and modern platform.",
   keywords:
     "HotByte, digital menu, restaurant ordering, table ordering, smart menu, food ordering system, QR menu",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b0d11" },
+  ],
 };
 
 export default function RootLayout({

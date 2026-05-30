@@ -73,6 +73,68 @@ export default function MenuPage({ params }: PageProps) {
   const [hotelLatitude, setHotelLatitude] = useState<number | null>(null);
   const [hotelLongitude, setHotelLongitude] = useState<number | null>(null);
   const [orderRadius, setOrderRadius] = useState(30);
+  const [hotelType, setHotelType] = useState<"veg" | "nonveg" | "both">("both");
+
+  // Birthday Confetti and Inline DOB States
+  const [confettiTriggered, setConfettiTriggered] = useState(false);
+  const [dobInput, setDobInput] = useState("");
+  const [updatingDob, setUpdatingDob] = useState(false);
+
+  const isBirthdayToday = (() => {
+    if (!customer || !customer.dob) return false;
+    const dob = new Date(customer.dob);
+    const today = new Date();
+    return dob.getDate() === today.getDate() && dob.getMonth() === today.getMonth();
+  })();
+
+  useEffect(() => {
+    if (isBirthdayToday && !confettiTriggered) {
+      try {
+        confetti({
+          particleCount: 150,
+          spread: 80,
+          origin: { y: 0.6 }
+        });
+        setConfettiTriggered(true);
+      } catch (err) {}
+    }
+  }, [isBirthdayToday, confettiTriggered]);
+
+  const handleInlineDobSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dobInput) return;
+
+    setUpdatingDob(true);
+    try {
+      const res = await fetch("/api/profile/dob", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dob: dobInput }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setCustomer((prev: any) => ({
+          ...prev,
+          dob: dobInput,
+          hasDob: true
+        }));
+        
+        Swal.fire({
+          title: "Profile Updated!",
+          text: "Date of Birth saved successfully! Celebrate your birthday with special rewards.",
+          icon: "success",
+          confirmButtonColor: "#FF5A1F",
+        });
+      } else {
+        Swal.fire("Validation Error", data.message || "Invalid Date.", "error");
+      }
+    } catch (err) {
+      Swal.fire("Error", "Failed to update Date of Birth", "error");
+    } finally {
+      setUpdatingDob(false);
+    }
+  };
 
 
   useEffect(() => {
@@ -91,7 +153,7 @@ export default function MenuPage({ params }: PageProps) {
 
   useEffect(() => {
     // 1. Fetch Session Info (Public access: do not redirect if not logged in!)
-    fetch("/api/auth/session-check")
+    fetch(`/api/auth/session-check?hotel_slug=${hotelSlug}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.authenticated) {
@@ -123,6 +185,9 @@ export default function MenuPage({ params }: PageProps) {
           if (data.hotelLatitude !== null && data.hotelLatitude !== undefined) setHotelLatitude(data.hotelLatitude);
           if (data.hotelLongitude !== null && data.hotelLongitude !== undefined) setHotelLongitude(data.hotelLongitude);
           if (data.orderRadius) setOrderRadius(data.orderRadius);
+          if (data.hotelType) setHotelType(data.hotelType);
+          // Veg-only hotels: auto-enable veg filter
+          if (data.hotelType === "veg") setIsVegOnly(true);
         }
       })
       .catch(() => {});
@@ -641,17 +706,19 @@ export default function MenuPage({ params }: PageProps) {
 
       {/* Visual Masterpiece Full-Bleed Cover & Brand Header */}
       {showBanner ? (
-        <div className="relative w-full h-[220px] md:h-[300px] overflow-hidden select-none border-b border-gray-150/40 dark:border-zinc-800/40">
+        <div className="relative w-full h-[200px] sm:h-[240px] md:h-[300px] overflow-hidden select-none border-b border-gray-150/40 dark:border-zinc-800/40">
           {/* Cover Banner Image */}
           {bannerUrl ? (
             <img 
               src={bannerUrl} 
               alt={hotelName} 
-              className="w-full h-full object-cover transform scale-102 transition-transform duration-700 hover:scale-105"
+              loading="eager"
+              className="w-full h-full object-cover transition-transform duration-700"
+              style={{ transform: 'scale(1.02)' }}
             />
           ) : (
             /* Aesthetic Fallback Cover Image (stunning high-res dining spread) */
-            <div className="w-full h-full bg-[url('https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1600&q=80')] bg-cover bg-center transform scale-102 transition-transform duration-700 hover:scale-105" />
+            <div className="w-full h-full bg-[url('https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1600&q=80')] bg-cover bg-center" />
           )}
           
           {/* Modern dark radial overlay to ensure readability */}
@@ -687,6 +754,17 @@ export default function MenuPage({ params }: PageProps) {
                   <span>{tagline || "Served with Love"}</span>
                   <span className="text-red-500 animate-pulse text-[13px] md:text-base">❤️</span>
                 </p>
+                {/* Hotel Type Badge */}
+                {hotelType === "veg" && (
+                  <span className="inline-flex items-center gap-1 mt-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                    🌱 100% Pure Veg Restaurant
+                  </span>
+                )}
+                {hotelType === "nonveg" && (
+                  <span className="inline-flex items-center gap-1 mt-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-red-500/15 border border-red-500/30 text-red-400">
+                    🍗 Non-Veg Speciality
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -714,6 +792,17 @@ export default function MenuPage({ params }: PageProps) {
                 <span>{tagline || "Served with Love"}</span>
                 <span className="text-red-500 animate-pulse text-xs">❤️</span>
               </p>
+              {/* Hotel Type Badge (no-banner header) */}
+              {hotelType === "veg" && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400">
+                  🌱 100% Pure Veg Restaurant
+                </span>
+              )}
+              {hotelType === "nonveg" && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase bg-red-500/10 border border-red-500/25 text-red-600 dark:text-red-400">
+                  🍗 Non-Veg Speciality
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -722,6 +811,114 @@ export default function MenuPage({ params }: PageProps) {
       {/* Main Browse Section */}
       <main className="flex-grow max-w-[1280px] mx-auto w-full px-6 py-8 flex flex-col gap-8 bg-transparent">
         
+        {/* Dynamic Personalized Greeting Card */}
+        {(() => {
+          const getGreetingMessage = () => {
+            if (!customer) {
+              return {
+                text: "Welcome Guest 👋",
+                sub: "Browse our menu and log in with Google to place your dining order and earn rewards.",
+                icon: "✨",
+                bg: "bg-white/80 dark:bg-zinc-900/65 border-gray-150/40 dark:border-zinc-800/40 text-gray-900 dark:text-gray-100"
+              };
+            }
+            
+            if (isBirthdayToday) {
+              return {
+                text: `🎉 Happy Birthday, ${customer.name || "Customer"}! 🎂`,
+                sub: "Wishing you a fantastic day and delicious meals ahead! Enjoy your special birthday dining.",
+                icon: "🎈",
+                bg: "bg-gradient-to-r from-pink-500/10 via-purple-500/10 to-amber-500/10 border-pink-500/35 text-gray-900 dark:text-gray-100 dark:shadow-[0_0_20px_rgba(236,72,153,0.15)] animate-pulse"
+              };
+            }
+
+            const hour = new Date().getHours();
+            let text = "";
+            let sub = "We hope you are having an exceptional dining experience!";
+            let icon = "✨";
+
+            if (hour >= 5 && hour < 12) {
+              text = `Good Morning, ${customer.name || "Customer"} ☀️`;
+              sub = "Start your day with a delightful and fresh breakfast spread!";
+              icon = "🌅";
+            } else if (hour >= 12 && hour < 17) {
+              text = `Good Afternoon, ${customer.name || "Customer"} 🌤️`;
+              sub = "Treat yourself to our exquisite lunch specials and refreshing coolers!";
+              icon = "🥗";
+            } else if (hour >= 17 && hour < 21) {
+              text = `Good Evening, ${customer.name || "Customer"} 🌇`;
+              sub = "Unwind with our premium curated dinner items and chef specials!";
+              icon = "🍛";
+            } else {
+              text = `Good Night, ${customer.name || "Customer"} 🌙`;
+              sub = "Craving a late night bite or dessert? We've got your sweet tooth covered!";
+              icon = "🍰";
+            }
+
+            return {
+              text,
+              sub,
+              icon,
+              bg: "bg-white/80 dark:bg-zinc-900/65 border-gray-150/40 dark:border-zinc-800/40 text-gray-900 dark:text-gray-100"
+            };
+          };
+
+          const greeting = getGreetingMessage();
+
+          return (
+            <div className={`w-full border rounded-3xl p-6 shadow-sm backdrop-blur-md transition-all duration-300 relative overflow-hidden group ${greeting.bg}`}>
+              {isBirthdayToday && (
+                <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 rounded-full blur-2xl pointer-events-none animate-pulse"></div>
+              )}
+              <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
+                <div className="flex items-center gap-4 text-center md:text-left flex-col md:flex-row">
+                  <div className="w-16 h-16 rounded-2xl bg-orange-100/50 dark:bg-orange-950/20 text-orange-500 flex items-center justify-center text-3xl shadow-inner transform group-hover:scale-105 transition-transform duration-300">
+                    {greeting.icon}
+                  </div>
+                  <div className="space-y-1">
+                    <h2 className="text-xl md:text-2xl font-black tracking-tight leading-tight">
+                      {greeting.text}
+                    </h2>
+                    <p className="text-xs md:text-sm font-semibold text-gray-500 dark:text-gray-400 max-w-xl">
+                      {greeting.sub}
+                    </p>
+                  </div>
+                </div>
+
+                {!customer ? (
+                  <button
+                    onClick={() => router.push(`/login?hotel=${hotelSlug}`)}
+                    className="px-5 py-3 text-white font-black text-xs uppercase tracking-wider rounded-2xl btn-orange whitespace-nowrap shadow-md cursor-pointer hover:shadow-lg transition-all"
+                  >
+                    Continue with Google
+                  </button>
+                ) : !customer.hasDob ? (
+                  <form onSubmit={handleInlineDobSubmit} className="flex items-center gap-3 w-full md:w-auto bg-gray-50 dark:bg-zinc-950/30 p-2 rounded-2xl border border-gray-150/40 dark:border-zinc-800/40">
+                    <div className="flex flex-col leading-none pl-2 pr-1 hidden sm:flex">
+                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Enter DOB</span>
+                      <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest mt-0.5">Birthday Gift</span>
+                    </div>
+                    <input
+                      type="date"
+                      required
+                      value={dobInput}
+                      onChange={(e) => setDobInput(e.target.value)}
+                      className="px-3 py-2 bg-white dark:bg-zinc-900 border border-gray-205 dark:border-zinc-800 rounded-xl text-xs font-bold text-gray-800 dark:text-gray-200 outline-none focus:border-orange-500 shadow-sm"
+                    />
+                    <button
+                      type="submit"
+                      disabled={updatingDob}
+                      className="px-4 py-2 text-white font-bold text-xs rounded-xl btn-orange whitespace-nowrap cursor-pointer disabled:opacity-50"
+                    >
+                      {updatingDob ? "Saving..." : "Save DOB"}
+                    </button>
+                  </form>
+                ) : null}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Sleek Search & Quick Filter Controls Bar */}
         <div className="w-full flex flex-col md:flex-row items-center justify-between gap-4 bg-white dark:bg-zinc-900/60 p-4 border border-gray-150/40 dark:border-zinc-800/40 rounded-3xl shadow-sm backdrop-blur-md transition-all duration-300">
           <div className="w-full md:w-auto flex flex-col sm:flex-row items-center gap-3">
@@ -737,18 +934,20 @@ export default function MenuPage({ params }: PageProps) {
               />
             </div>
 
-            {/* Veg Only Toggle */}
-            <button
-              onClick={() => setIsVegOnly(!isVegOnly)}
-              className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border text-sm font-bold transition-all cursor-pointer shadow-sm select-none ${
-                isVegOnly
-                  ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-350 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-400"
-                  : "bg-white dark:bg-zinc-900 border-gray-205 dark:border-zinc-800 text-gray-650 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
-              }`}
-            >
-              <Leaf size={16} className={isVegOnly ? "fill-emerald-750" : ""} />
-              <span>Veg Only</span>
-            </button>
+            {/* Veg Only Toggle - only show for both-type hotels */}
+            {hotelType === "both" && (
+              <button
+                onClick={() => setIsVegOnly(!isVegOnly)}
+                className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border text-sm font-bold transition-all cursor-pointer shadow-sm select-none ${
+                  isVegOnly
+                    ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-350 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-400"
+                    : "bg-white dark:bg-zinc-900 border-gray-205 dark:border-zinc-800 text-gray-650 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                }`}
+              >
+                <Leaf size={16} className={isVegOnly ? "fill-emerald-750" : ""} />
+                <span>Veg Only</span>
+              </button>
+            )}
           </div>
 
           <div className="hidden md:flex items-center gap-2.5 text-xs font-bold text-gray-450 dark:text-gray-500 uppercase tracking-widest bg-gray-50 dark:bg-zinc-850/30 px-3.5 py-2 rounded-xl">
@@ -797,11 +996,11 @@ export default function MenuPage({ params }: PageProps) {
           </div>
         ) : (
           /* Food Card Listing Grid */
-          <div className="grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="menu-grid grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {filteredItems.map((item) => (
               <div
                 key={item.item_id}
-                className={`bg-white dark:bg-zinc-900 border border-gray-150/40 dark:border-zinc-800/55 rounded-3xl overflow-hidden flex flex-col relative transition-all duration-300 ${
+                className={`menu-card-hover bg-white dark:bg-zinc-900 border border-gray-150/40 dark:border-zinc-800/55 rounded-2xl sm:rounded-3xl overflow-hidden flex flex-col relative transition-all duration-300 ${
                   item.is_available
                     ? "hover:shadow-xl hover:shadow-orange-100 dark:hover:shadow-orange-950/10 hover:-translate-y-1.5"
                     : "opacity-75"
@@ -831,17 +1030,19 @@ export default function MenuPage({ params }: PageProps) {
                   </div>
                 )}
 
-                {/* Food Image Container */}
-                <div className="aspect-[4/3] bg-gray-100 dark:bg-zinc-800 w-full relative overflow-hidden">
+                {/* Food Image Container — padding-top ratio trick works on all Android versions */}
+                <div className="menu-card-img-wrap">
                   {item.image_url ? (
                     <img
                       src={item.image_url}
                       alt={item.name}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 dark:text-gray-650">
-                      <Utensils size={48} />
+                    <div className="menu-card-img-placeholder flex flex-col items-center justify-center text-gray-300 dark:text-gray-650">
+                      <Utensils size={36} />
                     </div>
                   )}
                   
@@ -856,65 +1057,65 @@ export default function MenuPage({ params }: PageProps) {
                 </div>
 
                 {/* Card details */}
-                <div className="p-5 flex-1 flex flex-col justify-between gap-4 bg-white dark:bg-zinc-900">
+                <div className="menu-card-body p-3 sm:p-5 flex-1 flex flex-col justify-between gap-3 sm:gap-4 bg-white dark:bg-zinc-900">
                   <div className="space-y-1">
-                    <h3 className="font-extrabold text-base text-gray-900 dark:text-white leading-snug line-clamp-1">
+                    <h3 className="font-extrabold text-sm sm:text-base text-gray-900 dark:text-white leading-snug line-clamp-2">
                       {item.name}
                     </h3>
-                    <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 line-clamp-2">
+                    <p className="text-[11px] sm:text-xs font-semibold text-gray-400 dark:text-gray-500 line-clamp-2 hidden sm:block">
                       {item.description}
                     </p>
                   </div>
 
                   <div className="flex items-center justify-between pt-1">
                     <div className="flex flex-col leading-none">
-                      <span className="text-[10px] text-gray-400 dark:text-gray-550 font-bold uppercase tracking-wider">Price</span>
-                      <span className="text-lg font-black text-gray-900 dark:text-white mt-0.5 font-mono">₹{item.price}</span>
+                      <span className="text-[9px] sm:text-[10px] text-gray-400 dark:text-gray-550 font-bold uppercase tracking-wider">Price</span>
+                      <span className="text-base sm:text-lg font-black text-gray-900 dark:text-white mt-0.5 font-mono">₹{item.price}</span>
                     </div>
 
                     {!isOpen ? (
                       <button
                         disabled
-                        className="px-4 py-2.5 text-gray-400 dark:text-gray-500 font-bold text-xs bg-gray-150 dark:bg-zinc-800 border border-gray-250 dark:border-zinc-800 rounded-xl flex items-center gap-1.5 cursor-not-allowed uppercase"
+                        className="px-2.5 sm:px-4 py-2 sm:py-2.5 text-gray-400 dark:text-gray-500 font-bold text-[10px] sm:text-xs bg-gray-150 dark:bg-zinc-800 border border-gray-250 dark:border-zinc-800 rounded-xl flex items-center gap-1 sm:gap-1.5 cursor-not-allowed uppercase"
                       >
                         Closed
                       </button>
                     ) : item.is_available ? (
                       cart.find((i) => i.item_id === item.item_id) ? (
                         /* Quantity adjusters */
-                        <div className="flex items-center gap-2.5 bg-orange-50 dark:bg-orange-950/15 border border-orange-200 dark:border-orange-900/30 rounded-xl p-1 shadow-sm">
+                        <div className="flex items-center gap-1.5 sm:gap-2.5 bg-orange-50 dark:bg-orange-950/15 border border-orange-200 dark:border-orange-900/30 rounded-xl p-0.5 sm:p-1 shadow-sm">
                           <button
                             onClick={() => handleDecreaseQuantity(item.item_id)}
-                            className="w-8 h-8 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-950/40 flex items-center justify-center text-orange-600 dark:text-orange-400 transition-colors cursor-pointer"
+                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg active:bg-orange-100 dark:active:bg-orange-950/40 flex items-center justify-center text-orange-600 dark:text-orange-400 transition-colors cursor-pointer"
                           >
-                            <Minus size={14} />
+                            <Minus size={13} />
                           </button>
-                          <span className="text-sm font-extrabold text-orange-950 dark:text-orange-100">
+                          <span className="text-sm font-extrabold text-orange-950 dark:text-orange-100 min-w-[16px] text-center">
                             {cart.find((i) => i.item_id === item.item_id)?.quantity}
                           </span>
                           <button
                             onClick={() => handleAddToCart(item)}
-                            className="w-8 h-8 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-950/40 flex items-center justify-center text-orange-600 dark:text-orange-400 transition-colors cursor-pointer"
+                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg active:bg-orange-100 dark:active:bg-orange-950/40 flex items-center justify-center text-orange-600 dark:text-orange-400 transition-colors cursor-pointer"
                           >
-                            <Plus size={14} />
+                            <Plus size={13} />
                           </button>
                         </div>
                       ) : (
                         /* Add Button */
                         <button
                           onClick={() => handleAddToCart(item)}
-                          className="px-4 py-2.5 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 btn-orange cursor-pointer"
+                          className="px-2.5 sm:px-4 py-2 sm:py-2.5 text-white font-bold text-[10px] sm:text-xs rounded-xl flex items-center gap-1 sm:gap-1.5 btn-orange cursor-pointer"
                         >
-                          <Plus size={14} />
+                          <Plus size={13} />
                           <span>ADD</span>
                         </button>
                       )
                     ) : (
                       <button
                         disabled
-                        className="px-4 py-2.5 text-gray-400 font-bold text-xs bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-800 rounded-xl flex items-center gap-1.5"
+                        className="px-2.5 sm:px-4 py-2 sm:py-2.5 text-gray-400 font-bold text-[10px] sm:text-xs bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-800 rounded-xl flex items-center gap-1 sm:gap-1.5"
                       >
-                        Unavailable
+                        N/A
                       </button>
                     )}
                   </div>
@@ -929,11 +1130,11 @@ export default function MenuPage({ params }: PageProps) {
       {cartCount > 0 && (
         <button
           onClick={() => setIsCartOpen(true)}
-          className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-orange-500 via-orange-600 to-amber-600 text-white font-extrabold text-sm sm:text-base flex items-center gap-3.5 shadow-[0_15px_40px_rgba(255,90,31,0.45)] px-6 py-4 rounded-2xl cursor-pointer transition-all duration-300 hover:scale-105 active:scale-95 group overflow-hidden border border-white/10"
+          className="cart-float-btn fixed bottom-6 right-4 sm:right-6 z-40 bg-gradient-to-r from-orange-500 via-orange-600 to-amber-600 text-white font-extrabold text-sm sm:text-base flex items-center gap-3 sm:gap-3.5 shadow-[0_15px_40px_rgba(255,90,31,0.45)] px-4 sm:px-6 py-3.5 sm:py-4 rounded-2xl cursor-pointer transition-all duration-300 active:scale-95 group overflow-hidden border border-white/10"
         >
-          <div className="relative w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center shadow-inner group-hover:rotate-12 transition-transform duration-300">
+          <div className="relative w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center shadow-inner">
             <ShoppingCart size={18} className="text-white" />
-            <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-650 border-2 border-orange-500 text-[10px] font-black flex items-center justify-center shadow-lg">
+            <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 border-2 border-orange-500 text-[10px] font-black flex items-center justify-center shadow-lg">
               {cartCount}
             </span>
           </div>
@@ -941,7 +1142,7 @@ export default function MenuPage({ params }: PageProps) {
             <span className="text-[10px] text-orange-200 uppercase tracking-widest font-black">Your Order</span>
             <span className="text-sm font-black">₹{cartTotal}</span>
           </div>
-          <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center group-hover:translate-x-1.5 transition-transform duration-300">
+          <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
             <ArrowRight size={14} />
           </div>
         </button>
@@ -953,11 +1154,11 @@ export default function MenuPage({ params }: PageProps) {
           {/* Backdrop */}
           <div
             onClick={() => setIsCartOpen(false)}
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="cart-drawer-backdrop absolute inset-0 bg-black/60 backdrop-blur-sm"
           ></div>
 
-          {/* Drawer Panel */}
-          <div className="relative w-full max-w-md bg-white dark:bg-[#12141c] border-l border-gray-150/40 dark:border-zinc-800/40 h-full shadow-2xl flex flex-col z-10 animate-fade-in-up">
+          {/* Drawer Panel — on mobile becomes a bottom sheet via .cart-drawer CSS class */}
+          <div className="cart-drawer relative w-full max-w-md bg-white dark:bg-[#12141c] border-l border-gray-150/40 dark:border-zinc-800/40 h-full shadow-2xl flex flex-col z-10 animate-fade-in-up">
             
             {/* Drawer Header */}
             <div className="p-6 border-b border-gray-150 dark:border-zinc-800/50 flex items-center justify-between">

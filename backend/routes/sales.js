@@ -373,14 +373,14 @@ router.get("/stats/customers", requireAdmin, async (req, res) => {
       SELECT 
         c.customer_id,
         c.name,
-        c.phone,
+        COALESCE(c.phone, c.email, 'Google Account') as phone,
         COUNT(o.order_id) as total_orders,
         COALESCE(SUM(o.total_amount), 0) as total_spent,
         MAX(o.created_at) as last_order_date
       FROM customers c
       JOIN orders o ON c.customer_id = o.customer_id
       WHERE 1=1 ${dateFilter} ${hotelFilter}
-      GROUP BY c.customer_id, c.name, c.phone
+      GROUP BY c.customer_id, c.name, c.phone, c.email
       ORDER BY total_spent DESC
       LIMIT 20
     `, params);

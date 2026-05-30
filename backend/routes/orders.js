@@ -79,6 +79,15 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
       });
     }
 
+    // ---------------- DUPLICATE PAYMENT CHECK ----------------
+    const dupCheck = await db.query(
+      "SELECT payment_id FROM payments WHERE razorpay_payment_id = $1",
+      [razorpay_payment_id]
+    );
+    if (dupCheck.rows.length > 0) {
+      return res.status(409).json({ success: false, message: "This payment has already been used to place an order." });
+    }
+
     // ---------------- HOTEL RESOLVING & TABLE AVAILABILITY CHECK ----------------
     
     const hotelSlug = req.body.hotel_slug || "hotbyte";
@@ -152,12 +161,12 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
     }
 
     // ---------------- DB TRANSACTION START ----------------
-
-    await db.query("BEGIN");
-
+    const client = await db.connect();
     try {
+      await client.query("BEGIN");
+
       // 1️⃣ CREATE ORDER
-      const orderResult = await db.query(
+      const orderResult = await client.query(
         `INSERT INTO orders (customer_id, table_number, total_amount, status, hotel_id)
          VALUES ($1, $2, $3, 'pending', $4)
          RETURNING order_id, table_number, total_amount, status, created_at`,
@@ -168,7 +177,7 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
 
       // 2️⃣ INSERT ORDER ITEMS
       for (const item of items) {
-        await db.query(
+        await client.query(
           `INSERT INTO order_items (order_id, item_id, quantity, price)
            VALUES ($1, $2, $3, $4)`,
           [order.order_id, item.item_id, item.quantity, item.price]
@@ -176,13 +185,13 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
       }
 
       // 3️⃣ INSERT PAYMENT RECORD
-      await db.query(
+      await client.query(
         `INSERT INTO payments (order_id, amount, payment_status, payment_method, razorpay_payment_id)
          VALUES ($1, $2, 'completed', 'razorpay', $3)`,
         [order.order_id, totalAmount, razorpay_payment_id]
       );
 
-      await db.query("COMMIT");
+      await client.query("COMMIT");
 
       return res.json({
         success: true,
@@ -191,8 +200,10 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
       });
 
     } catch (err) {
-      await db.query("ROLLBACK");
+      await client.query("ROLLBACK");
       throw err;
+    } finally {
+      client.release();
     }
 
   } catch (error) {
@@ -395,8 +406,8 @@ router.delete("/cancel/:id", requireAuth, async (req, res) => {
     const customerId = req.customer.customerId;
 
     const orderCheck = await db.query(
-      "SELECT order_id, status FROM orders WHERE order_id = $1 AND customer_id = $2",
-      [id, customerId]
+      "SELECT order_id, status FROM orders WHERE order_id = $1 AND customer_id = $2 AND hotel_id = $3",
+      [id, customerId, req.customer.hotelId]
     );
 
     if (orderCheck.rows.length === 0) {

@@ -3,12 +3,14 @@ const express = require("express");
 const router = express.Router();
 const db = require("./database");
 const { requireAuth } = require("./auth");
+const xss = require("xss");
 
 // Submit item rating
 router.post("/submit-item", requireAuth, async (req, res) => {
   try {
     const { rating, review_text, item_id } = req.body;
     const customerId = req.customer.customerId;
+    const safeReviewText = review_text ? xss(review_text) : null;
 
     if (!rating || rating < 1 || rating > 5) {
       return res.status(400).json({ 
@@ -24,10 +26,10 @@ router.post("/submit-item", requireAuth, async (req, res) => {
       });
     }
 
-    // Verify item exists
+    // Verify item exists and belongs to the customer's hotel
     const itemExists = await db.query(
-      `SELECT item_id, item_name FROM menu_items WHERE item_id = $1`,
-      [item_id]
+      `SELECT item_id, item_name FROM menu_items WHERE item_id = $1 AND hotel_id = $2`,
+      [item_id, req.customer.hotelId]
     );
 
     if (itemExists.rows.length === 0) {
@@ -75,7 +77,7 @@ router.post("/submit-item", requireAuth, async (req, res) => {
       `INSERT INTO ratings (customer_id, rating_value, review_text, item_id) 
        VALUES ($1, $2, $3, $4) 
        RETURNING rating_id, customer_id, rating_value, review_text, item_id, created_at`,
-      [customerId, rating, review_text || null, item_id]
+      [customerId, rating, safeReviewText, item_id]
     );
 
     return res.json({
@@ -105,6 +107,7 @@ router.post("/submit-order", requireAuth, async (req, res) => {
   try {
     const { rating, review_text, order_id } = req.body;
     const customerId = req.customer.customerId;
+    const safeReviewText = review_text ? xss(review_text) : null;
 
     if (!rating || rating < 1 || rating > 5) {
       return res.status(400).json({ 
@@ -120,11 +123,11 @@ router.post("/submit-order", requireAuth, async (req, res) => {
       });
     }
 
-    // Verify order belongs to customer
+    // Verify order belongs to customer and the hotel they are registered with
     const orderCheck = await db.query(
       `SELECT order_id, status FROM orders 
-       WHERE order_id = $1 AND customer_id = $2`,
-      [order_id, customerId]
+       WHERE order_id = $1 AND customer_id = $2 AND hotel_id = $3`,
+      [order_id, customerId, req.customer.hotelId]
     );
 
     if (orderCheck.rows.length === 0) {
@@ -160,7 +163,7 @@ router.post("/submit-order", requireAuth, async (req, res) => {
       `INSERT INTO ratings (customer_id, rating_value, review_text, order_id) 
        VALUES ($1, $2, $3, $4) 
        RETURNING rating_id, customer_id, rating_value, review_text, order_id, created_at`,
-      [customerId, rating, review_text || null, order_id]
+      [customerId, rating, safeReviewText, order_id]
     );
 
     return res.json({
@@ -321,8 +324,8 @@ router.get("/average", async (req, res) => {
 // Get recent ratings (PUBLIC)
 router.get("/recent", async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = parseInt(req.query.offset) || 0;
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const offset = Math.max(parseInt(req.query.offset) || 0, 0);
     const item_id = req.query.item_id;
     const hotelSlug = req.query.hotel_slug || "hotbyte";
 
@@ -341,7 +344,7 @@ router.get("/recent", async (req, res) => {
         r.item_id,
         r.created_at,
         c.name as customer_name,
-        SUBSTRING(c.phone, 1, 2) || 'XXXXXX' || SUBSTRING(c.phone, 9, 2) as masked_phone,
+        COALESCE(SUBSTRING(c.phone, 1, 2) || 'XXXXXX' || SUBSTRING(c.phone, 9, 2), SUBSTRING(c.email, 1, 3) || '***' || '@gmail.com', 'Google User') as masked_phone,
         mi.item_name,
         mi.image_url as item_image
        FROM ratings r

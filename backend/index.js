@@ -9,11 +9,33 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const app = express();
 
-// Security headers
-app.use(helmet());
+// HTTPS redirect middleware for production
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    if (req.headers['x-forwarded-proto'] !== 'https') {
+      return res.redirect(`https://${req.headers.host}${req.url}`);
+    }
+    next();
+  });
+}
 
-// HTTP request logger
-app.use(morgan('combined'));
+// Security headers with strict Content-Security-Policy (CSP)
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "checkout.razorpay.com", "accounts.google.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "cdnjs.cloudflare.com", "fonts.googleapis.com"],
+      imgSrc: ["'self'", "data:", "*.b-cdn.net", "images.unsplash.com"],
+      connectSrc: ["'self'", "https://api.razorpay.com"],
+      frameSrc: ["checkout.razorpay.com", "accounts.google.com"],
+      fontSrc: ["'self'", "fonts.gstatic.com", "cdnjs.cloudflare.com"],
+    }
+  }
+}));
+
+// HTTP request logger (GDPR-friendly tiny format in production, dev in development)
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'tiny' : 'dev'));
 
 
 const path = require('path');
@@ -57,6 +79,16 @@ app.use(cors({
 // ================= RATE LIMITING =================
 // 🚦 Rate Limiting = Ek IP se kitni baar request aa sakti hai limit karta hai
 // Spam aur abuse attacks se bachata hai
+
+// 🔑 Admin Login ke liye rate limiting
+// 15 minutes me max 10 attempts per IP
+const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Max 10 requests per IP
+  message: { success: false, message: 'Too many login attempts. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // 📱 OTP Send endpoints ke liye rate limiting
 // Koi bhi IP 15 minutes me sirf 5 baar OTP request kar sakta hai
@@ -163,6 +195,7 @@ app.get('/health', (req, res) => {
 // 🔌 API Routes = Backend endpoints jo frontend se data exchange karte hain
 
 // Rate limiting apply karo specific endpoints pe
+app.use('/api/auth/admin/login', adminLoginLimiter); // Admin login limit
 app.use('/api/auth/send-otp', sendOtpLimiter); // OTP bhejne ki limit
 app.use('/api/auth/verify-otp', verifyOtpLimiter); // OTP verify karne ki limit
 app.use('/api/payments', paymentLimiter); // Payment requests ki limit

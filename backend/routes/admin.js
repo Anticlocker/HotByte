@@ -7,6 +7,7 @@ const db = require("./database");
 const { requireAdmin } = require("./auth");
 const bunnyCDN = require("./bunnyCDN");
 const crypto = require("crypto");
+const xss = require("xss");
 
 // ─── Helper: resolve hotel_slug → hotel_id for super_admin scoped queries ───────
 // Usage: const hotelId = await resolveHotelSlug(req) || req.admin.hotelId
@@ -19,8 +20,11 @@ const resolveHotelSlug = async (req) => {
   return result.rows[0].hotel_id;
 };
 
-const hashPassword = (password) => {
-  return crypto.createHash('sha256').update(password).digest('hex');
+const bcrypt = require("bcrypt");
+const SALT_ROUNDS = 12;
+
+const hashPassword = async (password) => {
+  return await bcrypt.hash(password, SALT_ROUNDS);
 };
 
 const upload = multer({
@@ -67,9 +71,11 @@ router.get("/categories", requireAdmin, async (req, res) => {
 // Create category
 router.post("/categories", requireAdmin, async (req, res) => {
   try {
-    const name = req.body.category_name?.trim();
-    if (!name)
+    const rawName = req.body.category_name?.trim();
+    if (!rawName)
       return res.status(400).json({ success: false, message: "Category name is required" });
+
+    const name = xss(rawName);
 
     let hotelId;
     if (req.admin.role === 'super_admin') {
@@ -219,6 +225,9 @@ router.post("/items", requireAdmin, (req, res, next) => {
       return res.status(400).json({ success: false, message: "Item name, category, and price are required" });
     }
 
+    const safeItemName = xss(item_name.trim());
+    const safeDescription = description ? xss(description.trim()) : null;
+
     // Upload image to Bunny CDN (or fall back to local storage if credentials are missing)
     if (req.file) {
       const isBunnyConfigured = process.env.BUNNY_ACCESS_KEY &&
@@ -283,11 +292,23 @@ router.post("/items", requireAdmin, (req, res, next) => {
       return res.status(400).json({ success: false, message: "Hotel slug is required" });
     }
 
+    // Enforce hotel_type restriction on menu items
+    const hotelTypeCheck = await db.query('SELECT hotel_type FROM public.hotels WHERE hotel_id = $1', [hotelId]);
+    if (hotelTypeCheck.rows.length > 0) {
+      const ht = hotelTypeCheck.rows[0].hotel_type;
+      if (ht === 'veg' && !isVegBool) {
+        return res.status(400).json({ success: false, message: 'This is a Veg Only hotel. Only vegetarian items can be added.' });
+      }
+      if (ht === 'nonveg' && isVegBool) {
+        return res.status(400).json({ success: false, message: 'This is a Non-Veg Only hotel. Only non-vegetarian items can be added.' });
+      }
+    }
+
     const result = await db.query(
       `INSERT INTO menu_items (item_name, category_id, price, image_url, description, is_available, is_veg, hotel_id) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
        RETURNING item_id, item_name, category_id, price, image_url, description, is_available, is_veg`,
-      [item_name.trim(), category_id, parseFloat(price), image_url, description || null, isAvailableBool, isVegBool, hotelId]
+      [safeItemName, category_id, parseFloat(price), image_url, safeDescription, isAvailableBool, isVegBool, hotelId]
     );
 
     return res.json({ success: true, item: result.rows[0] });
@@ -318,6 +339,9 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
     if (!item_name || !category_id || !price) {
       return res.status(400).json({ success: false, message: "Item name, category, and price are required" });
     }
+
+    const safeItemName = xss(item_name.trim());
+    const safeDescription = description ? xss(description.trim()) : null;
 
     // Tenant authorization check
     if (req.admin.role !== 'super_admin') {
@@ -357,14 +381,14 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
         }
       } else {
         // Delete old local image if exists
-        if (existing_image_url && existing_image_url.startsWith("/uploads/")) {
-          try {
-            const oldFilePath = path.join(__dirname, "../public", existing_image_url);
-            if (fs.existsSync(oldFilePath)) {
-              fs.unlinkSync(oldFilePath);
+        if (existing_image_url && !existing_image_url.startsWith("http")) {
+          const oldPath = path.join(__dirname, "../public", existing_image_url);
+          if (fs.existsSync(oldPath)) {
+            try {
+              fs.unlinkSync(oldPath);
+            } catch (deleteError) {
+              console.error("Local delete error:", deleteError);
             }
-          } catch (deleteError) {
-            console.error("Local delete error:", deleteError);
           }
         }
 
@@ -405,12 +429,28 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
       isVegBool = Boolean(is_veg);
     }
 
+    // Enforce hotel_type restriction on menu item updates
+    const itemHotelCheck = await db.query('SELECT hotel_id FROM menu_items WHERE item_id = $1', [id]);
+    if (itemHotelCheck.rows.length > 0) {
+      const itemHotelId = itemHotelCheck.rows[0].hotel_id;
+      const hotelTypeCheckUpd = await db.query('SELECT hotel_type FROM public.hotels WHERE hotel_id = $1', [itemHotelId]);
+      if (hotelTypeCheckUpd.rows.length > 0) {
+        const ht = hotelTypeCheckUpd.rows[0].hotel_type;
+        if (ht === 'veg' && !isVegBool) {
+          return res.status(400).json({ success: false, message: 'This is a Veg Only hotel. Only vegetarian items are allowed.' });
+        }
+        if (ht === 'nonveg' && isVegBool) {
+          return res.status(400).json({ success: false, message: 'This is a Non-Veg Only hotel. Only non-vegetarian items are allowed.' });
+        }
+      }
+    }
+
     const result = await db.query(
       `UPDATE menu_items 
        SET item_name = $1, category_id = $2, price = $3, image_url = $4, description = $5, is_available = $6, is_veg = $7 
        WHERE item_id = $8 
        RETURNING item_id, item_name, category_id, price, image_url, description, is_available, is_veg`,
-      [item_name.trim(), category_id, parseFloat(price), image_url, description || null, isAvailableBool, isVegBool, id]
+      [safeItemName, category_id, parseFloat(price), image_url, safeDescription, isAvailableBool, isVegBool, id]
     );
 
     if (result.rows.length === 0) {
@@ -1353,18 +1393,23 @@ router.put("/change-password", requireAdmin, async (req, res) => {
     }
 
     // Verify current password
-    const hashedCurrentPassword = hashPassword(currentPassword);
     const adminCheck = await db.query(
-      "SELECT admin_id FROM admins WHERE admin_id = $1 AND password = $2",
-      [req.admin.id, hashedCurrentPassword]
+      "SELECT password FROM admins WHERE admin_id = $1",
+      [req.admin.id]
     );
 
     if (adminCheck.rows.length === 0) {
       return res.status(401).json({ success: false, message: "Current password is incorrect" });
     }
 
+    const currentHash = adminCheck.rows[0].password;
+    const isMatch = await bcrypt.compare(currentPassword, currentHash);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: "Current password is incorrect" });
+    }
+
     // Update password
-    const hashedNewPassword = hashPassword(newPassword);
+    const hashedNewPassword = await hashPassword(newPassword);
     await db.query(
       "UPDATE admins SET password = $1 WHERE admin_id = $2",
       [hashedNewPassword, req.admin.id]
@@ -1438,12 +1483,16 @@ router.get("/hotel-status", requireAdmin, async (req, res) => {
       return res.status(404).json({ success: false, message: "Hotel not resolved." });
     }
 
-    const result = await db.query("SELECT is_open FROM public.hotels WHERE hotel_id = $1", [hotelId]);
+    const result = await db.query("SELECT is_open, hotel_type FROM public.hotels WHERE hotel_id = $1", [hotelId]);
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Hotel not found" });
     }
 
-    return res.json({ success: true, isOpen: result.rows[0].is_open !== false });
+    return res.json({
+      success: true,
+      isOpen: result.rows[0].is_open !== false,
+      hotelType: result.rows[0].hotel_type || "both"
+    });
   } catch (error) {
     console.error("Get hotel status error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch hotel status" });
@@ -1490,7 +1539,7 @@ router.get("/settings", requireAdmin, async (req, res) => {
     const hotelResult = await db.query(
       `SELECT hotel_id, name, slug, phone, address, email, logo_url, banner_url, description, tagline, 
               show_logo, show_banner, primary_color, secondary_color, enable_online_orders, enable_qr_ordering, 
-              settings_json, is_open, table_count 
+              settings_json, is_open, table_count, hotel_type 
        FROM public.hotels WHERE hotel_id = $1`,
       [hotelId]
     );
@@ -1541,24 +1590,29 @@ router.post("/settings", requireAdmin, async (req, res) => {
     const {
       name, description, address, phone, email, tagline,
       show_logo, show_banner, primary_color, secondary_color,
-      enable_online_orders, enable_qr_ordering, table_count, settings_json
+      enable_online_orders, enable_qr_ordering, table_count, settings_json, hotel_type
     } = req.body;
 
     if (!name?.trim()) {
       return res.status(400).json({ success: false, message: "Hotel Name is required" });
     }
 
+    // Validate hotel_type
+    const validHotelTypes = ['veg', 'nonveg', 'both'];
+    const safeHotelType = validHotelTypes.includes(hotel_type) ? hotel_type : 'both';
+
     await db.query(
       `UPDATE public.hotels 
        SET name = $1, description = $2, address = $3, phone = $4, email = $5, tagline = $6, 
            show_logo = $7, show_banner = $8, primary_color = $9, secondary_color = $10, 
-           enable_online_orders = $11, enable_qr_ordering = $12, table_count = $13, settings_json = $14
-       WHERE hotel_id = $15`,
+           enable_online_orders = $11, enable_qr_ordering = $12, table_count = $13, settings_json = $14,
+           hotel_type = $15
+       WHERE hotel_id = $16`,
       [
         name.trim(), description || null, address || null, phone || null, email || null, tagline || 'Served with Love ❤️',
         show_logo !== false, show_banner !== false, primary_color || '#FF5A1F', secondary_color || '#FF5A1F',
         enable_online_orders !== false, enable_qr_ordering !== false, parseInt(table_count) || 5, settings_json || {},
-        hotelId
+        safeHotelType, hotelId
       ]
     );
 
@@ -1608,17 +1662,22 @@ router.post("/settings/account", requireAdmin, async (req, res) => {
       }
 
       // Verify current password
-      const hashedCurrentPassword = hashPassword(currentPassword);
       const adminCheck = await db.query(
         "SELECT password FROM public.admins WHERE admin_id = $1",
         [req.admin.id]
       );
 
-      if (adminCheck.rows.length === 0 || adminCheck.rows[0].password !== hashedCurrentPassword) {
+      if (adminCheck.rows.length === 0) {
         return res.status(401).json({ success: false, message: "Current password is incorrect" });
       }
 
-      hashedNewPassword = hashPassword(newPassword);
+      const currentHash = adminCheck.rows[0].password;
+      const isMatch = await bcrypt.compare(currentPassword, currentHash);
+      if (!isMatch) {
+        return res.status(401).json({ success: false, message: "Current password is incorrect" });
+      }
+
+      hashedNewPassword = await hashPassword(newPassword);
     }
 
     if (hashedNewPassword) {
@@ -1759,7 +1818,7 @@ router.get('/subscription-plans', requireAdmin, async (req, res) => {
         if (parseInt(seedCheck.rows[0].count) === 0) {
           await db.query(`
             INSERT INTO public.subscription_plans (name, price_monthly, price_yearly, features) VALUES
-              ('trial', 0, 0, '{"menu_items":20,"admin_managers":1,"qr_dining":true,"checkout_dashboard":true,"sandbox":true}'),
+              ('trial', 1, 1, '{"all_basic":true,"unlimited_staff":true,"advanced_analytics":true,"occupancy_tracking":true,"priority_support":true,"menu_assistant":true,"is_trial_pro":true}'),
               ('basic', 999, 11988, '{"menu_items":"unlimited","admin_managers":3,"razorpay":true,"kds":true,"dynamic_qr":true,"pdf_reports":true}'),
               ('pro', 2499, 29988, '{"all_basic":true,"unlimited_staff":true,"advanced_analytics":true,"occupancy_tracking":true,"priority_support":true,"menu_assistant":true}');
           `);

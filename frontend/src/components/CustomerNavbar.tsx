@@ -88,10 +88,16 @@ export default function CustomerNavbar() {
   };
 
   const handleCartClick = () => {
-    if (pathname === "/menu") {
+    const isMenuPage = pathname?.endsWith("/menu");
+    if (isMenuPage) {
       window.dispatchEvent(new Event("openMenuCart"));
     } else {
-      router.push("/menu?openCart=true");
+      const slug = pathname?.split("/")[1];
+      const menuPath =
+        slug && !["admin", "super-admin", "login", "profile"].includes(slug)
+          ? `/${slug}/menu?openCart=true`
+          : "/";
+      router.push(menuPath);
     }
   };
 
@@ -135,7 +141,7 @@ export default function CustomerNavbar() {
           <i className="fas fa-fire text-base"></i>
         </div>
         <div className="flex flex-col leading-none">
-          <span className="text-xl font-black tracking-tighter text-gray-900">
+          <span className="text-xl font-black tracking-tighter text-gray-900 dark:text-white">
             Hot<span className="text-[var(--orange)]">Byte</span>
           </span>
           <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-0.5 opacity-80">

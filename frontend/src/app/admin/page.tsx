@@ -59,6 +59,7 @@ export default function AdminDashboard() {
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [hotelType, setHotelType] = useState<"veg" | "nonveg" | "both">("both");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -77,20 +78,25 @@ export default function AdminDashboard() {
     }
 
     try {
-      // Fetch stats and active orders in parallel
-      const [statsRes, ordersRes] = await Promise.all([
+      // Fetch stats, active orders, and hotel status in parallel
+      const [statsRes, ordersRes, statusRes] = await Promise.all([
         fetch("/api/admin/dashboard/stats", { signal: controller.signal }),
-        fetch("/api/admin/orders?view_type=active", { signal: controller.signal })
+        fetch("/api/admin/orders?view_type=active", { signal: controller.signal }),
+        fetch("/api/admin/hotel-status", { signal: controller.signal })
       ]);
 
       const statsData = await statsRes.json();
       const ordersData = await ordersRes.json();
+      const statusData = await statusRes.json();
 
       if (statsData.success) {
         setStats(statsData.stats);
       }
       if (ordersData.success) {
         setOrders(ordersData.orders);
+      }
+      if (statusData.success && statusData.hotelType) {
+        setHotelType(statusData.hotelType);
       }
     } catch (err: any) {
       if (err.name !== "AbortError") {
@@ -215,23 +221,34 @@ export default function AdminDashboard() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 border-b border-gray-900/60 pb-6">
         <div className="space-y-1">
           {hotelName && (
-            hotelSlug ? (
-              <Link
-                href={`/${hotelSlug}/menu`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-3 py-1 rounded-xl border border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/10 text-orange-400 text-[10px] font-black uppercase tracking-wider mb-2 transition-all duration-300 cursor-pointer group"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-ping"></span>
-                <span>Active Terminal — {hotelName}</span>
-                <ExternalLink size={10} className="text-orange-500/50 group-hover:text-orange-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-300" />
-              </Link>
-            ) : (
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl border border-orange-500/20 bg-orange-500/5 text-orange-400 text-[10px] font-black uppercase tracking-wider mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-ping"></span>
-                <span>Active Terminal — {hotelName}</span>
-              </div>
-            )
+            <div className="flex flex-wrap items-center gap-2.5 mb-2">
+              {hotelSlug ? (
+                <Link
+                  href={`/${hotelSlug}/menu`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-1 rounded-xl border border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/10 text-orange-400 text-[10px] font-black uppercase tracking-wider transition-all duration-300 cursor-pointer group"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-ping"></span>
+                  <span>Active Terminal — {hotelName}</span>
+                  <ExternalLink size={10} className="text-orange-500/50 group-hover:text-orange-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-300" />
+                </Link>
+              ) : (
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl border border-orange-500/20 bg-orange-500/5 text-orange-400 text-[10px] font-black uppercase tracking-wider">
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-ping"></span>
+                  <span>Active Terminal — {hotelName}</span>
+                </div>
+              )}
+
+              {/* Hotel Type Badge */}
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[9px] font-black uppercase tracking-wider transition-all duration-300 ${
+                hotelType === "veg" ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-450 dark:text-emerald-400" :
+                hotelType === "nonveg" ? "bg-red-500/10 border-red-500/25 text-red-450 dark:text-red-400" :
+                "bg-yellow-500/10 border-yellow-500/25 text-yellow-450 dark:text-yellow-400"
+              }`}>
+                <span>{hotelType === "veg" ? "🌱 Pure Veg" : hotelType === "nonveg" ? "🍗 Non-Veg" : "🟡 Both Veg/Non-Veg"}</span>
+              </span>
+            </div>
           )}
           <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
             {hotelSlug ? (

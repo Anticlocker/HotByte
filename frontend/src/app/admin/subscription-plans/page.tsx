@@ -10,8 +10,9 @@ import PlanComparisonModal from "@/components/PlanComparisonModal"
 import { useSubscription } from "@/lib/hooks/useSubscription"
 
 export default function SubscriptionPlans() {
-  const { plans, currentSubscription, loading, error, mutate } = useSubscription()
-  const [isModalOpen, setModalOpen] = useState(false)
+  const { plans, currentSubscription, loading, error, mutate } = useSubscription();
+  const planOrder: Record<string, number> = { trial: 0, basic: 1, pro: 2 };
+  const [isModalOpen, setModalOpen] = useState(false);
 
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
@@ -25,17 +26,35 @@ export default function SubscriptionPlans() {
 
   const handlePayment = async (planId: number, type: "renew" | "upgrade") => {
     try {
-      const targetPlan = plans.find(p => p.plan_id === planId);
+      let targetPlan = plans.find(p => p.plan_id === Number(planId));
       if (!targetPlan) {
-        Swal.fire("Billing Error", "Invalid subscription plan selected.", "error");
-        return;
+        // Fallback: try matching by name (case-insensitive) for cases where planId is a string identifier
+        const nameStr = String(planId).toLowerCase();
+        targetPlan = plans.find(p => p.name.toLowerCase().includes(nameStr));
+        // Additional fallback: map numeric order IDs (0,1,2) to plan names using the planOrder mapping defined later
+        if (!targetPlan) {
+          const orderName = Object.entries(planOrder).find(([, id]) => id === Number(planId))?.[0];
+          if (orderName) {
+            targetPlan = plans.find(p => p.name.toLowerCase() === orderName);
+          }
+        }
+        if (!targetPlan) {
+          Swal.fire("Billing Error", "Invalid subscription plan selected.", "error");
+          return;
+        }
       }
+      // Ensure a valid plan is selected; this should never happen with correct UI
 
-      const planName = targetPlan.name.toLowerCase();
-      if (planName === 'trial') {
-        Swal.fire("Trial Tier", "Trial tier cannot be purchased manually.", "info");
-        return;
+      // Determine the plan identifier to send to the backend
+      // For the trial plan, the displayed name may include spaces or hyphens (e.g., "14-Day Trial").
+      // We map any plan containing the word "trial" to the backend identifier "trial".
+      let planIdentifier: string;
+      if (targetPlan.name.toLowerCase().includes('trial')) {
+        planIdentifier = 'trial';
+      } else {
+        planIdentifier = targetPlan.name.toLowerCase();
       }
+      // No longer block trial purchases; allow the flow to continue.
 
       Swal.fire({
         title: "Initializing Checkout...",
@@ -74,7 +93,7 @@ export default function SubscriptionPlans() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          plan: planName,
+          plan: planIdentifier,
           hotel_slug: activeSlug
         })
       });
@@ -116,7 +135,7 @@ export default function SubscriptionPlans() {
         amount: orderData.razorpay_order.amount,
         currency: orderData.razorpay_order.currency,
         name: "HotByte Platforms",
-        description: `${type === "renew" ? "Renew" : "Upgrade to"} ${planName.toUpperCase()} Plan`,
+        description: `${type === "renew" ? "Renew" : "Upgrade to"} ${targetPlan.name.toUpperCase()} Plan`,
         order_id: orderData.razorpay_order.id,
         handler: async function (response: any) {
           Swal.fire({
@@ -133,7 +152,7 @@ export default function SubscriptionPlans() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              plan: planName,
+              plan: planIdentifier,
               hotel_slug: activeSlug,
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
@@ -145,7 +164,7 @@ export default function SubscriptionPlans() {
           if (verifyData.success) {
             Swal.fire({
               title: "Upgrade Successful! 🎉",
-              text: `Your hotel is now successfully active on the ${planName.toUpperCase()} plan!`,
+              text: `Your hotel is now successfully active on the ${planIdentifier.toUpperCase()} plan!`,
               icon: "success",
               confirmButtonColor: "#FF5A1F"
             }).then(() => {
@@ -174,11 +193,10 @@ export default function SubscriptionPlans() {
   };
 
   // Recommendation logic
-  const planOrder: Record<string, number> = { trial: 0, basic: 1, pro: 2 }
-  const currentName = currentSubscription?.name?.toLowerCase() ?? "trial"
-  const highestPlan = "pro"
-  const showRecommendation = !!(currentName && planOrder[currentName] < planOrder[highestPlan])
-  const recommendedPlan = plans.find(p => p.name.toLowerCase() === highestPlan)
+  const currentName = currentSubscription?.name?.toLowerCase() ?? "trial";
+  const highestPlan = "pro";
+  const showRecommendation = !!(currentName && planOrder[currentName] < planOrder[highestPlan]);
+  const recommendedPlan = plans.find(p => p.name.toLowerCase() === highestPlan);
 
   if (loading) {
     return (

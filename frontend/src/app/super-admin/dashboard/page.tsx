@@ -27,6 +27,7 @@ interface Hotel {
   latitude: number | null;
   longitude: number | null;
   orderRadius: number;
+  hotelType: string;
 }
 
 interface AdminManager {
@@ -71,6 +72,7 @@ export default function SuperAdminDashboard() {
   const [hotelLat, setHotelLat] = useState<number | null>(null);
   const [hotelLng, setHotelLng] = useState<number | null>(null);
   const [hotelOrderRadius, setHotelOrderRadius] = useState("30");
+  const [hotelTypeVal, setHotelTypeVal] = useState<"veg" | "nonveg" | "both">("both");
   const [mapReady, setMapReady] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
 
@@ -93,6 +95,7 @@ export default function SuperAdminDashboard() {
     setHotelLat(hotel.latitude || null);
     setHotelLng(hotel.longitude || null);
     setHotelOrderRadius(String(hotel.orderRadius || 30));
+    setHotelTypeVal((hotel.hotelType as "veg" | "nonveg" | "both") || "both");
     setMapReady(false); // will re-init map
   };
 
@@ -108,6 +111,7 @@ export default function SuperAdminDashboard() {
     setHotelLat(null);
     setHotelLng(null);
     setHotelOrderRadius("30");
+    setHotelTypeVal("both");
     setMapReady(false);
     setAdminName("");
     setAdminUsername("");
@@ -615,6 +619,8 @@ export default function SuperAdminDashboard() {
         latitude: hotelLat,
         longitude: hotelLng,
         orderRadius: parseInt(hotelOrderRadius) || 30,
+        hotel_type: hotelTypeVal,
+        hotelType: hotelTypeVal
       };
 
       if (!editingHotel) {
@@ -965,6 +971,55 @@ export default function SuperAdminDashboard() {
                     </div>
                   </div>
 
+                  {/* Hotel Type Selector */}
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Hotel Dining Type</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        {
+                          value: "veg",
+                          emoji: "🌱",
+                          label: "Veg Only",
+                          activeClass: "border-emerald-500/40 bg-emerald-500/5 shadow-[0_0_10px_rgba(16,185,129,0.1)] text-emerald-400",
+                          badgeBg: "bg-emerald-500 text-black"
+                        },
+                        {
+                          value: "nonveg",
+                          emoji: "🍗",
+                          label: "Non-Veg",
+                          activeClass: "border-red-500/40 bg-red-500/5 shadow-[0_0_10px_rgba(239,68,68,0.1)] text-red-400",
+                          badgeBg: "bg-red-500 text-white"
+                        },
+                        {
+                          value: "both",
+                          emoji: "🍽️",
+                          label: "Both",
+                          activeClass: "border-yellow-500/40 bg-yellow-500/5 shadow-[0_0_10px_rgba(234,179,8,0.1)] text-yellow-400",
+                          badgeBg: "bg-yellow-500 text-black"
+                        }
+                      ] as const).map((type) => (
+                        <button
+                          key={type.value}
+                          type="button"
+                          onClick={() => setHotelTypeVal(type.value)}
+                          className={`relative flex items-center justify-start gap-2 p-2 rounded-xl border text-[10px] font-bold transition-all duration-300 cursor-pointer ${
+                            hotelTypeVal === type.value
+                              ? type.activeClass
+                              : "border-gray-800 bg-gray-900 text-gray-500 hover:border-gray-700 hover:text-gray-400"
+                          }`}
+                        >
+                          <span className="text-xs">{type.emoji}</span>
+                          <span className="truncate">{type.label}</span>
+                          {hotelTypeVal === type.value && (
+                            <span className={`absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[6px] font-black ${type.badgeBg}`}>
+                              ✓
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center">
                       <label className="text-[9px] font-bold uppercase tracking-wider text-gray-500">
@@ -1299,6 +1354,16 @@ export default function SuperAdminDashboard() {
                               {h.plan === 'pro' ? <Crown size={8} /> : null}
                               {planBadge.label}
                             </span>
+
+                            {/* Hotel Type Badge */}
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border mb-1.5 ml-1.5 ${
+                              h.hotelType === "veg" ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400" :
+                              h.hotelType === "nonveg" ? "bg-red-500/10 border-red-500/25 text-red-400" :
+                              "bg-yellow-500/10 border-yellow-500/25 text-yellow-400"
+                            }`}>
+                              {h.hotelType === "veg" ? "🌱 Veg" : h.hotelType === "nonveg" ? "🍗 Non-Veg" : "🟡 Both"}
+                            </span>
+
                             <div className="flex items-center gap-1 text-[11px] text-yellow-500">
                               <Globe size={10} />
                               <span>/{h.slug}</span>

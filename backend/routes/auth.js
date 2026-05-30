@@ -5,6 +5,7 @@ const db = require("./database");
 const crypto = require("crypto");
 const messageCentral = require("./messageCentral");
 require("dotenv").config();
+const axios = require("axios");
 
 const SESSION_EXPIRY_HOURS = 90 * 24;
 const ADMIN_SESSION_EXPIRY_HOURS = 24;
@@ -20,7 +21,10 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-const hashPassword = (pwd) => crypto.createHash('sha256').update(pwd).digest('hex');
+const bcrypt = require("bcrypt");
+const SALT_ROUNDS = 12;
+
+const hashPassword = async (pwd) => await bcrypt.hash(pwd, SALT_ROUNDS);
 const validateMobile = (m) => /^[6-9]\d{9}$/.test(String(m).replace(/\D/g, ""));
 const validateName = (n) => typeof n === "string" && n.trim().length >= 2 && /^[A-Za-z\s]+$/.test(n.trim());
 const validateOTP = (o) => /^\d{6}$/.test(o);
@@ -45,7 +49,7 @@ const verifySession = async (sessionId) => {
   if (!sessionId) return null;
   
   const result = await db.query(
-    "SELECT s.customer_id, c.name, c.phone, c.hotel_id FROM sessions s INNER JOIN customers c ON s.customer_id = c.customer_id WHERE s.session_id = $1 AND s.expires_at > NOW()",
+    "SELECT s.customer_id, c.name, c.phone, c.email, c.dob, c.hotel_id FROM sessions s INNER JOIN customers c ON s.customer_id = c.customer_id WHERE s.session_id = $1 AND s.expires_at > NOW()",
     [sessionId]
   );
   
@@ -57,141 +61,81 @@ const verifySession = async (sessionId) => {
     customerId: result.rows[0].customer_id,
     name: result.rows[0].name,
     phone: result.rows[0].phone,
+    email: result.rows[0].email,
+    dob: result.rows[0].dob,
     hotelId: result.rows[0].hotel_id
   };
 };
 
-router.post("/send-otp", async (req, res) => {
-  try {
-    const { phone, type, name, hotelSlug } = req.body;
-    
-    if (!phone || !type) {
-      return res.status(400).json({ success: false, message: "Phone number and type required." });
-    }
-    
-    const mobile = String(phone).replace(/\D/g, "");
-    if (!validateMobile(mobile)) {
-      return res.status(400).json({ success: false, message: "Invalid mobile number." });
-    }
-    
-    if (type === "register" && !validateName(name)) {
-      return res.status(400).json({ success: false, message: "Valid name required." });
-    }
+router.get("/google-config", (req, res) => {
+  return res.json({
+    success: true,
+    clientId: process.env.GOOGLE_CLIENT_ID || "1073836371754-0l8t3572i46s91q7j018d9f485q5s7t2.apps.googleusercontent.com"
+  });
+});
 
-    // Resolve targeted hotel_id from hotelSlug
+router.post("/google-login", async (req, res) => {
+  try {
+    const { credential, hotelSlug } = req.body;
+    
+    if (!credential) {
+      return res.status(400).json({ success: false, message: "Google credential token required." });
+    }
+    
+    let googleUser;
+    try {
+      const response = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
+      googleUser = response.data;
+    } catch (err) {
+      console.error("Google token verification failed:", err.message);
+      return res.status(401).json({ success: false, message: "Invalid or expired Google token." });
+    }
+    
+    // Verify audience to prevent malicious token reuse from other Google projects
+    const allowedClientId = process.env.GOOGLE_CLIENT_ID || "1073836371754-0l8t3572i46s91q7j018d9f485q5s7t2.apps.googleusercontent.com";
+    if (googleUser.aud !== allowedClientId) {
+      console.error("Google token audience mismatch. Expected:", allowedClientId, "Got:", googleUser.aud);
+      return res.status(401).json({ success: false, message: "Google token verification failed (audience mismatch)." });
+    }
+    
+    if (!googleUser.email) {
+      return res.status(400).json({ success: false, message: "Email not provided by Google account." });
+    }
+    
+    const email = googleUser.email.toLowerCase();
+    const name = googleUser.name || googleUser.given_name || "Google User";
+    const googleId = googleUser.sub;
+    
     const targetSlug = hotelSlug || "hotbyte";
     const hotelResult = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [targetSlug]);
     if (hotelResult.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Hotel not found" });
+      return res.status(404).json({ success: false, message: "Hotel not found." });
     }
     const hotelId = hotelResult.rows[0].hotel_id;
-
-    // Scope checking strictly to phone AND hotel_id
-    const existing = await db.query(
-      "SELECT customer_id FROM customers WHERE phone = $1 AND hotel_id = $2",
-      [mobile, hotelId]
+    
+    let customerResult = await db.query(
+      "SELECT customer_id, name, phone, email, dob, hotel_id, google_id FROM customers WHERE LOWER(email) = $1 AND hotel_id = $2",
+      [email, hotelId]
     );
     
-    if (type === "login" && existing.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "You are not registered with this hotel. Please create an account." });
-    }
-    
-    if (type === "register" && existing.rows.length > 0) {
-      return res.status(409).json({ success: false, message: "An account with this phone number is already registered at this hotel. Please sign in." });
-    }
-
-    const otpKey = `${mobile}_${type}`;
-    otpStore.delete(otpKey);
-
-    const smsResult = await messageCentral.sendOTP(mobile);
-    if (!smsResult.success) {
-      return res.status(500).json({ success: false, message: smsResult.error || "Failed to send OTP." });
-    }
-
-    otpStore.set(otpKey, {
-      type,
-      name: type === "register" ? name.trim() : null,
-      attempts: 0,
-      expiresAt: Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
-      verified: false,
-      verificationId: smsResult.verificationId,
-      hotelId
-    });
-    
-    return res.json({ success: true, message: "OTP sent successfully" });
-  } catch (error) {
-    console.error("Send OTP error:", error);
-    return res.status(500).json({ success: false, message: "Failed to send OTP." });
-  }
-});
-
-router.post("/verify-otp", async (req, res) => {
-  try {
-    const { phone, otp, type } = req.body;
-    
-    if (!phone || !otp || !type) {
-      return res.status(400).json({ success: false, message: "Phone, OTP, and type required." });
-    }
-
-    const mobile = String(phone).replace(/\D/g, "");
-    const cleanOTP = String(otp).replace(/\D/g, "");
-    
-    if (!validateMobile(mobile)) {
-      return res.status(400).json({ success: false, message: "Invalid mobile number." });
-    }
-    
-    if (!validateOTP(cleanOTP)) {
-      return res.status(400).json({ success: false, message: "OTP must be 6 digits." });
-    }
-
-    const otpKey = `${mobile}_${type}`;
-    const otpRecord = otpStore.get(otpKey);
-    
-    if (!otpRecord || otpRecord.verified) {
-      return res.status(400).json({ success: false, message: "No OTP found. Request new OTP." });
-    }
-    
-    if (Date.now() > otpRecord.expiresAt) {
-      otpStore.delete(otpKey);
-      return res.status(400).json({ success: false, message: "OTP expired." });
-    }
-    
-    if (otpRecord.attempts >= MAX_OTP_ATTEMPTS) {
-      otpStore.delete(otpKey);
-      return res.status(429).json({ success: false, message: "Too many attempts." });
-    }
-
-    const verifyResult = await messageCentral.verifyOTP(mobile, cleanOTP, otpRecord.verificationId);
-    
-    if (!verifyResult.success || !verifyResult.verified) {
-      otpRecord.attempts++;
-      return res.status(401).json({
-        success: false,
-        message: "Invalid OTP.",
-        attemptsLeft: MAX_OTP_ATTEMPTS - otpRecord.attempts
-      });
-    }
-
     let customer;
-    if (type === "register") {
-      const result = await db.query(
-        "INSERT INTO customers (name, phone, hotel_id) VALUES ($1, $2, $3) RETURNING customer_id, name, phone, hotel_id",
-        [otpRecord.name, mobile, otpRecord.hotelId]
-      );
-      customer = result.rows[0];
-    } else {
-      const result = await db.query(
-        "SELECT customer_id, name, phone, hotel_id FROM customers WHERE phone = $1 AND hotel_id = $2",
-        [mobile, otpRecord.hotelId]
-      );
-      if (result.rows.length === 0) {
-        return res.status(404).json({ success: false, message: "Customer account not found at this hotel." });
+    if (customerResult.rows.length > 0) {
+      customer = customerResult.rows[0];
+      if (!customer.google_id) {
+        await db.query(
+          "UPDATE customers SET google_id = $1 WHERE customer_id = $2",
+          [googleId, customer.customer_id]
+        );
       }
-      customer = result.rows[0];
+    } else {
+      const insertResult = await db.query(
+        "INSERT INTO customers (name, email, google_id, hotel_id) VALUES ($1, $2, $3, $4) RETURNING customer_id, name, phone, email, dob, hotel_id",
+        [name, email, googleId, hotelId]
+      );
+      customer = insertResult.rows[0];
     }
-
-    await db.query("DELETE FROM sessions WHERE customer_id = $1", [customer.customer_id]);
     
+    await db.query("DELETE FROM sessions WHERE customer_id = $1", [customer.customer_id]);
     const { sessionId } = await createSession(customer.customer_id, req);
     
     res.cookie("sessionId", sessionId, {
@@ -202,16 +146,25 @@ router.post("/verify-otp", async (req, res) => {
       path: "/"
     });
     
-    otpStore.delete(otpKey);
+    const hasDob = customer.dob !== null && customer.dob !== undefined;
     
     return res.json({
       success: true,
-      message: type === "register" ? "Registration successful" : "Login successful",
-      customer: { id: customer.customer_id, name: customer.name, phone: customer.phone, hotelId: customer.hotel_id }
+      message: "Google login successful",
+      customer: {
+        id: customer.customer_id,
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email,
+        dob: customer.dob,
+        hasDob,
+        hotelId: customer.hotel_id,
+        hotelSlug: targetSlug
+      }
     });
   } catch (error) {
-    console.error("Verify OTP error:", error);
-    return res.status(500).json({ success: false, message: "OTP verification failed." });
+    console.error("Google login route error:", error);
+    return res.status(500).json({ success: false, message: "Google authentication failed." });
   }
 });
 
@@ -235,8 +188,7 @@ router.get("/session-check", async (req, res) => {
     const hotelRes = await db.query("SELECT slug FROM public.hotels WHERE hotel_id = $1", [session.hotelId]);
     const hotelSlug = hotelRes.rows.length > 0 ? hotelRes.rows[0].slug : null;
 
-    const result = await db.query("SELECT dob FROM customers WHERE customer_id = $1", [session.customerId]);
-    const hasDob = result.rows.length > 0 && result.rows[0].dob !== null;
+    const hasDob = session.dob !== null && session.dob !== undefined;
     
     return res.json({
       authenticated: true,
@@ -244,6 +196,8 @@ router.get("/session-check", async (req, res) => {
         id: session.customerId,
         name: session.name,
         phone: session.phone,
+        email: session.email,
+        dob: session.dob,
         hasDob,
         hotelId: session.hotelId,
         hotelSlug
@@ -360,9 +314,10 @@ router.post("/admin/signup", async (req, res) => {
       }
     }
 
+    const hashedPassword = await hashPassword(password);
     const result = await db.query(
       "INSERT INTO admins (name, username, email, password) VALUES ($1, $2, $3, $4) RETURNING admin_id, name, username, email",
-      [name || null, username, email || null, hashPassword(password)]
+      [name || null, username, email || null, hashedPassword]
     );
     
     return res.json({
@@ -389,8 +344,8 @@ router.post("/admin/login", async (req, res) => {
     }
 
     const result = await db.query(
-      "SELECT admin_id, username, hotel_id, role FROM admins WHERE username = $1 AND password = $2",
-      [username, hashPassword(password)]
+      "SELECT admin_id, username, hotel_id, role, password FROM admins WHERE username = $1",
+      [username]
     );
     
     if (result.rows.length === 0) {
@@ -398,6 +353,10 @@ router.post("/admin/login", async (req, res) => {
     }
 
     const admin = result.rows[0];
+    const passwordMatch = await bcrypt.compare(password, admin.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ success: false, message: "Invalid credentials." });
+    }
     
     if (admin.role !== role) {
       return res.status(401).json({ success: false, message: "Incorrect role for this login portal." });
@@ -587,7 +546,7 @@ router.post("/admin/reset-password", async (req, res) => {
     }
 
     // OTP Verified! Reset password
-    const hashed = hashPassword(password);
+    const hashed = await hashPassword(password);
     await db.query(
       "UPDATE public.admins SET password = $1 WHERE admin_id = $2",
       [hashed, admin.admin_id]

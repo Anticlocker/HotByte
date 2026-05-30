@@ -23,7 +23,8 @@ body {
     ),
     radial-gradient(at 100% 0%, rgba(255, 90, 31, 0.04) 0px, transparent 50%),
     radial-gradient(at 50% 100%, rgba(255, 90, 31, 0.05) 0px, transparent 50%);
-  background-attachment: fixed;
+  /* background-attachment: fixed is broken on iOS/Android WebKit — removed */
+  background-attachment: scroll;
 }
 
 /* Glassmorphism structures */
@@ -573,7 +574,8 @@ body {
     ),
     radial-gradient(at 100% 0%, rgba(255, 90, 31, 0.08) 0px, transparent 50%),
     radial-gradient(at 50% 100%, rgba(255, 90, 31, 0.1) 0px, transparent 50%);
-  background-attachment: fixed;
+  /* background-attachment: fixed is broken on iOS/Android WebKit — removed */
+  background-attachment: scroll;
 }
 
 /* Glassmorphism Structural Overrides */
@@ -788,4 +790,152 @@ body {
   font-family: var(--font-sans) !important;
 }
 
+/* ==========================================================================
+   MOBILE RESPONSIVENESS — Android / iOS fixes
+   ========================================================================== */
 
+/* Prevent hover effects getting "stuck" on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  .glass-card-dark:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .btn-orange:hover {
+    transform: none;
+    box-shadow: 0 8px 24px rgba(255, 90, 31, 0.35);
+  }
+
+  .btn-secondary-glass:hover {
+    transform: none;
+  }
+
+  /* Disable card lift hover on touch */
+  .menu-card-hover:hover {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Smooth touch scrolling for category chips */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Menu card image: use padding-top trick for reliable aspect ratio on all Android versions */
+.menu-card-img-wrap {
+  position: relative;
+  width: 100%;
+  padding-top: 75%; /* 4:3 ratio */
+  overflow: hidden;
+  background-color: #f3f4f6;
+}
+.dark .menu-card-img-wrap {
+  background-color: #27272a;
+}
+.menu-card-img-wrap img,
+.menu-card-img-wrap .menu-card-img-placeholder {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Cart drawer: full-width + bottom slide on mobile */
+@media (max-width: 640px) {
+  .cart-drawer {
+    position: fixed !important;
+    inset: auto 0 0 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 90dvh !important;
+    height: auto !important;
+    border-left: none !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.09) !important;
+    border-radius: 24px 24px 0 0 !important;
+    animation: slideUpDrawer 0.35s cubic-bezier(0.16, 1, 0.3, 1) both !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .cart-drawer-backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+  }
+
+  /* Drag handle indicator on mobile cart */
+  .cart-drawer::before {
+    content: "";
+    display: block;
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(156, 163, 175, 0.4);
+    margin: 12px auto 4px;
+    flex-shrink: 0;
+  }
+}
+
+@keyframes slideUpDrawer {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Floating cart button: keep above iOS Safari bottom bar */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .cart-float-btn {
+    bottom: calc(1.5rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* Ensure images load crisply on high-dpi Android screens */
+img {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  will-change: auto;
+}
+
+/* Fix font rendering on Android */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Prevent tap highlight flash on interactive elements */
+button, a, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Single-column grid on very small phones (< 380px) */
+@media (max-width: 380px) {
+  .menu-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* 2-column grid on small phones */
+@media (min-width: 381px) and (max-width: 639px) {
+  .menu-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+  /* Tighter card padding on small screens */
+  .menu-card-body {
+    padding: 12px !important;
+  }
+}

@@ -42,6 +42,7 @@ export default function AdminMenu() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hotelType, setHotelType] = useState<"veg" | "nonveg" | "both">("both");
 
   // Modals state
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
@@ -67,14 +68,25 @@ export default function AdminMenu() {
         return;
       }
 
-      // 2. Fetch categories (use admin-authenticated route scoped to this hotel)
+      // 2. Fetch hotel type from settings
+      const settingsRes = await fetch("/api/admin/settings");
+      const settingsData = await settingsRes.json();
+      if (settingsData.success && settingsData.hotel?.hotel_type) {
+        const ht = settingsData.hotel.hotel_type;
+        setHotelType(ht);
+        // Lock formIsVeg based on hotel type
+        if (ht === "veg") setFormIsVeg(true);
+        if (ht === "nonveg") setFormIsVeg(false);
+      }
+
+      // 3. Fetch categories (use admin-authenticated route scoped to this hotel)
       const catRes = await fetch("/api/admin/categories");
       const catData = await catRes.json();
       if (catData.success) {
         setCategories(catData.categories);
       }
 
-      // 3. Fetch menu items (use admin-authenticated route scoped to this hotel)
+      // 4. Fetch menu items (use admin-authenticated route scoped to this hotel)
       const itemsRes = await fetch("/api/admin/items");
       const itemsData = await itemsRes.json();
       if (itemsData.success) {
@@ -105,6 +117,10 @@ export default function AdminMenu() {
 
   const handleOpenAddModal = () => {
     resetItemForm();
+    // Lock veg status based on hotel type
+    if (hotelType === "veg") setFormIsVeg(true);
+    else if (hotelType === "nonveg") setFormIsVeg(false);
+    else setFormIsVeg(true);
     if (categories.length > 0) {
       setFormCategory(categories[0].category_id.toString());
     }
@@ -348,9 +364,19 @@ export default function AdminMenu() {
             <Settings className="text-[var(--orange)]" />
             <span>Menu & Categories</span>
           </h1>
-          <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mt-1">
-            Configure menu list, categories, and inventory items
-          </p>
+          <div className="flex items-center gap-3 mt-1">
+            <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">
+              Configure menu list, categories, and inventory items
+            </p>
+            {/* Hotel Type Badge */}
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
+              hotelType === "veg" ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400" :
+              hotelType === "nonveg" ? "bg-red-500/10 border-red-500/25 text-red-400" :
+              "bg-yellow-500/10 border-yellow-500/25 text-yellow-400"
+            }`}>
+              <span>{hotelType === "veg" ? "🌱 Veg Only" : hotelType === "nonveg" ? "🍗 Non-Veg Only" : "🟡 Both"}</span>
+            </span>
+          </div>
         </div>
 
         <div className="flex bg-gray-900/60 p-1 rounded-xl border border-gray-850">
@@ -705,18 +731,33 @@ export default function AdminMenu() {
               {/* Toggles */}
               <div className="grid grid-cols-2 gap-4 pt-2">
                 {/* Veg selection */}
-                <label className="flex items-center gap-3 p-3 bg-gray-900/50 border border-gray-850 hover:border-gray-800 rounded-xl cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={!!formIsVeg}
-                    onChange={(e) => setFormIsVeg(e.target.checked)}
-                    className="w-4 h-4 rounded text-orange-500 focus:ring-0 focus:ring-offset-0 accent-emerald-500 cursor-pointer"
-                  />
-                  <div className="flex flex-col leading-none">
-                    <span className="text-[11px] font-extrabold text-gray-300">Pure Vegetarian</span>
-                    <span className="text-[8px] text-gray-500 font-semibold mt-0.5">Leaf status mark</span>
+                {hotelType === "both" ? (
+                  <label className="flex items-center gap-3 p-3 bg-gray-900/50 border border-gray-850 hover:border-gray-800 rounded-xl cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={!!formIsVeg}
+                      onChange={(e) => setFormIsVeg(e.target.checked)}
+                      className="w-4 h-4 rounded text-orange-500 focus:ring-0 focus:ring-offset-0 accent-emerald-500 cursor-pointer"
+                    />
+                    <div className="flex flex-col leading-none">
+                      <span className="text-[11px] font-extrabold text-gray-300">Pure Vegetarian</span>
+                      <span className="text-[8px] text-gray-500 font-semibold mt-0.5">Leaf status mark</span>
+                    </div>
+                  </label>
+                ) : (
+                  <div className={`flex items-center gap-3 p-3 rounded-xl border ${
+                    hotelType === "veg"
+                      ? "bg-emerald-500/10 border-emerald-500/25"
+                      : "bg-red-500/10 border-red-500/25"
+                  }`}>
+                    <div className="flex flex-col leading-none">
+                      <span className={`text-[11px] font-extrabold ${ hotelType === "veg" ? "text-emerald-400" : "text-red-400" }`}>
+                        {hotelType === "veg" ? "🌱 Veg Only Hotel" : "🍗 Non-Veg Only Hotel"}
+                      </span>
+                      <span className="text-[8px] text-gray-500 font-semibold mt-0.5">Veg status is locked by hotel type</span>
+                    </div>
                   </div>
-                </label>
+                )}
 
                 {/* Available selection */}
                 <label className="flex items-center gap-3 p-3 bg-gray-900/50 border border-gray-850 hover:border-gray-800 rounded-xl cursor-pointer select-none">

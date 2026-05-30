@@ -5,8 +5,11 @@ const crypto = require("crypto");
 const { requireAdmin } = require("./auth");
 const { seedDefaultMenu } = require("./seedDefaultMenu");
 
+const bcrypt = require("bcrypt");
+const SALT_ROUNDS = 12;
+
 // Hashing helper for password
-const hashPassword = (pwd) => crypto.createHash('sha256').update(pwd).digest('hex');
+const hashPassword = async (pwd) => await bcrypt.hash(pwd, SALT_ROUNDS);
 
 // Middleware to restrict access only to Super Admins
 const requireSuperAdmin = (req, res, next) => {
@@ -41,6 +44,7 @@ router.get("/hotels", async (req, res) => {
         h.latitude,
         h.longitude,
         h.order_radius,
+        h.hotel_type,
         (SELECT COUNT(*) FROM admins a WHERE a.hotel_id = h.hotel_id) as manager_count,
         (SELECT COUNT(*) FROM menu_items m WHERE m.hotel_id = h.hotel_id) as item_count,
         (SELECT COUNT(*) FROM orders o WHERE o.hotel_id = h.hotel_id) as order_count,
@@ -66,6 +70,7 @@ router.get("/hotels", async (req, res) => {
         latitude: row.latitude ? parseFloat(row.latitude) : null,
         longitude: row.longitude ? parseFloat(row.longitude) : null,
         orderRadius: row.order_radius || 30,
+        hotelType: row.hotel_type || 'both',
         managerCount: parseInt(row.manager_count),
         itemCount: parseInt(row.item_count),
         orderCount: parseInt(row.order_count),
@@ -86,7 +91,7 @@ router.post("/hotels", async (req, res) => {
   const { 
     name, slug, phone, address, plan, tableCount,
     adminName, adminUsername, adminEmail, adminPassword,
-    latitude, longitude, orderRadius
+    latitude, longitude, orderRadius, hotelType
   } = req.body;
 
   if (!name || !slug) {
@@ -140,16 +145,19 @@ router.post("/hotels", async (req, res) => {
       const lat = latitude ? parseFloat(latitude) : null;
       const lng = longitude ? parseFloat(longitude) : null;
       const radius = parseInt(orderRadius) > 0 ? parseInt(orderRadius) : 30;
+      const validHotelTypes = ['veg', 'nonveg', 'both'];
+      const safeHotelType = validHotelTypes.includes(hotelType) ? hotelType : 'both';
       const hotelResult = await client.query(
-        "INSERT INTO public.hotels (name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING hotel_id, name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, created_at",
-        [name.trim(), cleanSlug, phone ? phone.trim() : null, address ? address.trim() : null, hotelPlan, trialEndsAt, tables, lat, lng, radius]
+        "INSERT INTO public.hotels (name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING hotel_id, name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, created_at",
+        [name.trim(), cleanSlug, phone ? phone.trim() : null, address ? address.trim() : null, hotelPlan, trialEndsAt, tables, lat, lng, radius, safeHotelType]
       );
       const newHotel = hotelResult.rows[0];
 
       // 2. Insert Hotel Admin Manager mapped to this hotel with role = 'admin'
+      const hashedAdminPassword = await hashPassword(adminPassword);
       const adminResult = await client.query(
         "INSERT INTO public.admins (name, username, email, password, hotel_id, role) VALUES ($1, $2, $3, $4, $5, 'admin') RETURNING admin_id, name, username, email, hotel_id, role, created_at",
-        [adminName ? adminName.trim() : null, adminUsername.trim(), adminEmail && adminEmail.trim() !== "" ? adminEmail.trim() : null, hashPassword(adminPassword), newHotel.hotel_id]
+        [adminName ? adminName.trim() : null, adminUsername.trim(), adminEmail && adminEmail.trim() !== "" ? adminEmail.trim() : null, hashedAdminPassword, newHotel.hotel_id]
       );
       const newAdmin = adminResult.rows[0];
 
@@ -255,9 +263,10 @@ router.post("/admins", async (req, res) => {
       }
     }
 
+    const hashedPassword = await hashPassword(password);
     const result = await db.query(
       "INSERT INTO public.admins (name, username, email, password, hotel_id, role) VALUES ($1, $2, $3, $4, $5, 'admin') RETURNING admin_id, name, username, email, hotel_id, role, created_at",
-      [name ? name.trim() : null, username.trim(), email ? email.trim() : null, hashPassword(password), hotelId]
+      [name ? name.trim() : null, username.trim(), email ? email.trim() : null, hashedPassword, hotelId]
     );
 
     return res.json({
@@ -278,7 +287,7 @@ router.post("/admins", async (req, res) => {
 router.put("/hotels/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, slug, phone, address, isFrozen, plan, tableCount, latitude, longitude, orderRadius } = req.body;
+    const { name, slug, phone, address, isFrozen, plan, tableCount, latitude, longitude, orderRadius, hotel_type } = req.body;
 
     if (!name || !slug) {
       return res.status(400).json({ success: false, message: "Hotel name and unique URL slug are required." });
@@ -314,9 +323,11 @@ router.put("/hotels/:id", async (req, res) => {
     if (lat !== undefined) { params.splice(params.length - 1, 0, lat); setClause.push(`latitude = $${params.length - 1}`); }
     if (lng !== undefined) { params.splice(params.length - 1, 0, lng); setClause.push(`longitude = $${params.length - 1}`); }
     if (radius !== undefined) { params.splice(params.length - 1, 0, radius); setClause.push(`order_radius = $${params.length - 1}`); }
+    const validHotelTypes = ['veg', 'nonveg', 'both'];
+    if (hotel_type && validHotelTypes.includes(hotel_type)) { params.splice(params.length - 1, 0, hotel_type); setClause.push(`hotel_type = $${params.length - 1}`); }
 
     const result = await db.query(
-      `UPDATE public.hotels SET ${setClause.join(', ')} WHERE hotel_id = $${params.length} RETURNING hotel_id, name, slug, phone, address, is_frozen, plan, trial_ends_at, table_count, latitude, longitude, order_radius, created_at`,
+      `UPDATE public.hotels SET ${setClause.join(', ')} WHERE hotel_id = $${params.length} RETURNING hotel_id, name, slug, phone, address, is_frozen, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, created_at`,
       params
     );
 
@@ -341,6 +352,7 @@ router.put("/hotels/:id", async (req, res) => {
         latitude: row.latitude ? parseFloat(row.latitude) : null,
         longitude: row.longitude ? parseFloat(row.longitude) : null,
         orderRadius: row.order_radius || 30,
+        hotelType: row.hotel_type || 'both',
         createdAt: row.created_at
       }
     });
@@ -437,13 +449,14 @@ router.put("/admins/:id", async (req, res) => {
       if (password.length < 6) {
         return res.status(400).json({ success: false, message: "Password must be at least 6 characters long." });
       }
+      const hashedPassword = await hashPassword(password);
       queryText = `
         UPDATE public.admins 
         SET name = $1, username = $2, email = $3, password = $4, hotel_id = $5 
         WHERE admin_id = $6 AND role <> 'super_admin'
         RETURNING admin_id, name, username, email, hotel_id, role, created_at
       `;
-      params = [name ? name.trim() : null, username.trim(), email ? email.trim() : null, hashPassword(password), hotelId, id];
+      params = [name ? name.trim() : null, username.trim(), email ? email.trim() : null, hashedPassword, hotelId, id];
     } else {
       queryText = `
         UPDATE public.admins 
@@ -459,6 +472,9 @@ router.put("/admins/:id", async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Manager not found or unauthorized to edit Super Admin." });
     }
+
+    // Invalidate all active sessions for this admin manager
+    await db.query("DELETE FROM public.sessions WHERE admin_id = $1", [id]);
 
     return res.json({
       success: true,

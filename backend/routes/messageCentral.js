@@ -28,6 +28,15 @@ class MessageCentralOTP {
       // Mobile number clean karo (sirf digits rakho)
       const cleanedMobile = String(mobileNumber).replace(/\D/g, "");
 
+      // 🔓 Development bypass - Testing ke liye (ONLY in non-production)
+      if (process.env.NODE_ENV !== 'production' && cleanedMobile === "9356918260") {
+        console.log("ℹ️  Message Central: Local development bypass triggered for", cleanedMobile);
+        return {
+          success: true,
+          verificationId: `mock_verification_id_${cleanedMobile}_${Date.now()}`,
+        };
+      }
+
       // Configuration check karo
       if (!this.sendOtpUrl || !this.authToken) {
         console.error("❌ Message Central not configured properly");

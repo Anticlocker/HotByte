@@ -48,6 +48,7 @@ interface HotelSettings {
   latitude: number | null;
   longitude: number | null;
   order_radius: number;
+  hotel_type: string;
 }
 
 interface AdminInfo {
@@ -122,6 +123,7 @@ export default function AdminSettings() {
   const [enableQr, setEnableQr] = useState(true);
   const [tableCount, setTableCount] = useState(5);
   const [isOpen, setIsOpen] = useState(true);
+  const [hotelType, setHotelType] = useState<"veg" | "nonveg" | "both">("both");
 
   // Account security forms
   const [adminName, setAdminName] = useState("");
@@ -176,6 +178,7 @@ export default function AdminSettings() {
         setEnableQr(data.hotel.enable_qr_ordering !== false);
         setTableCount(data.hotel.table_count || 5);
         setIsOpen(data.hotel.is_open !== false);
+        setHotelType(data.hotel.hotel_type || "both");
 
         // Bind location
         setLocationLat(data.hotel.latitude ? parseFloat(data.hotel.latitude) : null);
@@ -319,7 +322,8 @@ export default function AdminSettings() {
           enable_online_orders: enableOnline,
           enable_qr_ordering: enableQr,
           table_count: tableCount,
-          is_open: isOpen
+          is_open: isOpen,
+          hotel_type: hotelType
         })
       });
       let data;
@@ -868,6 +872,90 @@ export default function AdminSettings() {
                       placeholder="State a premium description of your gourmet cuisine, history, or chef notes..."
                       className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-xs font-semibold text-gray-200 focus:border-orange-500 outline-none transition-all min-h-[100px] focus:ring-1 focus:ring-orange-500/20"
                     ></textarea>
+                  </div>
+                </div>
+
+                {/* Hotel Type Selector */}
+                <div className="space-y-3 pt-2">
+                  <label className="text-[10px] font-black text-gray-450 uppercase tracking-widest block flex items-center gap-1.5">
+                    <span>🍽️</span>
+                    <span>Hotel Dining Type</span>
+                  </label>
+                  <p className="text-[9px] text-gray-500 font-semibold -mt-1">
+                    Controls badge display on customer menu, veg/non-veg filters, and item creation restrictions.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {([
+                      {
+                        value: "veg",
+                        emoji: "🌱",
+                        label: "Veg Only",
+                        sub: "Pure Veg",
+                        activeClass: "border-emerald-500/40 bg-emerald-500/5 shadow-[0_0_12px_rgba(16,185,129,0.12)]",
+                        iconActiveBg: "bg-emerald-500/10 text-emerald-400",
+                        titleActiveColor: "text-emerald-400",
+                        badgeBg: "bg-emerald-500",
+                        badgeText: "text-black"
+                      },
+                      {
+                        value: "nonveg",
+                        emoji: "🍗",
+                        label: "Non-Veg Only",
+                        sub: "Non-Veg",
+                        activeClass: "border-red-500/40 bg-red-500/5 shadow-[0_0_12px_rgba(239,68,68,0.12)]",
+                        iconActiveBg: "bg-red-500/10 text-red-400",
+                        titleActiveColor: "text-red-400",
+                        badgeBg: "bg-red-500",
+                        badgeText: "text-white"
+                      },
+                      {
+                        value: "both",
+                        emoji: "🍽️",
+                        label: "Veg & Non-Veg",
+                        sub: "Both categories",
+                        activeClass: "border-orange-500/40 bg-orange-500/5 shadow-[0_0_12px_rgba(255,90,31,0.12)]",
+                        iconActiveBg: "bg-orange-500/10 text-orange-400",
+                        titleActiveColor: "text-orange-400",
+                        badgeBg: "bg-[#ff5a1f]",
+                        badgeText: "text-white"
+                      }
+                    ] as const).map((type) => (
+                      <button
+                        key={type.value}
+                        type="button"
+                        onClick={() => setHotelType(type.value)}
+                        className={`relative flex items-center gap-3 p-3 rounded-2xl border text-left transition-all duration-300 cursor-pointer ${
+                          hotelType === type.value
+                            ? type.activeClass
+                            : "border-gray-850 bg-gray-900/10 text-gray-400 hover:border-gray-850 hover:bg-[#0c0f14]"
+                        }`}
+                      >
+                        {/* Compact Icon Wrap */}
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm transition-colors ${
+                          hotelType === type.value ? type.iconActiveBg : "bg-[#10141b] text-gray-500"
+                        }`}>
+                          {type.emoji}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <span className={`block text-[10px] font-black uppercase tracking-wider ${
+                            hotelType === type.value ? type.titleActiveColor : "text-gray-305"
+                          }`}>
+                            {type.label}
+                          </span>
+                          <span className="block text-[8px] text-gray-550 font-semibold mt-0.5">
+                            {type.sub}
+                          </span>
+                        </div>
+
+                        {/* Elegant micro checkmark */}
+                        {hotelType === type.value && (
+                          <span className={`absolute top-2.5 right-2.5 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-black ${type.badgeBg} ${type.badgeText}`}>
+                            ✓
+                          </span>
+                        )}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -1648,6 +1736,25 @@ export default function AdminSettings() {
                 </div>
                 <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center text-[var(--orange)]">
                   <Globe size={16} />
+                </div>
+              </div>
+
+              {/* Hotel Type Badge */}
+              <div className={`p-4 rounded-2xl border flex items-center gap-3 ${
+                hotelType === "veg" ? "bg-emerald-500/5 border-emerald-500/20" :
+                hotelType === "nonveg" ? "bg-red-500/5 border-red-500/20" :
+                "bg-yellow-500/5 border-yellow-500/20"
+              }`}>
+                <span className="text-2xl">{hotelType === "veg" ? "🌱" : hotelType === "nonveg" ? "🍗" : "🟡"}</span>
+                <div>
+                  <span className={`text-[10px] font-black uppercase tracking-wider block ${
+                    hotelType === "veg" ? "text-emerald-400" :
+                    hotelType === "nonveg" ? "text-red-400" : "text-yellow-400"
+                  }`}>
+                    {hotelType === "veg" ? "100% Pure Veg Restaurant" :
+                     hotelType === "nonveg" ? "Non-Veg Speciality" : "Veg & Non-Veg Menu"}
+                  </span>
+                  <span className="text-[8px] text-gray-500 font-semibold block mt-0.5">Shown as badge on customer menu</span>
                 </div>
               </div>
 

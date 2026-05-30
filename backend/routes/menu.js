@@ -11,7 +11,7 @@ router.get("/categories", async (req, res) => {
       `SELECT hotel_id, name, logo_url, banner_url, is_frozen, is_open, table_count,
               tagline, description, show_logo, show_banner, primary_color, secondary_color,
               enable_online_orders, enable_qr_ordering, settings_json, phone, email,
-              latitude, longitude, order_radius
+              latitude, longitude, order_radius, hotel_type
        FROM public.hotels WHERE slug = $1`,
       [hotelSlug]
     );
@@ -40,7 +40,8 @@ router.get("/categories", async (req, res) => {
       email,
       latitude,
       longitude,
-      order_radius: orderRadius
+      order_radius: orderRadius,
+      hotel_type: hotelType
     } = hotelResult.rows[0];
 
     if (isFrozen) {
@@ -72,7 +73,8 @@ router.get("/categories", async (req, res) => {
       email: email || null,
       hotelLatitude: latitude ? parseFloat(latitude) : null,
       hotelLongitude: longitude ? parseFloat(longitude) : null,
-      orderRadius: orderRadius || 30
+      orderRadius: orderRadius || 30,
+      hotelType: hotelType || "both"
     });
   } catch (error) {
     console.error("Get categories error:", error);
@@ -85,11 +87,11 @@ router.get("/items", async (req, res) => {
     const hotelSlug = req.query.hotel_slug || "hotbyte";
     const categoryId = req.query.category_id;
 
-    const hotelResult = await db.query("SELECT hotel_id, is_frozen FROM public.hotels WHERE slug = $1", [hotelSlug]);
+    const hotelResult = await db.query("SELECT hotel_id, is_frozen, hotel_type FROM public.hotels WHERE slug = $1", [hotelSlug]);
     if (hotelResult.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Hotel not found" });
     }
-    const { hotel_id: hotelId, is_frozen: isFrozen } = hotelResult.rows[0];
+    const { hotel_id: hotelId, is_frozen: isFrozen, hotel_type: hotelType } = hotelResult.rows[0];
     
     if (isFrozen) {
       return res.status(403).json({ success: false, isFrozen: true, message: "This hotel account is frozen due to payment / subscription trial expiration." });
@@ -115,8 +117,16 @@ router.get("/items", async (req, res) => {
     `;
     
     const params = [hotelId];
+
+    // Apply hotel_type filter: veg-only hotels only show veg items, nonveg-only show nonveg
+    if (hotelType === 'veg') {
+      query += " AND mi.is_veg = true";
+    } else if (hotelType === 'nonveg') {
+      query += " AND mi.is_veg = false";
+    }
+
     if (categoryId && categoryId !== "all") {
-      query += " AND mi.category_id = $2";
+      query += ` AND mi.category_id = $${params.length + 1}`;
       params.push(categoryId);
     }
     
@@ -131,6 +141,7 @@ router.get("/items", async (req, res) => {
     return res.json({
       success: true,
       items: result.rows,
+      hotelType: hotelType || "both"
     });
   } catch (error) {
     console.error("Get menu items error:", error);
@@ -144,7 +155,7 @@ router.get("/status", async (req, res) => {
     const result = await db.query(
       `SELECT name, logo_url, banner_url, is_frozen, is_open,
               tagline, description, show_logo, show_banner, primary_color, secondary_color,
-              enable_online_orders, enable_qr_ordering, settings_json, phone, email
+              enable_online_orders, enable_qr_ordering, settings_json, phone, email, hotel_type
        FROM public.hotels WHERE slug = $1`,
       [hotelSlug]
     );
@@ -167,7 +178,8 @@ router.get("/status", async (req, res) => {
       enable_qr_ordering: enableQrOrdering,
       settings_json: settingsJson,
       phone,
-      email
+      email,
+      hotel_type: hotelType
     } = result.rows[0];
     return res.json({
       success: true,
@@ -186,7 +198,8 @@ router.get("/status", async (req, res) => {
       enableQrOrdering: enableQrOrdering !== false,
       settingsJson: settingsJson || {},
       phone: phone || null,
-      email: email || null
+      email: email || null,
+      hotelType: hotelType || "both"
     });
   } catch (error) {
     console.error("Get hotel status error:", error);
@@ -195,4 +208,3 @@ router.get("/status", async (req, res) => {
 });
 
 module.exports = router;
-
