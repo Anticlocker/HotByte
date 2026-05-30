@@ -6,20 +6,6 @@ require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 // Set timezone to IST
 process.env.TZ = 'Asia/Kolkata';
 
-// Create connection pool
-// const pool = new Pool({
-//     user: process.env.DB_USER,
-//     host: process.env.DB_HOST,
-//     database: process.env.DB_NAME || "hotbyte",
-//     password: process.env.DB_PASSWORD || "1234",
-//     port: parseInt(process.env.DB_PORT) || 5432,
-//     max: 30,
-//     min: 5,
-//     idleTimeoutMillis: 30000,
-//     connectionTimeoutMillis: 5000,
-//     options: '-c timezone=Asia/Kolkata'
-// });
-
 // Create connection pool live url
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -185,9 +171,13 @@ pool.connect(async (err, client, release) => {
             }
             console.log("✅ Database: Sequences synchronized");
 
-            // 🔑 Ensure super admin Admin exists with phone 9356918260 and role super_admin
-            // We rename 'ravi' to 'Admin' first if it exists to avoid unique constraint violations
-            await client.query("UPDATE public.admins SET username = 'Admin' WHERE username = 'ravi';");
+            // We rename 'ravi' to 'Admin' first if it exists, only if 'Admin' doesn't already exist to avoid unique constraint violations
+            await client.query(`
+                UPDATE public.admins 
+                SET username = 'Admin' 
+                WHERE username = 'ravi' 
+                  AND NOT EXISTS (SELECT 1 FROM public.admins WHERE username = 'Admin');
+            `);
 
             const adminCheck = await client.query("SELECT * FROM public.admins WHERE username = 'Admin';");
             const bcryptPasswordHash = bcrypt.hashSync("Hotbyte123", 12);
