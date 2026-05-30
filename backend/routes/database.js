@@ -6,24 +6,26 @@ require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 // Set timezone to IST
 process.env.TZ = 'Asia/Kolkata';
 
-// Production safety check
-if (!process.env.DB_PASSWORD && process.env.NODE_ENV === 'production') {
-    console.error("❌ FATAL: DB_PASSWORD must be set in production environment");
-    process.exit(1);
-}
-
 // Create connection pool
+// const pool = new Pool({
+//     user: process.env.DB_USER,
+//     host: process.env.DB_HOST,
+//     database: process.env.DB_NAME || "hotbyte",
+//     password: process.env.DB_PASSWORD || "1234",
+//     port: parseInt(process.env.DB_PORT) || 5432,
+//     max: 30,
+//     min: 5,
+//     idleTimeoutMillis: 30000,
+//     connectionTimeoutMillis: 5000,
+//     options: '-c timezone=Asia/Kolkata'
+// });
+
+// Create connection pool live url
 const pool = new Pool({
-    user: process.env.DB_USER,
-    host: process.env.DB_HOST,
-    database: process.env.DB_NAME || "hotbyte",
-    password: process.env.DB_PASSWORD || "1234",
-    port: parseInt(process.env.DB_PORT) || 5432,
-    max: 30,
-    min: 5,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
-    options: '-c timezone=Asia/Kolkata'
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false
+    }
 });
 
 // Test initial connection
@@ -37,7 +39,7 @@ pool.connect(async (err, client, release) => {
     } else {
         console.log("✅ Connected to PostgreSQL Database");
         try {
-        // ─── Schema Migrations (hotels, admins, customers) ───────────────────
+            // ─── Schema Migrations (hotels, admins, customers) ───────────────────
             const migrations = [
                 // subscription_plans table
                 `CREATE TABLE IF NOT EXISTS public.subscription_plans (
