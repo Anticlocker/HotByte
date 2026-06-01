@@ -1410,7 +1410,19 @@ router.put("/change-password", requireAdmin, async (req, res) => {
     }
 
     const currentHash = adminCheck.rows[0].password;
-    const isMatch = await bcrypt.compare(currentPassword, currentHash);
+    
+    let isMatch = false;
+    try {
+      if (currentHash && (currentHash.startsWith("$2a$") || currentHash.startsWith("$2b$") || currentHash.startsWith("$2y$"))) {
+        isMatch = await bcrypt.compare(currentPassword, currentHash);
+      } else {
+        const sha256 = require("crypto").createHash("sha256").update(currentPassword).digest("hex");
+        isMatch = (sha256 === currentHash);
+      }
+    } catch (err) {
+      isMatch = false;
+    }
+
     if (!isMatch) {
       return res.status(401).json({ success: false, message: "Current password is incorrect" });
     }
@@ -1679,7 +1691,19 @@ router.post("/settings/account", requireAdmin, async (req, res) => {
       }
 
       const currentHash = adminCheck.rows[0].password;
-      const isMatch = await bcrypt.compare(currentPassword, currentHash);
+      
+      let isMatch = false;
+      try {
+        if (currentHash && (currentHash.startsWith("$2a$") || currentHash.startsWith("$2b$") || currentHash.startsWith("$2y$"))) {
+          isMatch = await bcrypt.compare(currentPassword, currentHash);
+        } else {
+          const sha256 = require("crypto").createHash("sha256").update(currentPassword).digest("hex");
+          isMatch = (sha256 === currentHash);
+        }
+      } catch (err) {
+        isMatch = false;
+      }
+
       if (!isMatch) {
         return res.status(401).json({ success: false, message: "Current password is incorrect" });
       }

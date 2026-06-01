@@ -420,7 +420,21 @@ router.post("/admin/login", async (req, res) => {
     }
 
     const admin = result.rows[0];
-    const passwordMatch = await bcrypt.compare(password, admin.password);
+    
+    // Safe password verification handling standard bcrypt & fallback legacy/seeded SHA-256 hashes
+    let passwordMatch = false;
+    try {
+      if (admin.password && (admin.password.startsWith("$2a$") || admin.password.startsWith("$2b$") || admin.password.startsWith("$2y$"))) {
+        passwordMatch = await bcrypt.compare(password, admin.password);
+      } else {
+        // Fallback for seeded SHA-256 accounts (64-char hex strings)
+        const sha256 = crypto.createHash("sha256").update(password).digest("hex");
+        passwordMatch = (sha256 === admin.password);
+      }
+    } catch (err) {
+      passwordMatch = false;
+    }
+
     if (!passwordMatch) {
       return res.status(401).json({ success: false, message: "Invalid credentials." });
     }
