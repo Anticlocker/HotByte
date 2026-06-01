@@ -73,18 +73,25 @@ app.disable('x-powered-by');
 // ================= CORS CONFIGURATION =================
 // 🌐 CORS = Cross-Origin Resource Sharing
 // Ye decide karta hai kaun se domains se API call aa sakti hai
-const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:3000';
+const allowedOriginEnv = process.env.ALLOWED_ORIGIN || 'http://localhost:3000';
+const allowedOrigins = allowedOriginEnv.split(',').map(o => o.trim());
+
 app.use(cors({
   origin: (origin, callback) => {
     // Allow server-to-server requests (no origin header)
     if (!origin) return callback(null, true);
-    const isAllowed = origin === allowedOrigin ||
+    
+    // Check against configured origins, production domains, and local loopbacks
+    const isAllowed = allowedOrigins.includes(origin) ||
+      origin === 'https://www.rav1.in' ||
+      origin === 'https://rav1.in' ||
       origin.startsWith('http://localhost:') ||
       origin.startsWith('http://127.0.0.1:');
+      
     if (isAllowed) {
       callback(null, true);
     } else {
-      // ✅ SECURITY FIX: Reject disallowed origins (was previously allowing all)
+      // ✅ SECURITY FIX: Reject disallowed origins
       logger.warn('CORS blocked request from disallowed origin', { origin });
       callback(new Error(`CORS policy: Origin '${origin}' is not allowed.`));
     }
