@@ -1,6 +1,7 @@
 // Customer profile and order history routes
 
 const express = require("express");
+const logger = require("../utils/logger");
 const router = express.Router();
 const db = require("./database");
 const { requireAuth } = require("./auth");
@@ -42,7 +43,7 @@ router.get("/", requireAuth, async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Get profile error:", error);
+    logger.error("Get profile error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch profile" });
   }
 });
@@ -109,7 +110,7 @@ router.get("/orders", requireAuth, async (req, res) => {
       total: ordersWithItems.length,
     });
   } catch (error) {
-    console.error("Get orders error:", error);
+    logger.error("Get orders error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch orders" });
   }
 });
@@ -159,7 +160,7 @@ router.post("/dob", requireAuth, async (req, res) => {
       message: "Date of birth updated successfully",
     });
   } catch (error) {
-    console.error("Update DOB error:", error);
+    logger.error("Update DOB error:", error);
     return res.status(500).json({ success: false, message: "Failed to update date of birth" });
   }
 });

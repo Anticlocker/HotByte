@@ -60,3 +60,9 @@ MESSAGE_CENTRAL_AUTH_TOKEN=your_message_central_auth_token_here
 BUNNY_ACCESS_KEY=your_bunny_access_key_here
 BUNNY_STORAGE_ZONE=your_storage_zone_here
 BUNNY_CDN_HOSTNAME=your_cdn_hostname_here
+
+# ------------------------------------------------------------------------------
+# 8. Google SSO/Authentication Configuration
+# ------------------------------------------------------------------------------
+GOOGLE_CLIENT_ID=your_google_client_id_here
+

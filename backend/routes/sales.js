@@ -1,5 +1,6 @@
 // Sales Routes - Admin ke liye sales reports
 const express = require("express");
+const logger = require("../utils/logger");
 const router = express.Router();
 const db = require("./database");
 const { requireAdmin } = require("./auth");
@@ -54,7 +55,7 @@ router.get("/stats/overview", requireAdmin, async (req, res) => {
 
     res.json({ success: true, stats: result.rows[0] });
   } catch (error) {
-    console.error("Overview stats error:", error);
+    logger.error("Overview stats error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -109,7 +110,7 @@ router.get("/stats/best-sellers", requireAdmin, async (req, res) => {
 
     res.json({ success: true, items: result.rows });
   } catch (error) {
-    console.error("Best sellers error:", error);
+    logger.error("Best sellers error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -164,7 +165,7 @@ router.get("/stats/worst-sellers", requireAdmin, async (req, res) => {
 
     res.json({ success: true, items: result.rows });
   } catch (error) {
-    console.error("Worst sellers error:", error);
+    logger.error("Worst sellers error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -211,7 +212,7 @@ router.get("/stats/by-category", requireAdmin, async (req, res) => {
 
     res.json({ success: true, categories: result.rows });
   } catch (error) {
-    console.error("Category stats error:", error);
+    logger.error("Category stats error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -247,7 +248,7 @@ router.get("/stats/revenue-trend", requireAdmin, async (req, res) => {
 
     res.json({ success: true, trend: result.rows });
   } catch (error) {
-    console.error("Revenue trend error:", error);
+    logger.error("Revenue trend error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -292,7 +293,7 @@ router.get("/stats/payment-methods", requireAdmin, async (req, res) => {
 
     res.json({ success: true, payment_methods: result.rows });
   } catch (error) {
-    console.error("Payment methods error:", error);
+    logger.error("Payment methods error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -337,7 +338,7 @@ router.get("/stats/peak-hours", requireAdmin, async (req, res) => {
 
     res.json({ success: true, peak_hours: result.rows });
   } catch (error) {
-    console.error("Peak hours error:", error);
+    logger.error("Peak hours error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -387,7 +388,7 @@ router.get("/stats/customers", requireAdmin, async (req, res) => {
 
     res.json({ success: true, top_customers: result.rows });
   } catch (error) {
-    console.error("Top customers error:", error);
+    logger.error("Top customers error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });

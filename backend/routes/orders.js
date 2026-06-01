@@ -1,16 +1,17 @@
 // Order creation and management routes
 
 const express = require("express");
+const logger = require("../utils/logger");
 const router = express.Router();
 const db = require("./database");
 const { requireAuth } = require("./auth");
 const crypto = require("crypto");
 require("dotenv").config();
 
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "dev_secret_key_fallback";
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
 
-if (!process.env.RAZORPAY_KEY_SECRET && process.env.NODE_ENV === 'production') {
-  console.error("RAZORPAY_KEY_SECRET must be set in production");
+if (!RAZORPAY_KEY_SECRET) {
+  logger.error("CRITICAL: RAZORPAY_KEY_SECRET environment variable is missing.");
   process.exit(1);
 }
 
@@ -150,14 +151,29 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
     // ---------------- CALCULATE TOTAL ----------------
 
     let totalAmount = 0;
+    const itemIds = items.map(i => i.item_id);
+    const dbItemsResult = await db.query(
+      "SELECT item_id, price FROM public.menu_items WHERE item_id = ANY($1) AND hotel_id = $2",
+      [itemIds, hotelId]
+    );
+    const dbItemsMap = new Map(dbItemsResult.rows.map(r => [r.item_id, parseFloat(r.price)]));
+
     for (const item of items) {
-      if (!item.item_id || !item.quantity || !item.price) {
+      if (!item.item_id || !item.quantity) {
         return res.status(400).json({
           success: false,
           message: "Invalid item data"
         });
       }
-      totalAmount += item.price * item.quantity;
+      const verifiedPrice = dbItemsMap.get(item.item_id);
+      if (verifiedPrice === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: "Item not found or not available at this hotel."
+        });
+      }
+      item.price = verifiedPrice;
+      totalAmount += verifiedPrice * item.quantity;
     }
 
     // ---------------- DB TRANSACTION START ----------------
@@ -207,7 +223,7 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
     }
 
   } catch (error) {
-    console.error("Create order after payment error:", error);
+    logger.error("Create order after payment error:", error);
     return res.status(500).json({
       success: false,
       message: "Something went wrong"
@@ -261,7 +277,7 @@ router.get("/table-availability", requireAuth, async (req, res) => {
       }, {})
     });
   } catch (error) {
-    console.error("Check table availability error:", error);
+    logger.error("Check table availability error:", error);
     return res.status(500).json({ success: false, message: "Failed to check table availability" });
   }
 });
@@ -338,11 +354,26 @@ router.post("/create", requireAuth, async (req, res) => {
     }
 
     let totalAmount = 0;
+    const itemIds = items.map(i => i.item_id);
+    const dbItemsResult = await db.query(
+      "SELECT item_id, price FROM public.menu_items WHERE item_id = ANY($1) AND hotel_id = $2",
+      [itemIds, hotelId]
+    );
+    const dbItemsMap = new Map(dbItemsResult.rows.map(r => [r.item_id, parseFloat(r.price)]));
+
     for (const item of items) {
-      if (!item.item_id || !item.quantity || !item.price) {
+      if (!item.item_id || !item.quantity) {
         return res.status(400).json({ success: false, message: "Invalid item data." });
       }
-      totalAmount += parseFloat(item.price) * parseInt(item.quantity);
+      const verifiedPrice = dbItemsMap.get(item.item_id);
+      if (verifiedPrice === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: "Item not found or not available at this hotel."
+        });
+      }
+      item.price = verifiedPrice;
+      totalAmount += verifiedPrice * parseInt(item.quantity);
     }
 
     await db.query("BEGIN");
@@ -395,7 +426,7 @@ router.post("/create", requireAuth, async (req, res) => {
       throw error;
     }
   } catch (error) {
-    console.error("Create order error:", error);
+    logger.error("Create order error:", error);
     return res.status(500).json({ success: false, message: "Failed to place order. Please try again." });
   }
 });
@@ -450,7 +481,7 @@ router.delete("/cancel/:id", requireAuth, async (req, res) => {
       throw error;
     }
   } catch (error) {
-    console.error("Cancel order error:", error);
+    logger.error("Cancel order error:", error);
     return res.status(500).json({ success: false, message: "Failed to cancel order" });
   }
 });

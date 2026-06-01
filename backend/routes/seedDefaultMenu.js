@@ -12,6 +12,7 @@
  *
  * Usage (inside any async function):
  *   const { seedDefaultMenu } = require('./seedDefaultMenu');
+const logger = require("../utils/logger");
  *   const result = await seedDefaultMenu(db, hotelId);
  *   // result → { seeded: true|false, categoriesCreated, itemsCreated, reason? }
  */
@@ -300,7 +301,7 @@ async function seedDefaultMenu(db, hotelId, useExistingTransaction = false) {
 
     if (!useExistingTransaction) await client.query('COMMIT');
 
-    console.log(
+    logger.info(
       `✅ [seedDefaultMenu] Hotel ${hotelId}: seeded ${DEFAULT_CATEGORIES.length} categories, ${itemsCreated} items.`
     );
 
@@ -311,7 +312,7 @@ async function seedDefaultMenu(db, hotelId, useExistingTransaction = false) {
     };
   } catch (err) {
     if (!useExistingTransaction) await client.query('ROLLBACK');
-    console.error(`❌ [seedDefaultMenu] Hotel ${hotelId}: seed failed.`, err.message);
+    logger.error(`❌ [seedDefaultMenu] Hotel ${hotelId}: seed failed.`, err.message);
     throw err; // Re-throw so the caller can handle it
   } finally {
     if (!useExistingTransaction) client.release();

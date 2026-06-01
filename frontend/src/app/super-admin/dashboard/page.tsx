@@ -28,6 +28,7 @@ interface Hotel {
   longitude: number | null;
   orderRadius: number;
   hotelType: string;
+  requireCustomerAuth: boolean;
 }
 
 interface AdminManager {
@@ -61,6 +62,7 @@ export default function SuperAdminDashboard() {
   const [hotelFrozen, setHotelFrozen] = useState(false);
   const [hotelPlan, setHotelPlan] = useState<'trial' | 'basic' | 'pro'>('trial');
   const [hotelTableCount, setHotelTableCount] = useState("5");
+  const [hotelAuthRequired, setHotelAuthRequired] = useState(false);
 
   // Hotel Admin fields inside Create Hotel
   const [adminName, setAdminName] = useState("");
@@ -96,6 +98,7 @@ export default function SuperAdminDashboard() {
     setHotelLng(hotel.longitude || null);
     setHotelOrderRadius(String(hotel.orderRadius || 30));
     setHotelTypeVal((hotel.hotelType as "veg" | "nonveg" | "both") || "both");
+    setHotelAuthRequired(hotel.requireCustomerAuth || false);
     setMapReady(false); // will re-init map
   };
 
@@ -112,6 +115,7 @@ export default function SuperAdminDashboard() {
     setHotelLng(null);
     setHotelOrderRadius("30");
     setHotelTypeVal("both");
+    setHotelAuthRequired(false);
     setMapReady(false);
     setAdminName("");
     setAdminUsername("");
@@ -196,6 +200,52 @@ export default function SuperAdminDashboard() {
         }
       } catch (err) {
         Swal.fire("Connection Error", "Could not reach platform API.", "error");
+      }
+    }
+  };
+
+  const handleToggleAuthOverride = async (hotel: Hotel) => {
+    const actionText = hotel.requireCustomerAuth ? "disable" : "enable";
+    const confirm = await Swal.fire({
+      title: `${hotel.requireCustomerAuth ? "Disable" : "Enable"} Customer Authentication?`,
+      text: `Are you sure you want to ${actionText} customer authentication for "${hotel.name}"?`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonColor: hotel.requireCustomerAuth ? "#EF4444" : "#10B981",
+      cancelButtonColor: "#1f1f1f",
+      confirmButtonText: `Yes, ${hotel.requireCustomerAuth ? "Disable" : "Enable"}`
+    });
+
+    if (confirm.isConfirmed) {
+      try {
+        const res = await fetch(`/api/superadmin/hotels/${hotel.id}/auth-settings`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requireCustomerAuth: !hotel.requireCustomerAuth,
+            note: "Super Admin quick override toggle"
+          })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          Swal.fire({
+            title: hotel.requireCustomerAuth ? "Auth Disabled!" : "Auth Enabled!",
+            text: `Customer authentication was overridden successfully for "${hotel.name}".`,
+            icon: "success",
+            timer: 1500,
+            showConfirmButton: false
+          });
+          checkSessionAndFetch();
+          
+          if (editingHotel?.id === hotel.id) {
+            setHotelAuthRequired(!hotel.requireCustomerAuth);
+          }
+        } else {
+          Swal.fire("Override Failed", data.message || "An error occurred.", "error");
+        }
+      } catch (err) {
+        Swal.fire("Connection Error", "Could not reach override API.", "error");
       }
     }
   };
@@ -620,7 +670,8 @@ export default function SuperAdminDashboard() {
         longitude: hotelLng,
         orderRadius: parseInt(hotelOrderRadius) || 30,
         hotel_type: hotelTypeVal,
-        hotelType: hotelTypeVal
+        hotelType: hotelTypeVal,
+        requireCustomerAuth: hotelAuthRequired
       };
 
       if (!editingHotel) {
@@ -1160,6 +1211,24 @@ export default function SuperAdminDashboard() {
                     </div>
                   )}
 
+                  <div className="flex items-start gap-2.5 bg-yellow-500/5 border border-yellow-500/10 rounded-xl p-3.5 mb-2">
+                    <input 
+                      type="checkbox"
+                      id="customerAuthRequired"
+                      checked={hotelAuthRequired}
+                      onChange={(e) => setHotelAuthRequired(e.target.checked)}
+                      className="w-4 h-4 rounded accent-yellow-500 bg-gray-900 border-gray-800 focus:ring-0 cursor-pointer mt-0.5"
+                    />
+                    <div className="flex flex-col">
+                      <label htmlFor="customerAuthRequired" className="text-xs text-yellow-500 font-extrabold uppercase tracking-wider cursor-pointer">
+                        Customer Authentication Required
+                      </label>
+                      <span className="text-[10px] text-gray-500 font-semibold leading-normal">
+                        Require customers to authenticate with Google before placing orders.
+                      </span>
+                    </div>
+                  </div>
+
                   {editingHotel && (
                     <div className="flex items-start gap-2.5 bg-red-950/20 border border-red-500/10 rounded-xl p-3.5 mb-2">
                       <input 
@@ -1364,6 +1433,15 @@ export default function SuperAdminDashboard() {
                               {h.hotelType === "veg" ? "🌱 Veg" : h.hotelType === "nonveg" ? "🍗 Non-Veg" : "🟡 Both"}
                             </span>
 
+                            <br />
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border mb-1.5 ${
+                              h.requireCustomerAuth 
+                                ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400" 
+                                : "bg-red-500/10 border-red-500/25 text-red-400"
+                            }`}>
+                              {h.requireCustomerAuth ? "Authentication Enabled" : "Authentication Disabled"}
+                            </span>
+
                             <div className="flex items-center gap-1 text-[11px] text-yellow-500">
                               <Globe size={10} />
                               <span>/{h.slug}</span>
@@ -1419,6 +1497,16 @@ export default function SuperAdminDashboard() {
                                 }`}
                               >
                                 {h.isFrozen ? "Unfreeze" : "Freeze"}
+                              </button>
+                              <button
+                                onClick={() => handleToggleAuthOverride(h)}
+                                className={`px-3 py-1 rounded-xl font-bold uppercase transition-all cursor-pointer text-[10px] ${
+                                  h.requireCustomerAuth
+                                    ? "bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white"
+                                    : "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-black"
+                                }`}
+                              >
+                                {h.requireCustomerAuth ? "Disable Auth" : "Enable Auth"}
                               </button>
                               <button
                                 onClick={() => handleDeleteHotel(h)}

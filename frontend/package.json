@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@lottiefiles/react-lottie-player": "^3.6.0",
+    "@react-oauth/google": "^0.13.5",
     "@swc/helpers": "^0.5.15",
     "canvas-confetti": "^1.9.4",
     "framer-motion": "^12.40.0",
@@ -33,4 +34,3 @@
     "typescript": "^5"
   }
 }
-

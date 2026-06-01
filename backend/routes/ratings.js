@@ -1,5 +1,6 @@
 // Ratings Routes - Customer ratings manage karta hai
 const express = require("express");
+const logger = require("../utils/logger");
 const router = express.Router();
 const db = require("./database");
 const { requireAuth } = require("./auth");
@@ -86,7 +87,7 @@ router.post("/submit-item", requireAuth, async (req, res) => {
       rating: result.rows[0]
     });
   } catch (error) {
-    console.error("Submit item rating error:", error);
+    logger.error("Submit item rating error:", error);
     
     if (error.code === '23505') {
       return res.status(400).json({
@@ -172,7 +173,7 @@ router.post("/submit-order", requireAuth, async (req, res) => {
       rating: result.rows[0]
     });
   } catch (error) {
-    console.error("Submit order rating error:", error);
+    logger.error("Submit order rating error:", error);
     
     if (error.code === '23505') {
       return res.status(400).json({
@@ -217,7 +218,7 @@ router.get("/my-ratings", requireAuth, async (req, res) => {
       totalReviews: result.rows.length
     });
   } catch (error) {
-    console.error("Get my ratings error:", error);
+    logger.error("Get my ratings error:", error);
     return res.status(500).json({ 
       success: false, 
       message: "Failed to fetch ratings" 
@@ -263,7 +264,7 @@ router.get("/ordered-items", requireAuth, async (req, res) => {
       total: result.rows.length
     });
   } catch (error) {
-    console.error("Get ordered items error:", error);
+    logger.error("Get ordered items error:", error);
     return res.status(500).json({ 
       success: false, 
       message: "Failed to fetch ordered items" 
@@ -313,7 +314,7 @@ router.get("/average", async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Get average rating error:", error);
+    logger.error("Get average rating error:", error);
     return res.status(500).json({ 
       success: false, 
       message: "Failed to fetch average rating" 
@@ -370,7 +371,7 @@ router.get("/recent", async (req, res) => {
       ratings: result.rows
     });
   } catch (error) {
-    console.error("Get recent ratings error:", error);
+    logger.error("Get recent ratings error:", error);
     return res.status(500).json({ 
       success: false, 
       message: "Failed to fetch recent ratings" 

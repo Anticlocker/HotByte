@@ -1,0 +1,18 @@
+{
+    "web": {
+        "client_id": "532190945163-s9mbn4atkssgr37lbs2jf0db884h99jf.apps.googleusercontent.com",
+        "project_id": "hotbyte-497914",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_secret": "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",
+        "redirect_uris": [
+            "https://rav1.in",
+            "https://www.rav1.in"
+        ],
+        "javascript_origins": [
+            "https://rav1.in",
+            "https://www.rav1.in"
+        ]
+    }
+}

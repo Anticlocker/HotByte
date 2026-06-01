@@ -1,6 +1,7 @@
 // Public menu routes for customers
 
 const express = require("express");
+const logger = require("../utils/logger");
 const router = express.Router();
 const db = require("./database");
 
@@ -11,7 +12,7 @@ router.get("/categories", async (req, res) => {
       `SELECT hotel_id, name, logo_url, banner_url, is_frozen, is_open, table_count,
               tagline, description, show_logo, show_banner, primary_color, secondary_color,
               enable_online_orders, enable_qr_ordering, settings_json, phone, email,
-              latitude, longitude, order_radius, hotel_type
+              latitude, longitude, order_radius, hotel_type, customer_auth_required, suspicious_activity_mode
        FROM public.hotels WHERE slug = $1`,
       [hotelSlug]
     );
@@ -41,7 +42,9 @@ router.get("/categories", async (req, res) => {
       latitude,
       longitude,
       order_radius: orderRadius,
-      hotel_type: hotelType
+      hotel_type: hotelType,
+      customer_auth_required: customerAuthRequired,
+      suspicious_activity_mode: suspiciousActivityMode
     } = hotelResult.rows[0];
 
     if (isFrozen) {
@@ -74,10 +77,12 @@ router.get("/categories", async (req, res) => {
       hotelLatitude: latitude ? parseFloat(latitude) : null,
       hotelLongitude: longitude ? parseFloat(longitude) : null,
       orderRadius: orderRadius || 30,
-      hotelType: hotelType || "both"
+      hotelType: hotelType || "both",
+      requireCustomerAuth: customerAuthRequired || false,
+      suspiciousActivityMode: suspiciousActivityMode || false
     });
   } catch (error) {
-    console.error("Get categories error:", error);
+    logger.error("Get categories error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch categories" });
   }
 });
@@ -144,7 +149,7 @@ router.get("/items", async (req, res) => {
       hotelType: hotelType || "both"
     });
   } catch (error) {
-    console.error("Get menu items error:", error);
+    logger.error("Get menu items error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch menu items" });
   }
 });
@@ -155,7 +160,8 @@ router.get("/status", async (req, res) => {
     const result = await db.query(
       `SELECT name, logo_url, banner_url, is_frozen, is_open,
               tagline, description, show_logo, show_banner, primary_color, secondary_color,
-              enable_online_orders, enable_qr_ordering, settings_json, phone, email, hotel_type
+              enable_online_orders, enable_qr_ordering, settings_json, phone, email, hotel_type,
+              customer_auth_required, suspicious_activity_mode
        FROM public.hotels WHERE slug = $1`,
       [hotelSlug]
     );
@@ -179,7 +185,9 @@ router.get("/status", async (req, res) => {
       settings_json: settingsJson,
       phone,
       email,
-      hotel_type: hotelType
+      hotel_type: hotelType,
+      customer_auth_required: customerAuthRequired,
+      suspicious_activity_mode: suspiciousActivityMode
     } = result.rows[0];
     return res.json({
       success: true,
@@ -199,10 +207,12 @@ router.get("/status", async (req, res) => {
       settingsJson: settingsJson || {},
       phone: phone || null,
       email: email || null,
-      hotelType: hotelType || "both"
+      hotelType: hotelType || "both",
+      requireCustomerAuth: customerAuthRequired || false,
+      suspiciousActivityMode: suspiciousActivityMode || false
     });
   } catch (error) {
-    console.error("Get hotel status error:", error);
+    logger.error("Get hotel status error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch hotel status" });
   }
 });

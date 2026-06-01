@@ -37,8 +37,13 @@ CREATE TABLE IF NOT EXISTS public.hotels (
     show_banner     boolean      DEFAULT true,
     enable_online_orders  boolean DEFAULT true,
     enable_qr_ordering    boolean DEFAULT true,
+    require_customer_auth BOOLEAN DEFAULT FALSE,
+    customer_auth_required BOOLEAN DEFAULT FALSE,
+    suspicious_activity_mode BOOLEAN DEFAULT FALSE,
+    hotel_type      VARCHAR(10)  DEFAULT 'both',
     settings_json   jsonb        DEFAULT '{}',
-    created_at      timestamp    DEFAULT CURRENT_TIMESTAMP
+    created_at      timestamp    DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT hotels_hotel_type_check CHECK (hotel_type IN ('veg', 'nonveg', 'both'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_hotels_slug ON public.hotels(slug);
@@ -53,7 +58,7 @@ CREATE TABLE IF NOT EXISTS public.admins
     password   varchar(200) NOT NULL,
     name       varchar(100),
     email      varchar(100),
-    phone      varchar(20),
+    phone      varchar(20) UNIQUE,
     hotel_id   integer REFERENCES public.hotels(hotel_id) ON DELETE SET NULL,
     role       varchar(20)  DEFAULT 'admin',
     created_at timestamp    DEFAULT CURRENT_TIMESTAMP,
@@ -72,7 +77,7 @@ CREATE TABLE IF NOT EXISTS public.customers
     phone character varying(15) COLLATE pg_catalog."default",
     email character varying(100) COLLATE pg_catalog."default",
     google_id character varying(100) COLLATE pg_catalog."default",
-    hotel_id integer REFERENCES public.hotels(hotel_id) ON DELETE SET NULL,
+    hotel_id integer REFERENCES public.hotels(hotel_id) ON DELETE CASCADE,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     dob date,
     CONSTRAINT customers_pkey PRIMARY KEY (customer_id)
@@ -80,6 +85,7 @@ CREATE TABLE IF NOT EXISTS public.customers
 
 CREATE INDEX IF NOT EXISTS idx_customers_hotel_id ON public.customers(hotel_id);
 CREATE INDEX IF NOT EXISTS idx_customers_email ON public.customers(email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_email_hotel ON public.customers (email, hotel_id);
 
 CREATE TABLE IF NOT EXISTS public.menu_category
 (
@@ -178,7 +184,8 @@ CREATE TABLE IF NOT EXISTS public.ratings
     order_id integer,
     CONSTRAINT ratings_pkey PRIMARY KEY (rating_id),
     CONSTRAINT unique_customer_item_rating UNIQUE (customer_id, item_id),
-    CONSTRAINT unique_customer_order_rating UNIQUE (customer_id, order_id)
+    CONSTRAINT unique_customer_order_rating UNIQUE (customer_id, order_id),
+    CONSTRAINT ratings_rating_value_check CHECK (rating_value BETWEEN 1 AND 5)
 );
 
 COMMENT ON TABLE public.ratings
@@ -368,6 +375,22 @@ INSERT INTO public.menu_items (item_name, category_id, price, image_url, descrip
 ('Mango Lassi', 4, 89.00, 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?auto=format&fit=crop&w=500&q=80', 'Thick yogurt drink blended with sweet mangoes.', true, true),
 ('Fresh Lime Soda', 4, 59.00, 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=500&q=80', 'Zesty lime soda served sweet or salted.', true, true),
 ('Mineral Water', 4, 20.00, 'https://images.unsplash.com/photo-1608889175123-8ec330b86f84?auto=format&fit=crop&w=500&q=80', 'Packaged 1L drinking water.', true, true);
+
+-- Auth Logs Table
+CREATE TABLE IF NOT EXISTS public.auth_logs (
+    id serial PRIMARY KEY,
+    hotel_id integer REFERENCES public.hotels(hotel_id) ON DELETE CASCADE,
+    admin_id integer REFERENCES public.admins(admin_id) ON DELETE SET NULL,
+    admin_username varchar(50) NOT NULL,
+    admin_role varchar(20) NOT NULL,
+    action varchar(50) NOT NULL,
+    note text,
+    created_at timestamp DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Additional Audit/Performance Indexes
+CREATE INDEX IF NOT EXISTS idx_sessions_session_id ON public.sessions (session_id);
+CREATE INDEX IF NOT EXISTS idx_orders_hotel_status ON public.orders (hotel_id, status);
 
 END;
 

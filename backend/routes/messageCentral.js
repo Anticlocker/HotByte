@@ -5,6 +5,7 @@
 // MessageCentral API use karti hai
 
 const axios = require("axios");
+const logger = require("../utils/logger");
 require("dotenv").config();
 
 class MessageCentralOTP {
@@ -30,7 +31,7 @@ class MessageCentralOTP {
 
       // 🔓 Development bypass - Testing ke liye (ONLY in non-production)
       if (process.env.NODE_ENV !== 'production' && cleanedMobile === "9356918260") {
-        console.log("ℹ️  Message Central: Local development bypass triggered for", cleanedMobile);
+        logger.info("ℹ️  Message Central: Local development bypass triggered for", cleanedMobile);
         return {
           success: true,
           verificationId: `mock_verification_id_${cleanedMobile}_${Date.now()}`,
@@ -39,7 +40,7 @@ class MessageCentralOTP {
 
       // Configuration check karo
       if (!this.sendOtpUrl || !this.authToken) {
-        console.error("❌ Message Central not configured properly");
+        logger.error("❌ Message Central not configured properly");
         throw new Error("SMS service not configured");
       }
 
@@ -80,7 +81,7 @@ class MessageCentralOTP {
         throw new Error("Empty response from Message Central");
       }
     } catch (error) {
-      console.error("❌ Message Central Send OTP Error:", error.response?.data || error.message);
+      logger.error("❌ Message Central Send OTP Error:", error.response?.data || error.message);
 
       const errData = error.response?.data;
       if (errData) {
@@ -89,7 +90,7 @@ class MessageCentralOTP {
         const activeId = errData.verificationId || errData.data?.verificationId;
 
         if ((resCode === 506 || resCode === "506" || errMsg === "REQUEST_ALREADY_EXISTS") && activeId) {
-          console.log("⚠️ Message Central: Request already exists, reusing active verificationId:", activeId);
+          logger.info("⚠️ Message Central: Request already exists, reusing active verificationId:", activeId);
           return {
             success: true,
             verificationId: activeId
@@ -134,7 +135,7 @@ class MessageCentralOTP {
 
       // Configuration check karo
       if (!this.validateOtpUrl || !this.authToken) {
-        console.error("❌ Message Central not configured properly");
+        logger.error("❌ Message Central not configured properly");
         return {
           success: false,
           verified: false,
@@ -179,7 +180,7 @@ class MessageCentralOTP {
         };
       }
     } catch (error) {
-      console.error("❌ Message Central Verify OTP Error:", error.response?.data || error.message);
+      logger.error("❌ Message Central Verify OTP Error:", error.response?.data || error.message);
 
       return {
         success: false,

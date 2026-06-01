@@ -125,6 +125,13 @@ export default function AdminSettings() {
   const [isOpen, setIsOpen] = useState(true);
   const [hotelType, setHotelType] = useState<"veg" | "nonveg" | "both">("both");
 
+  // Customer Auth settings state
+  const [requireCustomerAuth, setRequireCustomerAuth] = useState(false);
+  const [suspiciousActivityMode, setSuspiciousActivityMode] = useState(false);
+  const [authLogs, setAuthLogs] = useState<any[]>([]);
+  const [authSettingsSaving, setAuthSettingsSaving] = useState(false);
+  const [authLogsLoading, setAuthLogsLoading] = useState(false);
+
   // Account security forms
   const [adminName, setAdminName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
@@ -180,6 +187,16 @@ export default function AdminSettings() {
         setIsOpen(data.hotel.is_open !== false);
         setHotelType(data.hotel.hotel_type || "both");
 
+        // Load auth settings separately
+        fetch("/api/admin/auth-settings")
+          .then(r => r.json())
+          .then(d => {
+            if (d.success) {
+              setRequireCustomerAuth(d.requireCustomerAuth || false);
+              setSuspiciousActivityMode(d.suspiciousActivityMode || false);
+            }
+          }).catch(() => {});
+
         // Bind location
         setLocationLat(data.hotel.latitude ? parseFloat(data.hotel.latitude) : null);
         setLocationLng(data.hotel.longitude ? parseFloat(data.hotel.longitude) : null);
@@ -205,6 +222,7 @@ export default function AdminSettings() {
 
   useEffect(() => {
     loadSettings();
+    loadAuthLogs();
   }, [router]);
 
   // Handle image upload logic
@@ -450,6 +468,41 @@ export default function AdminSettings() {
         Swal.fire("Network error", "Unable to disconnect devices", "error");
       }
     }
+  };
+
+  // Save auth settings
+  const saveAuthSettings = async () => {
+    setAuthSettingsSaving(true);
+    try {
+      const res = await fetch("/api/admin/auth-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requireCustomerAuth,
+          suspiciousActivityMode,
+          note: "Updated via Hotel Admin settings panel"
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        Swal.fire({ title: "Saved!", text: "Authentication settings updated.", icon: "success", timer: 1500, showConfirmButton: false });
+        // Reload auth logs
+        loadAuthLogs();
+      } else {
+        Swal.fire("Error", data.message || "Failed to save auth settings", "error");
+      }
+    } catch { Swal.fire("Error", "Network connection issue", "error"); }
+    finally { setAuthSettingsSaving(false); }
+  };
+
+  const loadAuthLogs = async () => {
+    setAuthLogsLoading(true);
+    try {
+      const res = await fetch("/api/admin/auth-logs");
+      const data = await res.json();
+      if (data.success) setAuthLogs(data.logs || []);
+    } catch {}
+    finally { setAuthLogsLoading(false); }
   };
 
   const [detectingLocation, setDetectingLocation] = useState(false);
@@ -1425,6 +1478,128 @@ export default function AdminSettings() {
             {/* TABS 5: ACCOUNT SECURITY & LOGIN AUDIT LOGS */}
             {activeTab === "security" && (
               <div className="space-y-8 animate-fade-in-up">
+
+                {/* ── Customer Authentication Control ── */}
+                <div className="glass-card-dark p-6 rounded-3xl border border-gray-850/80 bg-[#111] space-y-6 shadow-xl">
+                  <div className="flex items-center gap-3 pb-4 border-b border-gray-850">
+                    <div className="w-10 h-10 rounded-2xl bg-orange-500/10 flex items-center justify-center text-[var(--orange)]">
+                      <Key size={20} />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-black text-white">Customer Authentication Required</h2>
+                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">Control how customers identify before placing orders</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <label className="flex items-start gap-4 p-5 bg-gray-900/40 border border-gray-850 hover:border-orange-500/30 rounded-2xl cursor-pointer select-none transition-all">
+                      <input
+                        type="checkbox"
+                        checked={requireCustomerAuth}
+                        onChange={(e) => {
+                          setRequireCustomerAuth(e.target.checked);
+                          if (!e.target.checked) setSuspiciousActivityMode(false);
+                        }}
+                        className="w-4 h-4 rounded text-orange-500 accent-orange-500 cursor-pointer mt-0.5 shrink-0"
+                      />
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-bold text-gray-100">Require Customer Authentication</span>
+                        <span className="text-xs text-gray-500">When ON — customers must login with Google before placing an order. When OFF — customers enter name only (guest checkout, no account needed).</span>
+                        <div className="mt-2">
+                          {requireCustomerAuth ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">Authentication Enabled</span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-red-500/15 border border-red-500/30 text-red-400">Authentication Disabled</span>
+                          )}
+                        </div>
+                      </div>
+                    </label>
+
+                    <label className={requireCustomerAuth ? "flex items-start gap-4 p-5 bg-gray-900/40 border border-gray-850 hover:border-amber-500/30 rounded-2xl cursor-pointer select-none transition-all" : "flex items-start gap-4 p-5 bg-gray-900/40 border border-gray-850/40 rounded-2xl cursor-not-allowed select-none opacity-40 transition-all"}>
+                      <input
+                        type="checkbox"
+                        checked={suspiciousActivityMode}
+                        disabled={!requireCustomerAuth}
+                        onChange={(e) => setSuspiciousActivityMode(e.target.checked)}
+                        className="w-4 h-4 rounded text-orange-500 accent-orange-500 cursor-pointer mt-0.5 shrink-0"
+                      />
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-bold text-gray-100">Suspicious Activity Protection</span>
+                        <span className="text-xs text-gray-500">Displays a warning banner on the customer menu. Customers see: Identity Verification Active. Requires Authentication ON.</span>
+                        {suspiciousActivityMode && (
+                          <div className="mt-2 p-3 rounded-xl bg-amber-900/20 border border-amber-700/30 text-xs text-amber-400 font-semibold">
+                            Protection badge is ACTIVE on customer menu.
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-end pt-4 border-t border-gray-850">
+                    <button
+                      type="button"
+                      onClick={saveAuthSettings}
+                      disabled={authSettingsSaving}
+                      className="btn-orange px-6 py-3 rounded-xl text-xs font-black text-white cursor-pointer shadow-lg shadow-orange-500/10 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
+                    >
+                      {authSettingsSaving && <RefreshCw size={14} className="animate-spin" />}
+                      <span>Save Authentication Settings</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── Auth Audit Log ── */}
+                <div className="glass-card-dark p-6 rounded-3xl border border-gray-850/80 bg-[#111] space-y-4 shadow-xl">
+                  <div className="flex items-center justify-between pb-4 border-b border-gray-850">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-orange-500/10 flex items-center justify-center text-[var(--orange)]">
+                        <Globe size={20} />
+                      </div>
+                      <div>
+                        <h2 className="text-base font-black text-white">Auth Change Audit Log</h2>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">Admin ID · Hotel ID · Timestamp · Action history</p>
+                      </div>
+                    </div>
+                    <button type="button" onClick={loadAuthLogs} className="text-[10px] font-black uppercase text-orange-500 hover:text-orange-400 flex items-center gap-1 cursor-pointer">
+                      <RefreshCw size={12} /> Refresh
+                    </button>
+                  </div>
+                  {authLogsLoading ? (
+                    <div className="flex justify-center py-8"><div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div></div>
+                  ) : authLogs.length === 0 ? (
+                    <div className="text-center py-8 text-xs text-gray-600 font-semibold">No authentication changes recorded yet.</div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-2xl border border-gray-850">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-gray-850 bg-gray-900/40">
+                            <th className="px-4 py-3 text-left font-black text-gray-500 uppercase tracking-wider">Timestamp</th>
+                            <th className="px-4 py-3 text-left font-black text-gray-500 uppercase tracking-wider">Action</th>
+                            <th className="px-4 py-3 text-left font-black text-gray-500 uppercase tracking-wider">Admin</th>
+                            <th className="px-4 py-3 text-left font-black text-gray-500 uppercase tracking-wider">Note</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {authLogs.map((log: any) => (
+                            <tr key={log.id} className="border-b border-gray-850/50 hover:bg-gray-900/30 transition-colors">
+                              <td className="px-4 py-3 text-gray-400 font-mono whitespace-nowrap text-[10px]">
+                                {new Date(log.created_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={log.action.includes("enable") ? "inline-flex items-center px-2.5 py-1 rounded-full font-black uppercase text-[9px] bg-red-500/15 border border-red-500/30 text-red-400" : "inline-flex items-center px-2.5 py-1 rounded-full font-black uppercase text-[9px] bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"}>
+                                  {log.action.replace(/_/g, " ")}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-gray-300 font-semibold">{log.admin_username} <span className="text-gray-600">({log.admin_role})</span></td>
+                              <td className="px-4 py-3 text-gray-500">{log.note || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
                 
                 <form onSubmit={saveAccountSettings} className="glass-card-dark p-6 rounded-3xl border border-gray-850/80 bg-[#111] space-y-6">
                   <div className="flex items-center gap-3 pb-4 border-b border-gray-850">

@@ -4,10 +4,25 @@
 // Ye file main server setup karta hai
 // Express.js framework use karta hai
 
+require('dotenv').config({ path: require('path').join(__dirname, '.env') }); // Load env variables first
 const express = require('express');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const crypto = require('crypto');
+const path = require('path');
+const cookieParser = require('cookie-parser');
+const rateLimit = require('express-rate-limit');
+const cors = require('cors');
+const logger = require('./utils/logger'); // Import structured logger
+
 const app = express();
+
+// Request ID middleware for request tracing
+app.use((req, res, next) => {
+  req.id = req.headers['x-request-id'] || crypto.randomUUID();
+  res.setHeader('X-Request-Id', req.id);
+  next();
+});
 
 // HTTPS redirect middleware for production
 if (process.env.NODE_ENV === 'production') {
@@ -34,15 +49,13 @@ app.use(helmet({
   }
 }));
 
-// HTTP request logger (GDPR-friendly tiny format in production, dev in development)
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'tiny' : 'dev'));
-
-
-const path = require('path');
-const cookieParser = require('cookie-parser');
-const rateLimit = require('express-rate-limit');
-const cors = require('cors');
-require('dotenv').config({ path: require('path').join(__dirname, '.env') }); // Environment variables load karta hai (.env file se)
+// HTTP request logger piped through structured logger
+const morganStream = {
+  write: (message) => {
+    logger.info('HTTP request', { http_log: message.trim() });
+  }
+};
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'tiny' : 'dev', { stream: morganStream }));
 
 // ⏰ IST Timezone set karo (India Standard Time)
 // Saare timestamps IST me honge
@@ -63,6 +76,7 @@ app.disable('x-powered-by');
 const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:3000';
 app.use(cors({
   origin: (origin, callback) => {
+    // Allow server-to-server requests (no origin header)
     if (!origin) return callback(null, true);
     const isAllowed = origin === allowedOrigin ||
       origin.startsWith('http://localhost:') ||
@@ -70,7 +84,9 @@ app.use(cors({
     if (isAllowed) {
       callback(null, true);
     } else {
-      callback(null, true); // Fallback to avoid breaking client tools in dev
+      // ✅ SECURITY FIX: Reject disallowed origins (was previously allowing all)
+      logger.warn('CORS blocked request from disallowed origin', { origin });
+      callback(new Error(`CORS policy: Origin '${origin}' is not allowed.`));
     }
   },
   credentials: true // Cookies aur authentication headers allow karta hai
@@ -245,7 +261,7 @@ app.get('/api/geocode/resolve-short-url', async (req, res) => {
     const resolvedUrl = response.headers.get('location') || url;
     return res.json({ success: true, resolvedUrl });
   } catch (error) {
-    console.error("Resolve short URL redirect error:", error);
+    logger.error("Resolve short URL redirect error", error);
     return res.status(500).json({ success: false, message: "Failed to resolve map URL redirect." });
   }
 });
@@ -300,7 +316,7 @@ app.use((req, res) => {
 // 🚨 Global error handler - Koi bhi unhandled error yahan aayega
 // Production me detailed error message nahi bhejte (security ke liye)
 app.use((err, req, res, next) => {
-  console.error('Server error:', err); // Console me error log karo
+  logger.error('Unhandled server error', err); // Console me error log karo
   res.status(500).json({
     success: false,
     message: 'Internal server error'
@@ -312,8 +328,46 @@ app.use((err, req, res, next) => {
 // PORT environment variable se port number leta hai
 // Agar PORT set nahi hai to default 3000 use karta hai
 const port = process.env.PORT || 8000;
-const server = app.listen(port, () => {
-  console.log(`✅ Server running on port ${port}`);
-  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📍 Local URL: http://localhost:${port}`);
-});
+let server;
+if (process.env.NODE_ENV !== 'test') {
+  server = app.listen(port, () => {
+    logger.info(`Server running on port ${port}`, { port, env: process.env.NODE_ENV || 'development' });
+  });
+}
+
+// ================= GRACEFUL SHUTDOWN =================
+// Handle both SIGTERM (cloud platforms) and SIGINT (Ctrl+C / Docker stop)
+const gracefulShutdown = (signal) => {
+  logger.warn(`${signal} received. Shutting down gracefully...`, { signal });
+  if (server) {
+    server.close(() => {
+      logger.info('HTTP server closed.');
+      // Close database pool
+      const pool = require('./routes/database');
+      if (pool && typeof pool.end === 'function') {
+        pool.end(() => {
+          logger.info('Database pool closed.');
+          process.exit(0);
+        });
+      } else {
+        process.exit(0);
+      }
+    });
+  } else {
+    process.exit(0);
+  }
+  // Force-kill if graceful shutdown takes too long
+  setTimeout(() => {
+    logger.error('Graceful shutdown timeout. Force killing.');
+    process.exit(1);
+  }, 10000);
+};
+
+if (process.env.NODE_ENV !== 'test') {
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+}
+
+module.exports = app;
+
+// Trigger nodemon reload for new environment variables

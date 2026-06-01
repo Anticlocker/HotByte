@@ -43,6 +43,15 @@ interface PageProps {
   }>;
 }
 
+// Fallback for broken images
+const FOOD_FALLBACK = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 24 24' fill='none' stroke='%23FF5A1F' stroke-width='1.5'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M8 14s1.5 2 4 2 4-2 4-2'/%3E%3Cline x1='9' y1='9' x2='9.01' y2='9'/%3E%3Cline x1='15' y1='9' x2='15.01' y2='9'/%3E%3C/svg%3E";
+const handleImgError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  e.currentTarget.src = FOOD_FALLBACK;
+  e.currentTarget.style.objectFit = "contain";
+  e.currentTarget.style.padding = "12px";
+  e.currentTarget.style.background = "#1a1a1a";
+};
+
 export default function MenuPage({ params }: PageProps) {
   const router = useRouter();
   const { hotel_slug } = use(params);
@@ -74,6 +83,8 @@ export default function MenuPage({ params }: PageProps) {
   const [hotelLongitude, setHotelLongitude] = useState<number | null>(null);
   const [orderRadius, setOrderRadius] = useState(30);
   const [hotelType, setHotelType] = useState<"veg" | "nonveg" | "both">("both");
+  const [requireCustomerAuth, setRequireCustomerAuth] = useState(false);
+  const [suspiciousActivityMode, setSuspiciousActivityMode] = useState(false);
 
   // Birthday Confetti and Inline DOB States
   const [confettiTriggered, setConfettiTriggered] = useState(false);
@@ -188,6 +199,8 @@ export default function MenuPage({ params }: PageProps) {
           if (data.hotelType) setHotelType(data.hotelType);
           // Veg-only hotels: auto-enable veg filter
           if (data.hotelType === "veg") setIsVegOnly(true);
+          setRequireCustomerAuth(data.requireCustomerAuth || false);
+          setSuspiciousActivityMode(data.suspiciousActivityMode || false);
         }
       })
       .catch(() => {});
@@ -376,17 +389,66 @@ export default function MenuPage({ params }: PageProps) {
     }
 
     if (!customer) {
-      const result = await Swal.fire({
-        title: "Login Required",
-        text: "Please login or register to place your order.",
-        icon: "info",
-        showCancelButton: true,
-        confirmButtonColor: "#FF5A1F",
-        cancelButtonColor: "#aaa",
-        confirmButtonText: "Go to Login",
-      });
-      if (result.isConfirmed) router.push("/login");
-      return;
+      if (requireCustomerAuth) {
+        // Hotel requires Google login
+        const result = await Swal.fire({
+          title: "🔐 Login Required",
+          html: `<div style="color:#aaa;font-size:14px">This hotel requires you to sign in before placing an order.<br/><span style="color:#FF5A1F;font-weight:bold">Please login with Google to continue.</span></div>`,
+          icon: "info",
+          showCancelButton: true,
+          confirmButtonColor: "#FF5A1F",
+          cancelButtonColor: "#6b7280",
+          confirmButtonText: "Login with Google",
+        });
+        if (result.isConfirmed) router.push(`/login?hotel=${hotelSlug}`);
+        return;
+      } else {
+        // Guest mode: just ask for name
+        const nameResult = await Swal.fire({
+          title: "👋 What's your name?",
+          html: `<div style="color:#aaa;font-size:13px;margin-bottom:8px">Enter your name to place the order as a guest</div>`,
+          input: "text",
+          inputPlaceholder: "Your name (e.g. Rahul)",
+          inputAttributes: { autocomplete: "name", maxlength: "60" },
+          showCancelButton: true,
+          confirmButtonText: "Continue",
+          confirmButtonColor: "#FF5A1F",
+          cancelButtonColor: "#6b7280",
+          background: "#0d0f14",
+          color: "#fff",
+          customClass: {
+            popup: "rounded-2xl border border-gray-800/80",
+            input: "rounded-xl bg-gray-900 border border-gray-700 text-white px-4 py-2 focus:border-orange-500"
+          },
+          inputValidator: (value) => {
+            if (!value || value.trim().length < 2) return "Please enter your name (at least 2 characters)";
+          }
+        });
+        if (!nameResult.isConfirmed || !nameResult.value) return;
+
+        // Guest checkin
+        try {
+          const gcRes = await fetch("/api/auth/guest-checkin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: nameResult.value.trim(), hotel_slug: hotelSlug })
+          });
+          const gcData = await gcRes.json();
+          if (!gcData.success) {
+            if (gcData.requireAuth) {
+              Swal.fire("Login Required", "This hotel requires Google authentication.", "info");
+              router.push(`/login?hotel=${hotelSlug}`);
+            } else {
+              Swal.fire("Error", gcData.message || "Guest checkin failed.", "error");
+            }
+            return;
+          }
+          setCustomer(gcData.customer);
+        } catch {
+          Swal.fire("Network Error", "Unable to complete guest checkin.", "error");
+          return;
+        }
+      }
     }
 
     // ── Frontend GPS proximity check ──────────────────────────────
@@ -704,6 +766,15 @@ export default function MenuPage({ params }: PageProps) {
         </div>
       )}
 
+      {suspiciousActivityMode && (
+        <div className="w-full bg-gradient-to-r from-amber-900/80 via-yellow-900/80 to-amber-900/80 border-b border-amber-700/50 py-2.5 px-6 z-20 backdrop-blur-sm">
+          <div className="max-w-[1280px] mx-auto flex items-center justify-center gap-3">
+            <span className="text-lg">🔐</span>
+            <span className="text-xs font-bold text-amber-300 uppercase tracking-wider">Identity Verification Active — Google Login Required</span>
+          </div>
+        </div>
+      )}
+
       {/* Visual Masterpiece Full-Bleed Cover & Brand Header */}
       {showBanner ? (
         <div className="relative w-full h-[200px] sm:h-[240px] md:h-[300px] overflow-hidden select-none border-b border-gray-150/40 dark:border-zinc-800/40">
@@ -813,16 +884,11 @@ export default function MenuPage({ params }: PageProps) {
         
         {/* Dynamic Personalized Greeting Card */}
         {(() => {
+          if (!customer) {
+            return null;
+          }
+
           const getGreetingMessage = () => {
-            if (!customer) {
-              return {
-                text: "Welcome Guest 👋",
-                sub: "Browse our menu and log in with Google to place your dining order and earn rewards.",
-                icon: "✨",
-                bg: "bg-white/80 dark:bg-zinc-900/65 border-gray-150/40 dark:border-zinc-800/40 text-gray-900 dark:text-gray-100"
-              };
-            }
-            
             if (isBirthdayToday) {
               return {
                 text: `🎉 Happy Birthday, ${customer.name || "Customer"}! 🎂`,
@@ -885,14 +951,7 @@ export default function MenuPage({ params }: PageProps) {
                   </div>
                 </div>
 
-                {!customer ? (
-                  <button
-                    onClick={() => router.push(`/login?hotel=${hotelSlug}`)}
-                    className="px-5 py-3 text-white font-black text-xs uppercase tracking-wider rounded-2xl btn-orange whitespace-nowrap shadow-md cursor-pointer hover:shadow-lg transition-all"
-                  >
-                    Continue with Google
-                  </button>
-                ) : !customer.hasDob ? (
+                {!customer.hasDob ? (
                   <form onSubmit={handleInlineDobSubmit} className="flex items-center gap-3 w-full md:w-auto bg-gray-50 dark:bg-zinc-950/30 p-2 rounded-2xl border border-gray-150/40 dark:border-zinc-800/40">
                     <div className="flex flex-col leading-none pl-2 pr-1 hidden sm:flex">
                       <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Enter DOB</span>
@@ -1039,6 +1098,7 @@ export default function MenuPage({ params }: PageProps) {
                       loading="lazy"
                       decoding="async"
                       className="w-full h-full object-cover"
+                      onError={handleImgError}
                     />
                   ) : (
                     <div className="menu-card-img-placeholder flex flex-col items-center justify-center text-gray-300 dark:text-gray-650">
@@ -1130,7 +1190,11 @@ export default function MenuPage({ params }: PageProps) {
       {cartCount > 0 && (
         <button
           onClick={() => setIsCartOpen(true)}
-          className="cart-float-btn fixed bottom-6 right-4 sm:right-6 z-40 bg-gradient-to-r from-orange-500 via-orange-600 to-amber-600 text-white font-extrabold text-sm sm:text-base flex items-center gap-3 sm:gap-3.5 shadow-[0_15px_40px_rgba(255,90,31,0.45)] px-4 sm:px-6 py-3.5 sm:py-4 rounded-2xl cursor-pointer transition-all duration-300 active:scale-95 group overflow-hidden border border-white/10"
+          className={`cart-float-btn fixed z-40 bg-gradient-to-r from-orange-500 via-orange-600 to-amber-600 text-white font-extrabold text-sm sm:text-base flex items-center gap-3 sm:gap-3.5 shadow-[0_15px_40px_rgba(255,90,31,0.45)] px-4 sm:px-6 py-3.5 sm:py-4 rounded-2xl cursor-pointer transition-all duration-300 active:scale-95 group overflow-hidden border border-white/10 ${
+            (!customer && requireCustomerAuth)
+              ? "bottom-[92px] right-4 sm:right-6 md:bottom-[104px] md:right-6"
+              : "bottom-6 right-4 sm:right-6"
+          }`}
         >
           <div className="relative w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center shadow-inner">
             <ShoppingCart size={18} className="text-white" />
@@ -1209,7 +1273,7 @@ export default function MenuPage({ params }: PageProps) {
                         src={item.image_url}
                         alt={item.name}
                         className="w-full h-full object-cover"
-                      />
+                      onError={handleImgError} />
                     </div>
                     <div className="min-w-0">
                       <h4 className="font-extrabold text-sm text-gray-900 dark:text-white leading-snug truncate">
@@ -1288,6 +1352,52 @@ export default function MenuPage({ params }: PageProps) {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Sticky Required Login Prompt (Zero-Overlap Stacked Design) */}
+      {!customer && requireCustomerAuth && (
+        <div className="fixed bottom-0 left-0 right-0 z-45 md:bottom-6 md:right-6 md:left-auto md:w-full md:max-w-md p-0 bg-transparent pointer-events-none">
+          <div className="w-full bg-white/95 dark:bg-[#12141c]/95 border border-orange-500/10 dark:border-orange-500/20 shadow-[0_-8px_30px_rgb(0,0,0,0.12)] md:shadow-2xl md:rounded-2xl p-4 flex items-center justify-between gap-4 pointer-events-auto animate-fade-in-up">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center text-lg shadow-inner shrink-0 animate-pulse">
+                🔐
+              </div>
+              <div className="space-y-0.5">
+                <h4 className="text-xs sm:text-sm font-black text-gray-900 dark:text-white leading-tight">
+                  Sign In Required
+                </h4>
+                <p className="text-[10px] sm:text-xs font-semibold text-gray-400 dark:text-gray-500">
+                  Please sign in with Google to place your order.
+                </p>
+              </div>
+            </div>
+            
+            <button
+              onClick={() => router.push(`/login?hotel=${hotelSlug}`)}
+              className="flex items-center justify-center gap-2.5 px-4 py-2 bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-gray-755 dark:text-gray-200 border border-gray-200 dark:border-zinc-700 rounded-xl text-xs font-bold tracking-tight shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer select-none active:scale-95 shrink-0"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path
+                  fill="#EA4335"
+                  d="M5.266 9.765A7.077 7.077 0 0 1 12 4.909c1.69 0 3.218.6 4.418 1.582L19.91 3C17.782 1.145 15.055 0 12 0 7.336 0 3.327 2.673 1.345 6.573L5.266 9.765z"
+                />
+                <path
+                  fill="#4285F4"
+                  d="M23.49 12.273c0-.818-.073-1.609-.209-2.373H12v4.509h6.464a5.53 5.53 0 0 1-2.4 3.627l3.864 3c2.264-2.09 3.564-5.173 3.564-8.763z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.266 14.235L1.345 17.427C3.327 21.327 7.336 24 12 24c3.1 0 5.7-.991 7.6-2.691l-3.864-3c-1.036.709-2.391 1.145-3.736 1.145-2.882 0-5.327-1.945-6.2-4.545l-3.918 3.19z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 19.455c-1.345 0-2.7-.436-3.736-1.145l-3.864 3C6.3 23.009 9 24 12 24c4.664 0 8.673-2.673 10.655-6.573l-3.918-3.19c-.873 2.6-3.318 4.545-6.2 4.545z"
+                />
+              </svg>
+              <span>Continue with Google</span>
+            </button>
           </div>
         </div>
       )}

@@ -108,11 +108,42 @@ pool.connect(async (err, client, release) => {
                 "ALTER TABLE public.payment_sessions ADD COLUMN IF NOT EXISTS username VARCHAR(50);",
                 "ALTER TABLE public.payment_sessions ADD COLUMN IF NOT EXISTS email VARCHAR(100);",
                 "ALTER TABLE public.payment_sessions ADD COLUMN IF NOT EXISTS password VARCHAR(200);",
-                "ALTER TABLE public.payment_sessions ADD COLUMN IF NOT EXISTS name VARCHAR(100);"
+                "ALTER TABLE public.payment_sessions ADD COLUMN IF NOT EXISTS name VARCHAR(100);",
+                // Customer Auth Controls settings & logging
+                "ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS require_customer_auth BOOLEAN DEFAULT FALSE;",
+                "ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS customer_auth_required BOOLEAN DEFAULT FALSE;",
+                "ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS suspicious_activity_mode BOOLEAN DEFAULT FALSE;",
+                `CREATE TABLE IF NOT EXISTS public.auth_logs (
+                     id serial PRIMARY KEY,
+                     hotel_id integer REFERENCES public.hotels(hotel_id) ON DELETE CASCADE,
+                     admin_id integer REFERENCES public.admins(admin_id) ON DELETE SET NULL,
+                     admin_username varchar(50) NOT NULL,
+                     admin_role varchar(20) NOT NULL,
+                     action varchar(50) NOT NULL,
+                     note text,
+                     created_at timestamp DEFAULT CURRENT_TIMESTAMP
+                 );`,
+                `CREATE INDEX IF NOT EXISTS idx_sessions_session_id ON public.sessions (session_id);`,
+                `CREATE INDEX IF NOT EXISTS idx_orders_hotel_status ON public.orders (hotel_id, status);`,
+                `DO $$
+                BEGIN
+                  IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint 
+                    WHERE conname = 'ratings_rating_value_check' 
+                    AND conrelid = 'public.ratings'::regclass
+                  ) THEN
+                    ALTER TABLE public.ratings
+                      ADD CONSTRAINT ratings_rating_value_check 
+                      CHECK (rating_value BETWEEN 1 AND 5);
+                  END IF;
+                END $$;`
             ];
             for (const sql of migrations) {
                 await client.query(sql);
             }
+            // Cleanup expired payment sessions (older than 24 hours and still pending)
+            await client.query("DELETE FROM public.payment_sessions WHERE created_at < NOW() - INTERVAL '24 hours' AND status = 'pending_payment';");
+            console.log("✅ Database: Expired payment sessions cleaned up.");
             // Seed subscription plans if empty
             const plansCount = await client.query("SELECT COUNT(*) FROM public.subscription_plans;");
             if (parseInt(plansCount.rows[0].count) === 0) {
@@ -170,38 +201,6 @@ pool.connect(async (err, client, release) => {
                 }
             }
             console.log("✅ Database: Sequences synchronized");
-
-            // We rename 'ravi' to 'Admin' first if it exists, only if 'Admin' doesn't already exist to avoid unique constraint violations
-            await client.query(`
-                UPDATE public.admins 
-                SET username = 'Admin' 
-                WHERE username = 'ravi' 
-                  AND NOT EXISTS (SELECT 1 FROM public.admins WHERE username = 'Admin');
-            `);
-
-            const adminCheck = await client.query("SELECT * FROM public.admins WHERE username = 'Admin';");
-            const bcryptPasswordHash = bcrypt.hashSync("Hotbyte123", 12);
-            if (adminCheck.rows.length === 0) {
-                await client.query(
-                    "INSERT INTO public.admins (username, password, name, email, role, phone) VALUES ('Admin', $1, 'Super Admin', 'admin@HotByte.in', 'super_admin', '9356918260');",
-                    [bcryptPasswordHash]
-                );
-                console.log("✅ Database: Created default Super Admin 'Admin' with bcrypt password 'Hotbyte123'");
-            } else {
-                const currentPassword = adminCheck.rows[0].password;
-                if (!currentPassword.startsWith("$2b$")) {
-                    await client.query(
-                        "UPDATE public.admins SET password = $1, role = 'super_admin', phone = '9356918260' WHERE username = 'Admin';",
-                        [bcryptPasswordHash]
-                    );
-                    console.log("✅ Database: Successfully migrated Super Admin password from SHA-256 to bcrypt");
-                } else {
-                    await client.query(
-                        "UPDATE public.admins SET role = 'super_admin', phone = '9356918260' WHERE username = 'Admin';"
-                    );
-                    console.log("✅ Database: Seeded/Updated 'Admin' phone and role");
-                }
-            }
         } catch (schemaErr) {
             console.error("❌ Database schema migration failed:", schemaErr.message);
         } finally {

@@ -1,4 +1,5 @@
 const express = require("express");
+const logger = require("../utils/logger");
 const router = express.Router();
 const db = require("./database");
 const crypto = require("crypto");
@@ -45,6 +46,9 @@ router.get("/hotels", async (req, res) => {
         h.longitude,
         h.order_radius,
         h.hotel_type,
+        h.require_customer_auth,
+        h.customer_auth_required,
+        h.suspicious_activity_mode,
         (SELECT COUNT(*) FROM admins a WHERE a.hotel_id = h.hotel_id) as manager_count,
         (SELECT COUNT(*) FROM menu_items m WHERE m.hotel_id = h.hotel_id) as item_count,
         (SELECT COUNT(*) FROM orders o WHERE o.hotel_id = h.hotel_id) as order_count,
@@ -71,6 +75,8 @@ router.get("/hotels", async (req, res) => {
         longitude: row.longitude ? parseFloat(row.longitude) : null,
         orderRadius: row.order_radius || 30,
         hotelType: row.hotel_type || 'both',
+        requireCustomerAuth: row.customer_auth_required || row.require_customer_auth || false,
+        suspiciousActivityMode: row.suspicious_activity_mode || false,
         managerCount: parseInt(row.manager_count),
         itemCount: parseInt(row.item_count),
         orderCount: parseInt(row.order_count),
@@ -78,7 +84,7 @@ router.get("/hotels", async (req, res) => {
       }))
     });
   } catch (error) {
-    console.error("Superadmin fetch hotels error:", error);
+    logger.error("Superadmin fetch hotels error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch hotels." });
   }
 });
@@ -147,9 +153,10 @@ router.post("/hotels", async (req, res) => {
       const radius = parseInt(orderRadius) > 0 ? parseInt(orderRadius) : 30;
       const validHotelTypes = ['veg', 'nonveg', 'both'];
       const safeHotelType = validHotelTypes.includes(hotelType) ? hotelType : 'both';
+      const authReq = req.body.requireCustomerAuth === true || req.body.requireCustomerAuth === 'true';
       const hotelResult = await client.query(
-        "INSERT INTO public.hotels (name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING hotel_id, name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, created_at",
-        [name.trim(), cleanSlug, phone ? phone.trim() : null, address ? address.trim() : null, hotelPlan, trialEndsAt, tables, lat, lng, radius, safeHotelType]
+        "INSERT INTO public.hotels (name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, require_customer_auth, customer_auth_required) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING hotel_id, name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, require_customer_auth, customer_auth_required, created_at",
+        [name.trim(), cleanSlug, phone ? phone.trim() : null, address ? address.trim() : null, hotelPlan, trialEndsAt, tables, lat, lng, radius, safeHotelType, authReq, authReq]
       );
       const newHotel = hotelResult.rows[0];
 
@@ -183,7 +190,7 @@ router.post("/hotels", async (req, res) => {
       client.release();
     }
   } catch (error) {
-    console.error("Superadmin register hotel error:", error);
+    logger.error("Superadmin register hotel error:", error);
     return res.status(500).json({ success: false, message: "Failed to register hotel and admin: " + error.message });
   }
 });
@@ -225,7 +232,7 @@ router.get("/admins", async (req, res) => {
       }))
     });
   } catch (error) {
-    console.error("Superadmin fetch admins error:", error);
+    logger.error("Superadmin fetch admins error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch managers." });
   }
 });
@@ -275,7 +282,7 @@ router.post("/admins", async (req, res) => {
       admin: result.rows[0]
     });
   } catch (error) {
-    console.error("Superadmin assign manager error:", error);
+    logger.error("Superadmin assign manager error:", error);
     return res.status(500).json({ success: false, message: "Failed to assign hotel manager." });
   }
 });
@@ -287,7 +294,7 @@ router.post("/admins", async (req, res) => {
 router.put("/hotels/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, slug, phone, address, isFrozen, plan, tableCount, latitude, longitude, orderRadius, hotel_type } = req.body;
+    const { name, slug, phone, address, isFrozen, plan, tableCount, latitude, longitude, orderRadius, hotel_type, requireCustomerAuth } = req.body;
 
     if (!name || !slug) {
       return res.status(400).json({ success: false, message: "Hotel name and unique URL slug are required." });
@@ -325,14 +332,36 @@ router.put("/hotels/:id", async (req, res) => {
     if (radius !== undefined) { params.splice(params.length - 1, 0, radius); setClause.push(`order_radius = $${params.length - 1}`); }
     const validHotelTypes = ['veg', 'nonveg', 'both'];
     if (hotel_type && validHotelTypes.includes(hotel_type)) { params.splice(params.length - 1, 0, hotel_type); setClause.push(`hotel_type = $${params.length - 1}`); }
+    if (requireCustomerAuth !== undefined) {
+      const val = requireCustomerAuth === true || requireCustomerAuth === 'true';
+      params.splice(params.length - 1, 0, val);
+      setClause.push(`require_customer_auth = $${params.length - 1}`);
+      params.splice(params.length - 1, 0, val);
+      setClause.push(`customer_auth_required = $${params.length - 1}`);
+    }
 
     const result = await db.query(
-      `UPDATE public.hotels SET ${setClause.join(', ')} WHERE hotel_id = $${params.length} RETURNING hotel_id, name, slug, phone, address, is_frozen, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, created_at`,
+      `UPDATE public.hotels SET ${setClause.join(', ')} WHERE hotel_id = $${params.length} RETURNING hotel_id, name, slug, phone, address, is_frozen, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, require_customer_auth, customer_auth_required, created_at`,
       params
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Hotel not found." });
+    }
+
+    // ── Audit log: track freeze/unfreeze changes ────────────────────────────
+    const wasFrozen = result.rows[0].is_frozen;
+    const newFrozen = isFrozen === true;
+    if (wasFrozen !== newFrozen) {
+      const auditAction = newFrozen ? 'hotel_frozen' : 'hotel_unfrozen';
+      try {
+        await db.query(
+          "INSERT INTO public.auth_logs (hotel_id, admin_id, admin_username, admin_role, action, note) VALUES ($1, $2, $3, $4, $5, $6)",
+          [id, req.admin.id, req.admin.username, 'super_admin', auditAction, `Hotel ${newFrozen ? 'frozen' : 'unfrozen'} by Super Admin via hotel update`]
+        );
+      } catch (logErr) {
+        logger.warn("Audit log insert failed (non-fatal):", logErr.message);
+      }
     }
 
     const row = result.rows[0];
@@ -353,11 +382,12 @@ router.put("/hotels/:id", async (req, res) => {
         longitude: row.longitude ? parseFloat(row.longitude) : null,
         orderRadius: row.order_radius || 30,
         hotelType: row.hotel_type || 'both',
+        requireCustomerAuth: row.customer_auth_required || row.require_customer_auth || false,
         createdAt: row.created_at
       }
     });
   } catch (error) {
-    console.error("Superadmin update hotel error:", error);
+    logger.error("Superadmin update hotel error:", error);
     return res.status(500).json({ success: false, message: "Failed to update hotel." });
   }
 });
@@ -398,7 +428,7 @@ router.put("/hotels/:id/plan", async (req, res) => {
       hotel: result.rows[0]
     });
   } catch (error) {
-    console.error("Superadmin update plan error:", error);
+    logger.error("Superadmin update plan error:", error);
     return res.status(500).json({ success: false, message: "Failed to update subscription plan." });
   }
 });
@@ -482,7 +512,7 @@ router.put("/admins/:id", async (req, res) => {
       admin: result.rows[0]
     });
   } catch (error) {
-    console.error("Superadmin update manager error:", error);
+    logger.error("Superadmin update manager error:", error);
     return res.status(500).json({ success: false, message: "Failed to update hotel manager." });
   }
 });
@@ -584,7 +614,7 @@ router.delete("/hotels/:id", async (req, res) => {
     });
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("Superadmin delete hotel error:", error);
+    logger.error("Superadmin delete hotel error:", error);
     return res.status(500).json({ success: false, message: "Failed to delete hotel: " + error.message });
   } finally {
     client.release();
@@ -615,8 +645,105 @@ router.delete("/admins/:id", async (req, res) => {
       admin: result.rows[0]
     });
   } catch (error) {
-    console.error("Superadmin delete manager error:", error);
+    logger.error("Superadmin delete manager error:", error);
     return res.status(500).json({ success: false, message: "Failed to delete manager." });
+  }
+});
+
+
+/**
+ * PUT /api/superadmin/hotels/:id/auth-settings
+ * Super Admin overrides auth settings for any hotel
+ */
+router.put("/hotels/:id/auth-settings", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { requireCustomerAuth, suspiciousActivityMode, note } = req.body;
+
+    const hotelCheck = await db.query("SELECT hotel_id FROM public.hotels WHERE hotel_id = $1", [id]);
+    if (hotelCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found." });
+    }
+
+    const sets = [];
+    const params = [];
+    const auditActions = [];
+
+    if (requireCustomerAuth !== undefined) {
+      const val = requireCustomerAuth === true || requireCustomerAuth === 'true';
+      params.push(val);
+      sets.push("require_customer_auth = $" + params.length);
+      sets.push("customer_auth_required = $" + params.length);
+      auditActions.push(val ? 'enable_customer_auth' : 'disable_customer_auth');
+    }
+
+    if (suspiciousActivityMode !== undefined) {
+      const val = suspiciousActivityMode === true || suspiciousActivityMode === 'true';
+      params.push(val);
+      sets.push("suspicious_activity_mode = $" + params.length);
+      auditActions.push(val ? 'enable_suspicious_protection' : 'disable_suspicious_protection');
+      if (val) {
+        params.push(true);
+        sets.push("require_customer_auth = $" + params.length);
+        sets.push("customer_auth_required = $" + params.length);
+        if (!auditActions.includes('enable_customer_auth')) auditActions.push('enable_customer_auth');
+      }
+    }
+
+    if (sets.length === 0) {
+      return res.status(400).json({ success: false, message: "No settings to update." });
+    }
+
+    params.push(id);
+    await db.query(
+      "UPDATE public.hotels SET " + sets.join(', ') + " WHERE hotel_id = $" + params.length,
+      params
+    );
+
+    for (const action of auditActions) {
+      await db.query(
+        "INSERT INTO public.auth_logs (hotel_id, admin_id, admin_username, admin_role, action, note) VALUES ($1, $2, $3, $4, $5, $6)",
+        [id, req.admin.id, req.admin.username, 'super_admin', action, note || 'Super Admin override']
+      );
+    }
+
+    return res.json({ success: true, message: "Hotel auth settings overridden successfully." });
+  } catch (error) {
+    logger.error("Superadmin override auth error:", error);
+    return res.status(500).json({ success: false, message: "Failed to override auth settings." });
+  }
+});
+
+/**
+ * GET /api/superadmin/auth-logs
+ * Super Admin views all auth logs across all hotels
+ */
+router.get("/auth-logs", async (req, res) => {
+  try {
+    const { hotel_id, limit = 200 } = req.query;
+
+    let query = `
+      SELECT al.id, al.hotel_id, h.name as hotel_name, h.slug as hotel_slug,
+             al.admin_id, al.admin_username, al.admin_role,
+             al.action, al.note, al.created_at
+      FROM public.auth_logs al
+      LEFT JOIN public.hotels h ON al.hotel_id = h.hotel_id
+    `;
+    const params = [];
+
+    if (hotel_id) {
+      params.push(hotel_id);
+      query += " WHERE al.hotel_id = $1";
+    }
+
+    query += " ORDER BY al.created_at DESC LIMIT $" + (params.length + 1);
+    params.push(parseInt(limit) || 200);
+
+    const result = await db.query(query, params);
+    return res.json({ success: true, logs: result.rows });
+  } catch (error) {
+    logger.error("Superadmin get auth logs error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch auth logs." });
   }
 });
 

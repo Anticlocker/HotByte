@@ -5,6 +5,7 @@
 // BunnyCDN use karti hai (fast image delivery ke liye)
 
 const axios = require("axios");
+const logger = require("../utils/logger");
 require("dotenv").config();
 
 class BunnyCDNService {
@@ -47,7 +48,7 @@ class BunnyCDNService {
 
       throw new Error("Upload failed");
     } catch (error) {
-      console.error("❌ Bunny CDN Upload Error:", error.response?.data || error.message);
+      logger.error("❌ Bunny CDN Upload Error:", error.response?.data || error.message);
       return {
         success: false,
         error: error.response?.data || error.message,
@@ -79,7 +80,7 @@ class BunnyCDNService {
 
       throw new Error("Delete failed");
     } catch (error) {
-      console.error("❌ Bunny CDN Delete Error:", error.response?.data || error.message);
+      logger.error("❌ Bunny CDN Delete Error:", error.response?.data || error.message);
       return {
         success: false,
         error: error.response?.data || error.message,

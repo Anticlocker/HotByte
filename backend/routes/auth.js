@@ -1,5 +1,6 @@
 // Authentication routes for customers and admins
 const express = require("express");
+const logger = require("../utils/logger");
 const router = express.Router();
 const db = require("./database");
 const crypto = require("crypto");
@@ -14,17 +15,20 @@ const OTP_EXPIRY_MINUTES = 10;
 const MAX_OTP_ATTEMPTS = 5;
 const otpStore = new Map();
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, data] of otpStore.entries()) {
-    if (now > data.expiresAt) otpStore.delete(key);
-  }
-}, 5 * 60 * 1000);
+if (process.env.NODE_ENV !== "test") {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, data] of otpStore.entries()) {
+      if (now > data.expiresAt) otpStore.delete(key);
+    }
+  }, 5 * 60 * 1000);
+}
 
 const bcrypt = require("bcrypt");
 const SALT_ROUNDS = 12;
 
 const hashPassword = async (pwd) => await bcrypt.hash(pwd, SALT_ROUNDS);
+
 const validateMobile = (m) => /^[6-9]\d{9}$/.test(String(m).replace(/\D/g, ""));
 const validateName = (n) => typeof n === "string" && n.trim().length >= 2 && /^[A-Za-z\s]+$/.test(n.trim());
 const validateOTP = (o) => /^\d{6}$/.test(o);
@@ -67,10 +71,129 @@ const verifySession = async (sessionId) => {
   };
 };
 
+const requireAuth = async (req, res, next) => {
+  try {
+    const sessionId = req.cookies.sessionId || req.headers["x-session-id"];
+    if (!sessionId) {
+      return res.status(401).json({ success: false, message: "Authentication required" });
+    }
+    const session = await verifySession(sessionId);
+    if (!session) {
+      res.clearCookie("sessionId");
+      return res.status(401).json({ success: false, message: "Authentication required" });
+    }
+    req.customer = session;
+    next();
+  } catch (error) {
+    res.clearCookie("sessionId");
+    return res.status(401).json({ success: false, message: "Authentication required" });
+  }
+};
+
+const createAdminSession = async (adminId, role, req) => {
+  const sessionId = generateSessionId();
+  const hours = role === "super_admin" ? SUPER_ADMIN_SESSION_EXPIRY_HOURS : ADMIN_SESSION_EXPIRY_HOURS;
+  const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
+  const userAgent = req.headers["user-agent"] || "";
+  
+  await db.query("DELETE FROM sessions WHERE admin_id = $1", [adminId]);
+  
+  await db.query(
+    "INSERT INTO sessions (session_id, admin_id, user_agent, expires_at) VALUES ($1, $2, $3, $4)",
+    [sessionId, adminId, userAgent, expiresAt]
+  );
+  
+  await db.query("DELETE FROM sessions WHERE expires_at < NOW()");
+  
+  return { sessionId, expiresAt };
+};
+
+const verifyAdminSession = async (sessionId, req) => {
+  if (!sessionId) return null;
+
+  const currentUserAgent = req.headers["user-agent"] || "";
+
+  const result = await db.query(
+    `SELECT s.admin_id, a.username, a.hotel_id, a.role
+     FROM sessions s
+     JOIN admins a ON a.admin_id = s.admin_id
+     WHERE s.session_id = $1
+       AND s.expires_at > NOW()
+       AND s.admin_id IS NOT NULL`,
+    [sessionId]
+  );
+
+  if (result.rows.length === 0) return null;
+
+  const session = result.rows[0];
+
+  return {
+    adminId: session.admin_id,
+    username: session.username,
+    hotelId: session.hotel_id,
+    role: session.role
+  };
+};
+
+const requireAdmin = async (req, res, next) => {
+  try {
+    const sessionId = req.cookies.superAdminSessionId || req.cookies.adminSessionId || req.headers["x-session-id"];
+    const session = await verifyAdminSession(sessionId, req);
+    
+    if (!session) {
+      res.clearCookie("adminSessionId");
+      res.clearCookie("superAdminSessionId");
+      return res.status(401).json({ success: false, message: "Admin authentication required" });
+    }
+
+    if (session.role !== "admin" && session.role !== "super_admin") {
+      res.clearCookie("adminSessionId");
+      res.clearCookie("superAdminSessionId");
+      return res.status(403).json({ success: false, message: "Access denied. Invalid role." });
+    }
+
+    if (session.role === "admin") {
+      if (!session.hotelId) {
+        res.clearCookie("adminSessionId");
+        res.clearCookie("superAdminSessionId");
+        return res.status(403).json({ success: false, message: "Access denied. Admin account must be assigned to a specific hotel." });
+      }
+
+      // Check if hotel is frozen
+      const hotelRes = await db.query("SELECT is_frozen FROM public.hotels WHERE hotel_id = $1", [session.hotelId]);
+      if (hotelRes.rows.length === 0) {
+        res.clearCookie("adminSessionId");
+        res.clearCookie("superAdminSessionId");
+        return res.status(403).json({ success: false, message: "Access denied. Assigned hotel not found." });
+      }
+
+      const isFrozen = hotelRes.rows[0].is_frozen;
+      if (isFrozen && ["POST", "PUT", "DELETE"].includes(req.method)) {
+        return res.status(403).json({
+          success: false,
+          message: "Your hotel account is temporarily frozen. Mutating operations are locked."
+        });
+      }
+    }
+    
+    req.admin = { id: session.adminId, username: session.username, hotelId: session.hotelId, role: session.role };
+    next();
+  } catch (error) {
+    logger.error("Admin auth middleware error:", error);
+    res.clearCookie("adminSessionId");
+    res.clearCookie("superAdminSessionId");
+    return res.status(401).json({ success: false, message: "Admin authentication required" });
+  }
+};
+
+
 router.get("/google-config", (req, res) => {
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    return res.status(500).json({ success: false, message: "Google Client ID is not configured on the server." });
+  }
   return res.json({
     success: true,
-    clientId: process.env.GOOGLE_CLIENT_ID || "1073836371754-0l8t3572i46s91q7j018d9f485q5s7t2.apps.googleusercontent.com"
+    clientId: process.env.GOOGLE_CLIENT_ID
   });
 });
 
@@ -87,14 +210,18 @@ router.post("/google-login", async (req, res) => {
       const response = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
       googleUser = response.data;
     } catch (err) {
-      console.error("Google token verification failed:", err.message);
+      logger.error("Google token verification failed:", err.message);
       return res.status(401).json({ success: false, message: "Invalid or expired Google token." });
     }
     
     // Verify audience to prevent malicious token reuse from other Google projects
-    const allowedClientId = process.env.GOOGLE_CLIENT_ID || "1073836371754-0l8t3572i46s91q7j018d9f485q5s7t2.apps.googleusercontent.com";
+    const allowedClientId = process.env.GOOGLE_CLIENT_ID;
+    if (!allowedClientId) {
+      logger.error("Google Client ID is not configured on the server.");
+      return res.status(500).json({ success: false, message: "Google authentication is not configured on the server." });
+    }
     if (googleUser.aud !== allowedClientId) {
-      console.error("Google token audience mismatch. Expected:", allowedClientId, "Got:", googleUser.aud);
+      logger.error("Google token audience mismatch. Expected:", allowedClientId, "Got:", googleUser.aud);
       return res.status(401).json({ success: false, message: "Google token verification failed (audience mismatch)." });
     }
     
@@ -163,7 +290,7 @@ router.post("/google-login", async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Google login route error:", error);
+    logger.error("Google login route error:", error);
     return res.status(500).json({ success: false, message: "Google authentication failed." });
   }
 });
@@ -204,7 +331,7 @@ router.get("/session-check", async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Session check error:", error);
+    logger.error("Session check error:", error);
     res.clearCookie("sessionId");
     return res.json({ authenticated: false });
   }
@@ -223,71 +350,11 @@ router.post("/logout", async (req, res) => {
   }
 });
 
-const requireAuth = async (req, res, next) => {
+router.post("/admin/signup", requireAdmin, async (req, res) => {
   try {
-    const session = await verifySession(req.cookies.sessionId);
-    
-    if (!session) {
-      res.clearCookie("sessionId");
-      return res.status(401).json({ success: false, message: "Authentication required" });
+    if (req.admin.role !== 'super_admin') {
+      return res.status(403).json({ success: false, message: "Super Admin privileges required to register admins." });
     }
-    
-    req.customer = session;
-    next();
-  } catch (error) {
-    res.clearCookie("sessionId");
-    return res.status(401).json({ success: false, message: "Authentication required" });
-  }
-};
-
-const createAdminSession = async (adminId, role, req) => {
-  const sessionId = generateSessionId();
-  const hours = role === "super_admin" ? SUPER_ADMIN_SESSION_EXPIRY_HOURS : ADMIN_SESSION_EXPIRY_HOURS;
-  const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
-  const userAgent = req.headers["user-agent"] || "";
-  
-  await db.query("DELETE FROM sessions WHERE admin_id = $1", [adminId]);
-  
-  await db.query(
-    "INSERT INTO sessions (session_id, admin_id, user_agent, expires_at) VALUES ($1, $2, $3, $4)",
-    [sessionId, adminId, userAgent, expiresAt]
-  );
-  
-  await db.query("DELETE FROM sessions WHERE expires_at < NOW()");
-  
-  return { sessionId, expiresAt };
-};
-
-
-const verifyAdminSession = async (sessionId, req) => {
-  if (!sessionId) return null;
-
-  const currentUserAgent = req.headers["user-agent"] || "";
-
-  const result = await db.query(
-    `SELECT s.admin_id, a.username, a.hotel_id, a.role
-     FROM sessions s
-     JOIN admins a ON a.admin_id = s.admin_id
-     WHERE s.session_id = $1
-       AND s.expires_at > NOW()
-       AND s.admin_id IS NOT NULL`,
-    [sessionId]
-  );
-
-  if (result.rows.length === 0) return null;
-
-  const session = result.rows[0];
-
-  return {
-    adminId: session.admin_id,
-    username: session.username,
-    hotelId: session.hotel_id,
-    role: session.role
-  };
-};
-
-router.post("/admin/signup", async (req, res) => {
-  try {
     const { name, username, email, password, confirmPassword } = req.body;
     
     if (!username || !password || !confirmPassword) {
@@ -326,7 +393,7 @@ router.post("/admin/signup", async (req, res) => {
       admin: result.rows[0]
     });
   } catch (error) {
-    console.error("Admin signup error:", error);
+    logger.error("Admin signup error:", error);
     return res.status(500).json({ success: false, message: "Admin registration failed." });
   }
 });
@@ -394,7 +461,7 @@ router.post("/admin/login", async (req, res) => {
       path: "/"
     });
     
-    console.log(`Admin login: ${admin.username} (${admin.role})`);
+    logger.info(`Admin login: ${admin.username} (${admin.role})`);
     
     let hotelSlug = null;
     if (admin.hotel_id) {
@@ -410,7 +477,7 @@ router.post("/admin/login", async (req, res) => {
       admin: { id: admin.admin_id, username: admin.username, hotelId: admin.hotel_id, role: admin.role, hotelSlug }
     });
   } catch (error) {
-    console.error("Admin login error:", error);
+    logger.error("Admin login error:", error);
     return res.status(500).json({ success: false, message: "Admin login failed." });
   }
 });
@@ -418,8 +485,9 @@ router.post("/admin/login", async (req, res) => {
 router.post("/admin/forgot-otp", async (req, res) => {
   try {
     let { username, phone } = req.body;
-    if (!username) username = "Admin";
-    if (!phone) phone = "9356918260";
+    if (!username || !phone) {
+      return res.status(400).json({ success: false, message: "Username and phone number are required." });
+    }
 
     const mobile = String(phone).replace(/\D/g, "");
     if (!validateMobile(mobile)) {
@@ -446,6 +514,10 @@ router.post("/admin/forgot-otp", async (req, res) => {
     }
 
     const otpKey = `${mobile}_admin_forgot`;
+    const existingOtp = otpStore.get(otpKey);
+    if (existingOtp && Date.now() - (existingOtp.expiresAt - OTP_EXPIRY_MINUTES * 60 * 1000) < 60000) {
+      return res.status(429).json({ success: false, message: "Please wait 60 seconds before requesting another OTP." });
+    }
     otpStore.delete(otpKey);
 
     const smsResult = await messageCentral.sendOTP(mobile);
@@ -464,7 +536,7 @@ router.post("/admin/forgot-otp", async (req, res) => {
 
     return res.json({ success: true, message: "OTP sent successfully to Super Admin's phone number." });
   } catch (error) {
-    console.error("Super Admin Forgot OTP error:", error);
+    logger.error("Super Admin Forgot OTP error:", error);
     return res.status(500).json({ success: false, message: "Failed to process forgot OTP request." });
   }
 });
@@ -472,11 +544,8 @@ router.post("/admin/forgot-otp", async (req, res) => {
 router.post("/admin/reset-password", async (req, res) => {
   try {
     let { username, phone, otp, password } = req.body;
-    if (!username) username = "Admin";
-    if (!phone) phone = "9356918260";
-
-    if (!otp || !password) {
-      return res.status(400).json({ success: false, message: "OTP and new passkey are required." });
+    if (!username || !phone || !otp || !password) {
+      return res.status(400).json({ success: false, message: "Username, phone, OTP, and password are required." });
     }
 
     const mobile = String(phone).replace(/\D/g, "");
@@ -559,7 +628,7 @@ router.post("/admin/reset-password", async (req, res) => {
 
     return res.json({ success: true, message: "Super Admin passkey reset successful. Please login with your new passkey." });
   } catch (error) {
-    console.error("Super Admin reset password error:", error);
+    logger.error("Super Admin reset password error:", error);
     return res.status(500).json({ success: false, message: "Failed to reset Super Admin passkey." });
   }
 });
@@ -595,7 +664,7 @@ router.get("/admin/session-check", async (req, res) => {
       isFrozen
     });
   } catch (error) {
-    console.error("Admin session check error:", error);
+    logger.error("Admin session check error:", error);
     res.clearCookie("adminSessionId");
     res.clearCookie("superAdminSessionId");
     return res.json({ authenticated: false });
@@ -619,57 +688,6 @@ router.post("/admin/logout", async (req, res) => {
     return res.json({ success: true, message: "Admin logged out successfully" });
   }
 });
-
-const requireAdmin = async (req, res, next) => {
-  try {
-    const sessionId = req.cookies.superAdminSessionId || req.cookies.adminSessionId;
-    const session = await verifyAdminSession(sessionId, req);
-    
-    if (!session) {
-      res.clearCookie("adminSessionId");
-      res.clearCookie("superAdminSessionId");
-      return res.status(401).json({ success: false, message: "Admin authentication required" });
-    }
-
-    if (session.role !== "admin" && session.role !== "super_admin") {
-      res.clearCookie("adminSessionId");
-      res.clearCookie("superAdminSessionId");
-      return res.status(403).json({ success: false, message: "Access denied. Invalid role." });
-    }
-
-    if (session.role === "admin") {
-      if (!session.hotelId) {
-        res.clearCookie("adminSessionId");
-        res.clearCookie("superAdminSessionId");
-        return res.status(403).json({ success: false, message: "Access denied. Admin account must be assigned to a specific hotel." });
-      }
-
-      // Check if hotel is frozen
-      const hotelRes = await db.query("SELECT is_frozen FROM public.hotels WHERE hotel_id = $1", [session.hotelId]);
-      if (hotelRes.rows.length === 0) {
-        res.clearCookie("adminSessionId");
-        res.clearCookie("superAdminSessionId");
-        return res.status(403).json({ success: false, message: "Access denied. Assigned hotel not found." });
-      }
-
-      const isFrozen = hotelRes.rows[0].is_frozen;
-      if (isFrozen && ["POST", "PUT", "DELETE"].includes(req.method)) {
-        return res.status(403).json({
-          success: false,
-          message: "Your hotel account is temporarily frozen. Mutating operations are locked."
-        });
-      }
-    }
-    
-    req.admin = { id: session.adminId, username: session.username, hotelId: session.hotelId, role: session.role };
-    next();
-  } catch (error) {
-    console.error("Admin auth middleware error:", error);
-    res.clearCookie("adminSessionId");
-    res.clearCookie("superAdminSessionId");
-    return res.status(401).json({ success: false, message: "Admin authentication required" });
-  }
-};
 
 module.exports = router;
 module.exports.requireAuth = requireAuth;

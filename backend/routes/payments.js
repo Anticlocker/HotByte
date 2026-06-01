@@ -1,5 +1,6 @@
 // Payments Routes - Razorpay integration
 const express = require("express");
+const logger = require("../utils/logger");
 const router = express.Router();
 const Razorpay = require("razorpay");
 const crypto = require("crypto");
@@ -9,12 +10,41 @@ const db = require("./database");
 const { requireAuth, requireAdmin } = require("./auth");
 require("dotenv").config();
 
+// ── In-memory rate limiter for public onboarding endpoints ──────────────────
+// Prevents spam registration attempts on /create-inactive-session
+const _inactiveSessionCalls = new Map(); // key: IP, value: { count, resetAt }
+const INACTIVE_SESSION_LIMIT = 5;        // max 5 requests per IP
+const INACTIVE_SESSION_WINDOW_MS = 10 * 60 * 1000; // per 10 minutes
+const inactiveSessionRateLimit = (req, res, next) => {
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+  const now = Date.now();
+  const entry = _inactiveSessionCalls.get(ip);
+  if (entry && now < entry.resetAt) {
+    if (entry.count >= INACTIVE_SESSION_LIMIT) {
+      return res.status(429).json({ success: false, message: "Too many requests. Please wait before trying again." });
+    }
+    entry.count++;
+  } else {
+    _inactiveSessionCalls.set(ip, { count: 1, resetAt: now + INACTIVE_SESSION_WINDOW_MS });
+  }
+  next();
+};
+
+if (process.env.NODE_ENV !== "test") {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of _inactiveSessionCalls.entries()) {
+      if (now >= entry.resetAt) _inactiveSessionCalls.delete(ip);
+    }
+  }, 15 * 60 * 1000);
+}
+
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID;
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
 
 // Production safety check
 if ((!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) && process.env.NODE_ENV === 'production') {
-  console.error("❌ FATAL: RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be set in production environment");
+  logger.error("❌ FATAL: RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be set in production environment");
   process.exit(1);
 }
 
@@ -32,7 +62,7 @@ const getRazorpay = () => {
 
 // Get Razorpay key (Base64 encoded for obfuscation)
 router.get("/razorpay-key", requireAuth, (req, res) => {
-  const obfuscatedKey = Buffer.from(RAZORPAY_KEY_ID).toString('base64');
+  const obfuscatedKey = Buffer.from(RAZORPAY_KEY_ID || '').toString('base64');
   res.json({
     success: true,
     key: obfuscatedKey
@@ -41,7 +71,7 @@ router.get("/razorpay-key", requireAuth, (req, res) => {
 
 // Get Razorpay key for admins (Base64 encoded for obfuscation)
 router.get("/admin-razorpay-key", requireAdmin, (req, res) => {
-  const obfuscatedKey = Buffer.from(RAZORPAY_KEY_ID).toString('base64');
+  const obfuscatedKey = Buffer.from(RAZORPAY_KEY_ID || '').toString('base64');
   res.json({
     success: true,
     key: obfuscatedKey
@@ -68,7 +98,7 @@ router.post("/create-razorpay-order", requireAuth, async (req, res) => {
       razorpay_order: razorpayOrder,
     });
   } catch (error) {
-    console.error("Create Razorpay order error:", error);
+    logger.error("Create Razorpay order error:", error);
     return res.status(500).json({ success: false, message: "Failed to create payment order" });
   }
 });
@@ -108,7 +138,7 @@ router.post("/create-order", requireAuth, async (req, res) => {
       razorpay_order: razorpayOrder,
     });
   } catch (error) {
-    console.error("Create Razorpay order error:", error);
+    logger.error("Create Razorpay order error:", error);
     return res.status(500).json({ success: false, message: "Failed to create payment order" });
   }
 });
@@ -160,12 +190,26 @@ router.post("/verify", requireAuth, async (req, res) => {
     await db.query("BEGIN");
 
     try {
-      // Save payment record
-      await db.query(
-        `INSERT INTO payments (order_id, amount, payment_status, payment_method, razorpay_payment_id) 
-         VALUES ($1, $2, 'completed', 'razorpay', $3)`,
-        [order_id, order.total_amount, razorpay_payment_id]
+      // Check if payment record exists
+      const paymentCheck = await db.query(
+        "SELECT payment_id FROM payments WHERE order_id = $1",
+        [order_id]
       );
+
+      if (paymentCheck.rows.length > 0) {
+        await db.query(
+          `UPDATE payments 
+           SET payment_status = 'completed', payment_method = 'razorpay', razorpay_payment_id = $1, amount = $2
+           WHERE order_id = $3`,
+          [razorpay_payment_id, order.total_amount, order_id]
+        );
+      } else {
+        await db.query(
+          `INSERT INTO payments (order_id, amount, payment_status, payment_method, razorpay_payment_id) 
+           VALUES ($1, $2, 'completed', 'razorpay', $3)`,
+          [order_id, order.total_amount, razorpay_payment_id]
+        );
+      }
 
       await db.query("COMMIT");
 
@@ -178,7 +222,7 @@ router.post("/verify", requireAuth, async (req, res) => {
       throw error;
     }
   } catch (error) {
-    console.error("Verify payment error:", error);
+    logger.error("Verify payment error:", error);
     return res.status(500).json({ success: false, message: "Failed to verify payment" });
   }
 });
@@ -195,6 +239,9 @@ router.post("/create-subscription-order", requireAdmin, async (req, res) => {
     if (plan !== 'basic' && plan !== 'pro' && plan !== 'trial') {
       return res.status(400).json({ success: false, message: "Invalid subscription plan." });
     }
+
+    // ── Validate billing_cycle enum ────────────────────────────────
+    const normalizedCycle = billing_cycle === 'yearly' ? 'yearly' : 'monthly';
 
     let targetHotelId = req.admin.hotelId;
 
@@ -223,14 +270,14 @@ router.post("/create-subscription-order", requireAdmin, async (req, res) => {
     }
 
     const { price_monthly, price_yearly } = planResult.rows[0];
-    const isYearly = billing_cycle === 'yearly';
+    const isYearly = normalizedCycle === 'yearly';
     const price = isYearly ? parseFloat(price_yearly) : parseFloat(price_monthly);
     const amountInPaise = Math.round(price * 100);
 
     const razorpayOrder = await getRazorpay().orders.create({
       amount: amountInPaise,
       currency: "INR",
-      receipt: `sub_${hotel_slug}_${plan}_${billing_cycle || 'monthly'}_${Date.now()}`
+      receipt: `sub_${hotel_slug}_${plan}_${normalizedCycle}_${Date.now()}`
     });
 
     return res.json({
@@ -239,7 +286,7 @@ router.post("/create-subscription-order", requireAdmin, async (req, res) => {
       amount: price
     });
   } catch (error) {
-    console.error("Create subscription order error:", error);
+    logger.error("Create subscription order error:", error);
     return res.status(500).json({ success: false, message: "Failed to create subscription payment order." });
   }
 });
@@ -310,14 +357,14 @@ router.post("/verify-subscription", requireAdmin, async (req, res) => {
       );
     }
 
-    console.log(`💳 Subscription Upgraded: Hotel ID ${targetHotelId} (/${hotel_slug}) is now on "${plan}" plan.`);
+    logger.info(`💳 Subscription Upgraded: Hotel ID ${targetHotelId} (/${hotel_slug}) is now on "${plan}" plan.`);
 
     return res.json({
       success: true,
       message: `Successfully upgraded to the ${plan} plan!`
     });
   } catch (error) {
-    console.error("Verify subscription error:", error);
+    logger.error("Verify subscription error:", error);
     return res.status(500).json({ success: false, message: "Failed to verify subscription upgrade." });
   }
 });
@@ -419,7 +466,7 @@ router.post("/create-new-hotel-subscription-order", async (req, res) => {
       amount: price
     });
   } catch (error) {
-    console.error("Create onboarding subscription order error:", error);
+    logger.error("Create onboarding subscription order error:", error);
     return res.status(500).json({ success: false, message: "Failed to initialize subscription checkout order." });
   }
 });
@@ -515,7 +562,7 @@ router.post("/verify-new-hotel-subscription", async (req, res) => {
         path: "/"
       });
 
-      console.log(`💳 Onboarding Signup Successful: Hotel ID ${newHotelId} ("${hotelName}", /${cleanSlug}) is now active.`);
+      logger.info(`💳 Onboarding Signup Successful: Hotel ID ${newHotelId} ("${hotelName}", /${cleanSlug}) is now active.`);
 
       return res.json({
         success: true,
@@ -529,7 +576,7 @@ router.post("/verify-new-hotel-subscription", async (req, res) => {
       client.release();
     }
   } catch (error) {
-    console.error("Verify onboarding subscription error:", error);
+    logger.error("Verify onboarding subscription error:", error);
     return res.status(500).json({ success: false, message: "Failed to verify payment and complete onboarding." });
   }
 });
@@ -550,7 +597,7 @@ router.get("/public-razorpay-key", (req, res) => {
       key: obfuscatedKey
     });
   } catch (error) {
-    console.error("Fetch public Razorpay key error:", error);
+    logger.error("Fetch public Razorpay key error:", error);
     return res.status(500).json({ success: false, message: "Failed to retrieve payment credentials." });
   }
 });
@@ -598,7 +645,7 @@ router.post("/create-onboarding-order", async (req, res) => {
       amount: price
     });
   } catch (error) {
-    console.error("Create onboarding order error:", error);
+    logger.error("Create onboarding order error:", error);
     return res.status(500).json({ success: false, message: "Failed to initialize payment checkout order." });
   }
 });
@@ -629,7 +676,7 @@ router.post("/validate-account", async (req, res) => {
 
     return res.json({ success: true, message: "Username and email are available." });
   } catch (error) {
-    console.error("Validate account error:", error);
+    logger.error("Validate account error:", error);
     return res.status(500).json({ success: false, message: "Internal server error during validation." });
   }
 });
@@ -638,7 +685,7 @@ router.post("/validate-account", async (req, res) => {
  * POST /api/payments/create-inactive-session
  * Public endpoint to pre-validate account details and create an inactive session + Razorpay order
  */
-router.post("/create-inactive-session", async (req, res) => {
+router.post("/create-inactive-session", inactiveSessionRateLimit, async (req, res) => {
   try {
     const { plan, billing_cycle, username, email, password } = req.body;
 
@@ -649,6 +696,10 @@ router.post("/create-inactive-session", async (req, res) => {
     }
     // Use normalizedPlan for further processing
     const effectivePlan = normalizedPlan;
+
+    // ── Validate billing_cycle enum ────────────────────────────────
+    const normalizedCycle = billing_cycle === 'yearly' ? 'yearly' : 'monthly';
+
 
     // Check duplicates in active table
     const usernameCheck = await db.query("SELECT admin_id FROM public.admins WHERE username = $1", [username.trim()]);
@@ -695,7 +746,7 @@ router.post("/create-inactive-session", async (req, res) => {
     }
 
     const { price_monthly, price_yearly } = planResult.rows[0];
-    const isYearly = billing_cycle === 'yearly';
+    const isYearly = normalizedCycle === 'yearly';
     const price = isYearly ? parseFloat(price_yearly) : parseFloat(price_monthly);
     const amountInPaise = Math.round(price * 100);
 
@@ -727,6 +778,7 @@ router.post("/create-inactive-session", async (req, res) => {
       ]
     );
 
+
     return res.json({
       success: true,
       token: sessionToken,
@@ -734,7 +786,7 @@ router.post("/create-inactive-session", async (req, res) => {
       amount: price
     });
   } catch (error) {
-    console.error("Create inactive session error:", error);
+    logger.error("Create inactive session error:", error);
     return res.status(500).json({ success: false, message: error.message || "Failed to initialize account and payment order." });
   }
 });
@@ -786,7 +838,7 @@ router.post("/verify-onboarding-payment", async (req, res) => {
       message: "Payment verified successfully! Proceed to Hotel setup."
     });
   } catch (error) {
-    console.error("Verify onboarding payment error:", error);
+    logger.error("Verify onboarding payment error:", error);
     return res.status(500).json({ success: false, message: "Failed to verify secure payment transaction." });
   }
 });
@@ -836,7 +888,7 @@ router.get("/onboarding-session/:token", async (req, res) => {
       features: typeof features === 'string' ? JSON.parse(features) : features
     });
   } catch (error) {
-    console.error("Get onboarding session error:", error);
+    logger.error("Get onboarding session error:", error);
     return res.status(500).json({ success: false, message: "Failed to retrieve onboarding details." });
   }
 });
@@ -984,7 +1036,7 @@ router.post("/complete-onboarding", async (req, res) => {
         path: "/"
       });
 
-      console.log(`\uD83D\uDCB3 Redesigned SaaS Onboarding Completed: Hotel ID ${newHotelId} ("${hotelName}", /${cleanSlug}) is now live!`);
+      logger.info(`\uD83D\uDCB3 Redesigned SaaS Onboarding Completed: Hotel ID ${newHotelId} ("${hotelName}", /${cleanSlug}) is now live!`);
 
       return res.json({
         success: true,
@@ -998,7 +1050,7 @@ router.post("/complete-onboarding", async (req, res) => {
       client.release();
     }
   } catch (error) {
-    console.error("Complete onboarding error:", error);
+    logger.error("Complete onboarding error:", error);
     return res.status(500).json({ success: false, message: error.message || "Failed to complete onboarding and activate account." });
   }
 });

@@ -1,4 +1,5 @@
 const express = require("express");
+const logger = require("../utils/logger");
 const router = express.Router();
 const multer = require("multer");
 const path = require("path");
@@ -63,7 +64,7 @@ router.get("/categories", requireAdmin, async (req, res) => {
     return res.json({ success: true, categories: result.rows });
   }
   catch (error) {
-    console.error("Get categories error:", error);
+    logger.error("Get categories error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch categories" });
   }
 });
@@ -99,7 +100,7 @@ router.post("/categories", requireAdmin, async (req, res) => {
     if (error.code === "23505")
       return res.status(409).json({ success: false, message: "Category already exists" });
 
-    console.error("Create category error:", error);
+    logger.error("Create category error:", error);
     res.status(500).json({ success: false, message: "Failed to create category" });
   }
 });
@@ -134,7 +135,7 @@ router.put("/categories/:id", requireAdmin, async (req, res) => {
 
     return res.json({ success: true, category: result.rows[0] });
   } catch (error) {
-    console.error("Update category error:", error);
+    logger.error("Update category error:", error);
     return res.status(500).json({ success: false, message: "Failed to update category" });
   }
 });
@@ -157,7 +158,7 @@ router.delete("/categories/:id", requireAdmin, async (req, res) => {
 
     return res.json({ success: true, message: "Category deleted successfully" });
   } catch (error) {
-    console.error("Delete category error:", error);
+    logger.error("Delete category error:", error);
     if (error.code === '23503') {
       return res.status(409).json({ success: false, message: "Cannot delete category with existing items" });
     }
@@ -198,7 +199,7 @@ router.get("/items", requireAdmin, async (req, res) => {
     const result = await db.query(query, params);
     return res.json({ success: true, items: result.rows });
   } catch (error) {
-    console.error("Get items error:", error);
+    logger.error("Get items error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch items" });
   }
 });
@@ -255,7 +256,7 @@ router.post("/items", requireAdmin, (req, res, next) => {
           fs.writeFileSync(filePath, req.file.buffer);
           image_url = `/uploads/menu-items/${fileName}`;
         } catch (localError) {
-          console.error("Local upload fallback error:", localError);
+          logger.error("Local upload fallback error:", localError);
           return res.status(500).json({ success: false, message: "Failed to save image locally" });
         }
       }
@@ -313,7 +314,7 @@ router.post("/items", requireAdmin, (req, res, next) => {
 
     return res.json({ success: true, item: result.rows[0] });
   } catch (error) {
-    console.error("Create item error:", error);
+    logger.error("Create item error:", error);
     return res.status(500).json({ success: false, message: "Failed to create item" });
   }
 });
@@ -369,9 +370,10 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
           await bunnyCDN.deleteImage(existing_image_url);
         }
 
+        const safeOriginalName = path.basename(req.file.originalname).replace(/[^a-zA-Z0-9.\-_]/g, "_");
         const uploadResult = await bunnyCDN.uploadImage(
           req.file.buffer,
-          req.file.originalname,
+          safeOriginalName,
           "menu-items"
         );
         if (uploadResult.success) {
@@ -387,7 +389,7 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
             try {
               fs.unlinkSync(oldPath);
             } catch (deleteError) {
-              console.error("Local delete error:", deleteError);
+              logger.error("Local delete error:", deleteError);
             }
           }
         }
@@ -398,12 +400,13 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
           if (!fs.existsSync(uploadsDir)) {
             fs.mkdirSync(uploadsDir, { recursive: true });
           }
-          const fileName = `${Date.now()}_${req.file.originalname}`;
+          const safeOriginalName = path.basename(req.file.originalname).replace(/[^a-zA-Z0-9.\-_]/g, "_");
+          const fileName = `${Date.now()}_${safeOriginalName}`;
           const filePath = path.join(uploadsDir, fileName);
           fs.writeFileSync(filePath, req.file.buffer);
           image_url = `/uploads/menu-items/${fileName}`;
         } catch (localError) {
-          console.error("Local upload fallback error:", localError);
+          logger.error("Local upload fallback error:", localError);
           return res.status(500).json({ success: false, message: "Failed to save image locally" });
         }
       }
@@ -459,7 +462,7 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
 
     return res.json({ success: true, item: result.rows[0] });
   } catch (error) {
-    console.error("Update item error:", error);
+    logger.error("Update item error:", error);
     return res.status(500).json({ success: false, message: "Failed to update item" });
   }
 });
@@ -507,7 +510,7 @@ router.delete("/items/:id", requireAdmin, async (req, res) => {
             fs.unlinkSync(filePath);
           }
         } catch (localDeleteError) {
-          console.error("Local file delete error:", localDeleteError);
+          logger.error("Local file delete error:", localDeleteError);
         }
       } else {
         try {
@@ -522,7 +525,7 @@ router.delete("/items/:id", requireAdmin, async (req, res) => {
 
     return res.json({ success: true, message: "Item deleted successfully" });
   } catch (error) {
-    console.error("Delete item error:", error);
+    logger.error("Delete item error:", error);
 
     // Check for foreign key constraint violation
     if (error.code === '23503') {
@@ -543,9 +546,13 @@ router.get("/orders", requireAdmin, async (req, res) => {
       status,
       date_filter,
       view_type = 'active',
-      limit = 50,
-      offset = 0
     } = req.query;
+
+    // ── Validate pagination params to prevent NaN injection ────────────
+    const rawLimit = parseInt(req.query.limit, 10);
+    const rawOffset = parseInt(req.query.offset, 10);
+    const limit = !isNaN(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : 50;
+    const offset = !isNaN(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
 
     let query = `
       SELECT 
@@ -624,7 +631,7 @@ router.get("/orders", requireAdmin, async (req, res) => {
       OFFSET $${params.length + 2}
     `;
 
-    params.push(parseInt(limit), parseInt(offset));
+    params.push(limit, offset);
 
     const result = await db.query(query, params);
 
@@ -634,7 +641,7 @@ router.get("/orders", requireAdmin, async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Get orders error:", error);
+    logger.error("Get orders error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch orders"
@@ -682,7 +689,7 @@ router.delete("/orders/:id", requireAdmin, async (req, res) => {
       throw error;
     }
   } catch (error) {
-    console.error("Delete order error:", error);
+    logger.error("Delete order error:", error);
     return res.status(500).json({ success: false, message: "Failed to delete order" });
   }
 });
@@ -716,7 +723,7 @@ router.put("/orders/:id/status", requireAdmin, async (req, res) => {
 
     return res.json({ success: true, order: result.rows[0] });
   } catch (error) {
-    console.error("Update order status error:", error);
+    logger.error("Update order status error:", error);
     return res.status(500).json({ success: false, message: "Failed to update order status" });
   }
 });
@@ -778,7 +785,7 @@ router.put("/orders/:id/mark-paid", requireAdmin, async (req, res) => {
       throw error;
     }
   } catch (error) {
-    console.error("Mark order as paid error:", error);
+    logger.error("Mark order as paid error:", error);
     return res.status(500).json({ success: false, message: "Failed to mark order as paid" });
   }
 });
@@ -855,7 +862,7 @@ router.get("/dashboard/stats", requireAdmin, async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Get dashboard stats error:", error);
+    logger.error("Get dashboard stats error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch stats" });
   }
 });
@@ -891,7 +898,7 @@ router.get("/customer-stats", requireAdmin, async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Get customer stats error:", error);
+    logger.error("Get customer stats error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch customer stats" });
   }
 });
@@ -925,7 +932,7 @@ router.get("/users", requireAdmin, async (req, res) => {
     const result = await db.query(query, params);
     return res.json({ success: true, users: result.rows });
   } catch (error) {
-    console.error("Get users error:", error);
+    logger.error("Get users error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch users" });
   }
 });
@@ -1028,7 +1035,7 @@ router.get("/users/:id", requireAdmin, async (req, res) => {
       reviews: reviewsResult.rows,
     });
   } catch (error) {
-    console.error("Get user details error:", error);
+    logger.error("Get user details error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch user details" });
   }
 });
@@ -1099,7 +1106,7 @@ router.get("/notifications", requireAdmin, async (req, res) => {
 
     return res.json({ success: true, notifications });
   } catch (error) {
-    console.error("Get notifications error:", error);
+    logger.error("Get notifications error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch notifications" });
   }
 });
@@ -1168,7 +1175,7 @@ router.get("/ratings", requireAdmin, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Get ratings error:", error);
+    logger.error("Get ratings error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch ratings"
@@ -1222,7 +1229,7 @@ router.get("/ratings/stats", requireAdmin, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Get rating stats error:", error);
+    logger.error("Get rating stats error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch rating statistics" });
   }
 });
@@ -1258,7 +1265,7 @@ router.delete("/ratings/:id", requireAdmin, async (req, res) => {
 
     return res.json({ success: true, message: "Rating deleted successfully" });
   } catch (error) {
-    console.error("Delete rating error:", error);
+    logger.error("Delete rating error:", error);
     return res.status(500).json({ success: false, message: "Failed to delete rating" });
   }
 });
@@ -1279,7 +1286,7 @@ router.get("/admins", requireAdmin, async (req, res) => {
     }
     return res.json({ success: true, admins: result.rows });
   } catch (error) {
-    console.error("Get admins error:", error);
+    logger.error("Get admins error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch admins" });
   }
 });
@@ -1333,7 +1340,7 @@ router.put("/admins/:id", requireAdmin, async (req, res) => {
 
     return res.json({ success: true, admin: result.rows[0] });
   } catch (error) {
-    console.error("Update admin error:", error);
+    logger.error("Update admin error:", error);
     return res.status(500).json({ success: false, message: "Failed to update admin" });
   }
 });
@@ -1370,7 +1377,7 @@ router.delete("/admins/:id", requireAdmin, async (req, res) => {
 
     return res.json({ success: true, message: "Admin deleted successfully" });
   } catch (error) {
-    console.error("Delete admin error:", error);
+    logger.error("Delete admin error:", error);
     return res.status(500).json({ success: false, message: "Failed to delete admin" });
   }
 });
@@ -1417,7 +1424,7 @@ router.put("/change-password", requireAdmin, async (req, res) => {
 
     return res.json({ success: true, message: "Password changed successfully" });
   } catch (error) {
-    console.error("Change password error:", error);
+    logger.error("Change password error:", error);
     return res.status(500).json({ success: false, message: "Failed to change password" });
   }
 });
@@ -1440,7 +1447,7 @@ router.get("/order-accept-status", requireAdmin, async (req, res) => {
     const isOrderAccept = result.rows.length > 0 ? result.rows[0].is_order_accept : true;
     return res.json({ success: true, isOrderAccept });
   } catch (error) {
-    console.error("Get order accept status error:", error);
+    logger.error("Get order accept status error:", error);
     return res.status(500).json({ success: false, message: "Failed to get status" });
   }
 });
@@ -1467,7 +1474,7 @@ router.post("/toggle-order-accept", requireAdmin, async (req, res) => {
       isOrderAccept: enabled
     });
   } catch (error) {
-    console.error("Toggle order accept error:", error);
+    logger.error("Toggle order accept error:", error);
     return res.status(500).json({ success: false, message: "Failed to toggle orders" });
   }
 });
@@ -1494,7 +1501,7 @@ router.get("/hotel-status", requireAdmin, async (req, res) => {
       hotelType: result.rows[0].hotel_type || "both"
     });
   } catch (error) {
-    console.error("Get hotel status error:", error);
+    logger.error("Get hotel status error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch hotel status" });
   }
 });
@@ -1519,7 +1526,7 @@ router.post("/toggle-hotel-status", requireAdmin, async (req, res) => {
       message: isOpen ? "Hotel is now OPEN and accepting orders." : "Hotel is now CLOSED and not accepting orders."
     });
   } catch (error) {
-    console.error("Toggle hotel status error:", error);
+    logger.error("Toggle hotel status error:", error);
     return res.status(500).json({ success: false, message: "Failed to update hotel status" });
   }
 });
@@ -1571,7 +1578,7 @@ router.get("/settings", requireAdmin, async (req, res) => {
       sessions: sessionsResult.rows
     });
   } catch (error) {
-    console.error("Get admin settings error:", error);
+    logger.error("Get admin settings error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch settings" });
   }
 });
@@ -1618,7 +1625,7 @@ router.post("/settings", requireAdmin, async (req, res) => {
 
     return res.json({ success: true, message: "Hotel settings updated successfully" });
   } catch (error) {
-    console.error("Save admin settings error:", error);
+    logger.error("Save admin settings error:", error);
     return res.status(500).json({ success: false, message: "Failed to update hotel settings" });
   }
 });
@@ -1698,7 +1705,7 @@ router.post("/settings/account", requireAdmin, async (req, res) => {
 
     return res.json({ success: true, message: "Account settings updated successfully" });
   } catch (error) {
-    console.error("Save account settings error:", error);
+    logger.error("Save account settings error:", error);
     return res.status(500).json({ success: false, message: "Failed to update account settings" });
   }
 });
@@ -1718,7 +1725,7 @@ router.post("/settings/logout-devices", requireAdmin, async (req, res) => {
 
     return res.json({ success: true, message: "Logged out from all other devices successfully" });
   } catch (error) {
-    console.error("Logout from other devices error:", error);
+    logger.error("Logout from other devices error:", error);
     return res.status(500).json({ success: false, message: "Failed to logout from other devices" });
   }
 });
@@ -1765,7 +1772,8 @@ router.post("/settings/upload", requireAdmin, upload.single("image"), async (req
     } else {
       hotelId = req.admin.hotelId;
     }
-    const fileExt = path.extname(file.originalname).toLowerCase() || ".png";
+    const safeOriginalName = path.basename(file.originalname).replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const fileExt = path.extname(safeOriginalName).toLowerCase() || ".png";
     const fileName = `${type}_${hotelId}_${Date.now()}${fileExt}`;
 
     // Upload to CDN
@@ -1787,7 +1795,7 @@ router.post("/settings/upload", requireAdmin, upload.single("image"), async (req
       message: `${type === 'logo' ? 'Logo' : 'Banner'} uploaded successfully`
     });
   } catch (error) {
-    console.error("Settings upload error:", error);
+    logger.error("Settings upload error:", error);
     return res.status(500).json({ success: false, message: "Failed to upload visual asset" });
   }
 });
@@ -1799,7 +1807,7 @@ router.get('/subscription-plans', requireAdmin, async (req, res) => {
     const result = await db.query('SELECT plan_id, name, price_monthly, price_yearly, features FROM public.subscription_plans ORDER BY plan_id');
     return res.json({ success: true, plans: result.rows });
   } catch (error) {
-    console.error('Fetch subscription plans error:', error);
+    logger.error('Fetch subscription plans error:', error);
     // If the table does not exist, create it and seed default plans
     if (error.code === '42P01') {
       try {
@@ -1827,7 +1835,7 @@ router.get('/subscription-plans', requireAdmin, async (req, res) => {
         const retryResult = await db.query('SELECT plan_id, name, price_monthly, price_yearly, features FROM public.subscription_plans ORDER BY plan_id');
         return res.json({ success: true, plans: retryResult.rows });
       } catch (creationError) {
-        console.error('Error creating subscription_plans table:', creationError);
+        logger.error('Error creating subscription_plans table:', creationError);
         return res.status(500).json({ success: false, message: 'Failed to fetch subscription plans' });
       }
     }
@@ -1852,7 +1860,7 @@ router.get('/hotel-subscription', requireAdmin, async (req, res) => {
     }
     return res.json({ success: true, subscription: result.rows[0] });
   } catch (error) {
-    console.error('Fetch hotel subscription error:', error);
+    logger.error('Fetch hotel subscription error:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch hotel subscription' });
   }
 });
@@ -1886,7 +1894,7 @@ router.put("/settings/location", requireAdmin, async (req, res) => {
 
     return res.json({ success: true, message: "Hotel location updated successfully." });
   } catch (error) {
-    console.error("Update location error:", error);
+    logger.error("Update location error:", error);
     return res.status(500).json({ success: false, message: "Failed to update hotel location." });
   }
 });
