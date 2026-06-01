@@ -187,13 +187,34 @@ const requireAdmin = async (req, res, next) => {
 };
 
 
+const getGoogleClientId = () => {
+  if (process.env.GOOGLE_CLIENT_ID) {
+    return process.env.GOOGLE_CLIENT_ID;
+  }
+  try {
+    const fs = require("fs");
+    const path = require("path");
+    const credPath = path.join(__dirname, "../../google_auth_credentiol.json");
+    if (fs.existsSync(credPath)) {
+      const creds = JSON.parse(fs.readFileSync(credPath, "utf8"));
+      if (creds.web && creds.web.client_id) {
+        return creds.web.client_id;
+      }
+    }
+  } catch (err) {
+    logger.warn("Failed to load Google Client ID from json file:", err.message);
+  }
+  return null;
+};
+
 router.get("/google-config", (req, res) => {
-  if (!process.env.GOOGLE_CLIENT_ID) {
+  const clientId = getGoogleClientId();
+  if (!clientId) {
     return res.status(500).json({ success: false, message: "Google Client ID is not configured on the server." });
   }
   return res.json({
     success: true,
-    clientId: process.env.GOOGLE_CLIENT_ID
+    clientId: clientId
   });
 });
 
@@ -215,7 +236,7 @@ router.post("/google-login", async (req, res) => {
     }
     
     // Verify audience to prevent malicious token reuse from other Google projects
-    const allowedClientId = process.env.GOOGLE_CLIENT_ID;
+    const allowedClientId = getGoogleClientId();
     if (!allowedClientId) {
       logger.error("Google Client ID is not configured on the server.");
       return res.status(500).json({ success: false, message: "Google authentication is not configured on the server." });
