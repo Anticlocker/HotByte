@@ -11,6 +11,7 @@ interface Customer {
   name: string;
   phone: string;
   hotelSlug?: string;
+  avatarUrl?: string;
 }
 
 export default function CustomerNavbar() {
@@ -214,7 +215,16 @@ export default function CustomerNavbar() {
                   : "text-gray-600 hover:text-[var(--orange)] hover:bg-orange-50"
               }`}
             >
-              <User size={16} />
+              {customer.avatarUrl ? (
+                <img
+                  src={customer.avatarUrl}
+                  alt={customer.name}
+                  className="w-5 h-5 rounded-full object-cover border border-orange-500/25 shadow-inner"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <User size={16} />
+              )}
               <span className="hidden sm:inline">{customer.name}</span>
             </Link>
             <button

@@ -921,21 +921,29 @@ button, a, [role="button"] {
   touch-action: manipulation;
 }
 
-/* Single-column grid on very small phones (< 380px) */
-@media (max-width: 380px) {
+/* Global horizontal scroll prevention */
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Single-column grid on extremely tiny devices (e.g. Galaxy Fold folded screen < 320px) */
+@media (max-width: 320px) {
   .menu-grid {
     grid-template-columns: 1fr !important;
   }
 }
 
-/* 2-column grid on small phones */
-@media (min-width: 381px) and (max-width: 639px) {
+/* Highly compact 2-column grid on all standard mobile devices (321px to 639px) */
+@media (min-width: 321px) and (max-width: 639px) {
   .menu-grid {
     grid-template-columns: repeat(2, 1fr) !important;
-    gap: 12px !important;
+    gap: 8px !important;
   }
-  /* Tighter card padding on small screens */
+  /* Ultra compact card details and spacing for standard mobile screens */
   .menu-card-body {
-    padding: 12px !important;
+    padding: 8px !important;
+    gap: 6px !important;
   }
 }

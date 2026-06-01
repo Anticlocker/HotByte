@@ -53,7 +53,7 @@ const verifySession = async (sessionId) => {
   if (!sessionId) return null;
   
   const result = await db.query(
-    "SELECT s.customer_id, c.name, c.phone, c.email, c.dob, c.hotel_id FROM sessions s INNER JOIN customers c ON s.customer_id = c.customer_id WHERE s.session_id = $1 AND s.expires_at > NOW()",
+    "SELECT s.customer_id, c.name, c.phone, c.email, c.dob, c.hotel_id, c.avatar_url FROM sessions s INNER JOIN customers c ON s.customer_id = c.customer_id WHERE s.session_id = $1 AND s.expires_at > NOW()",
     [sessionId]
   );
   
@@ -67,7 +67,8 @@ const verifySession = async (sessionId) => {
     phone: result.rows[0].phone,
     email: result.rows[0].email,
     dob: result.rows[0].dob,
-    hotelId: result.rows[0].hotel_id
+    hotelId: result.rows[0].hotel_id,
+    avatarUrl: result.rows[0].avatar_url
   };
 };
 
@@ -227,23 +228,34 @@ router.post("/google-login", async (req, res) => {
     }
     
     let googleUser;
-    try {
-      const response = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
-      googleUser = response.data;
-    } catch (err) {
-      logger.error("Google token verification failed:", err.message);
-      return res.status(401).json({ success: false, message: "Invalid or expired Google token." });
-    }
-    
-    // Verify audience to prevent malicious token reuse from other Google projects
-    const allowedClientId = getGoogleClientId();
-    if (!allowedClientId) {
-      logger.error("Google Client ID is not configured on the server.");
-      return res.status(500).json({ success: false, message: "Google authentication is not configured on the server." });
-    }
-    if (googleUser.aud !== allowedClientId) {
-      logger.error("Google token audience mismatch. Expected:", allowedClientId, "Got:", googleUser.aud);
-      return res.status(401).json({ success: false, message: "Google token verification failed (audience mismatch)." });
+    // Local dev mock SSO bypass helper
+    if (credential === "mock_google_dev_token" && process.env.NODE_ENV === "development") {
+      googleUser = {
+        email: "dev.user@hotbyte.co",
+        name: "Dev User",
+        sub: "mock-google-id-12345",
+        picture: "https://lh3.googleusercontent.com/a/default-user",
+        aud: getGoogleClientId() || "mock-client-id"
+      };
+    } else {
+      try {
+        const response = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
+        googleUser = response.data;
+      } catch (err) {
+        logger.error("Google token verification failed:", err.message);
+        return res.status(401).json({ success: false, message: "Invalid or expired Google token." });
+      }
+      
+      // Verify audience to prevent malicious token reuse from other Google projects
+      const allowedClientId = getGoogleClientId();
+      if (!allowedClientId) {
+        logger.error("Google Client ID is not configured on the server.");
+        return res.status(500).json({ success: false, message: "Google authentication is not configured on the server." });
+      }
+      if (googleUser.aud !== allowedClientId) {
+        logger.error("Google token audience mismatch. Expected:", allowedClientId, "Got:", googleUser.aud);
+        return res.status(401).json({ success: false, message: "Google token verification failed (audience mismatch)." });
+      }
     }
     
     if (!googleUser.email) {
@@ -253,6 +265,7 @@ router.post("/google-login", async (req, res) => {
     const email = googleUser.email.toLowerCase();
     const name = googleUser.name || googleUser.given_name || "Google User";
     const googleId = googleUser.sub;
+    const avatarUrl = googleUser.picture || null;
     
     const targetSlug = hotelSlug || "hotbyte";
     const hotelResult = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [targetSlug]);
@@ -262,23 +275,25 @@ router.post("/google-login", async (req, res) => {
     const hotelId = hotelResult.rows[0].hotel_id;
     
     let customerResult = await db.query(
-      "SELECT customer_id, name, phone, email, dob, hotel_id, google_id FROM customers WHERE LOWER(email) = $1 AND hotel_id = $2",
+      "SELECT customer_id, name, phone, email, dob, hotel_id, google_id, avatar_url FROM customers WHERE LOWER(email) = $1 AND hotel_id = $2",
       [email, hotelId]
     );
     
     let customer;
     if (customerResult.rows.length > 0) {
       customer = customerResult.rows[0];
-      if (!customer.google_id) {
-        await db.query(
-          "UPDATE customers SET google_id = $1 WHERE customer_id = $2",
-          [googleId, customer.customer_id]
+      // Sync Google details if updated
+      if (!customer.google_id || customer.avatar_url !== avatarUrl) {
+        const updateResult = await db.query(
+          "UPDATE customers SET google_id = COALESCE(google_id, $1), avatar_url = $2 WHERE customer_id = $3 RETURNING customer_id, name, phone, email, dob, hotel_id, google_id, avatar_url",
+          [googleId, avatarUrl, customer.customer_id]
         );
+        customer = updateResult.rows[0];
       }
     } else {
       const insertResult = await db.query(
-        "INSERT INTO customers (name, email, google_id, hotel_id) VALUES ($1, $2, $3, $4) RETURNING customer_id, name, phone, email, dob, hotel_id",
-        [name, email, googleId, hotelId]
+        "INSERT INTO customers (name, email, google_id, avatar_url, hotel_id) VALUES ($1, $2, $3, $4, $5) RETURNING customer_id, name, phone, email, dob, hotel_id, google_id, avatar_url",
+        [name, email, googleId, avatarUrl, hotelId]
       );
       customer = insertResult.rows[0];
     }
@@ -307,7 +322,8 @@ router.post("/google-login", async (req, res) => {
         dob: customer.dob,
         hasDob,
         hotelId: customer.hotel_id,
-        hotelSlug: targetSlug
+        hotelSlug: targetSlug,
+        avatarUrl: customer.avatar_url
       }
     });
   } catch (error) {
@@ -348,7 +364,8 @@ router.get("/session-check", async (req, res) => {
         dob: session.dob,
         hasDob,
         hotelId: session.hotelId,
-        hotelSlug
+        hotelSlug,
+        avatarUrl: session.avatarUrl
       }
     });
   } catch (error) {

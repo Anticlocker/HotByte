@@ -932,44 +932,56 @@ export default function MenuPage({ params }: PageProps) {
           const greeting = getGreetingMessage();
 
           return (
-            <div className={`w-full border rounded-3xl p-6 shadow-sm backdrop-blur-md transition-all duration-300 relative overflow-hidden group ${greeting.bg}`}>
+            <div className={`w-full border rounded-2xl p-4 shadow-sm backdrop-blur-md transition-all duration-300 relative overflow-hidden group ${greeting.bg}`}>
               {isBirthdayToday && (
-                <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 rounded-full blur-2xl pointer-events-none animate-pulse"></div>
+                <div className="absolute top-0 right-0 w-24 h-24 bg-pink-500/10 rounded-full blur-xl pointer-events-none animate-pulse"></div>
               )}
-              <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
-                <div className="flex items-center gap-4 text-center md:text-left flex-col md:flex-row">
-                  <div className="w-16 h-16 rounded-2xl bg-orange-100/50 dark:bg-orange-950/20 text-orange-500 flex items-center justify-center text-3xl shadow-inner transform group-hover:scale-105 transition-transform duration-300">
-                    {greeting.icon}
-                  </div>
-                  <div className="space-y-1">
-                    <h2 className="text-xl md:text-2xl font-black tracking-tight leading-tight">
-                      {greeting.text}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10">
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  {/* User Profile Avatar */}
+                  {customer.avatarUrl ? (
+                    <img 
+                      src={customer.avatarUrl} 
+                      alt={customer.name || "User"} 
+                      className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-orange-500/30 object-cover shadow-sm shrink-0"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-orange-100 dark:bg-orange-950/20 text-orange-500 flex items-center justify-center font-bold text-sm sm:text-base shadow-inner shrink-0">
+                      {customer.name ? customer.name.charAt(0).toUpperCase() : greeting.icon}
+                    </div>
+                  )}
+                  
+                  <div className="flex-grow space-y-0.5 text-left">
+                    <div className="flex items-center gap-1.5 leading-none">
+                      <span className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider">Welcome back</span>
+                      {isBirthdayToday && <span className="text-[9px] bg-pink-100 dark:bg-pink-950/30 text-pink-650 dark:text-pink-400 font-extrabold px-1.5 py-0.5 rounded-full animate-bounce">BDAY 🎂</span>}
+                    </div>
+                    <h2 className="text-sm sm:text-base font-black text-gray-900 dark:text-white leading-tight">
+                      {customer.name || "Customer"}
                     </h2>
-                    <p className="text-xs md:text-sm font-semibold text-gray-500 dark:text-gray-400 max-w-xl">
-                      {greeting.sub}
+                    <p className="text-[10px] sm:text-xs font-semibold text-gray-450 dark:text-gray-500">
+                      {greeting.text.split(",")[0]}! {greeting.sub}
                     </p>
                   </div>
                 </div>
 
                 {!customer.hasDob ? (
-                  <form onSubmit={handleInlineDobSubmit} className="flex items-center gap-3 w-full md:w-auto bg-gray-50 dark:bg-zinc-950/30 p-2 rounded-2xl border border-gray-150/40 dark:border-zinc-800/40">
-                    <div className="flex flex-col leading-none pl-2 pr-1 hidden sm:flex">
-                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Enter DOB</span>
-                      <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest mt-0.5">Birthday Gift</span>
-                    </div>
+                  <form onSubmit={handleInlineDobSubmit} className="flex items-center gap-2 w-full sm:w-auto bg-gray-50 dark:bg-zinc-950/30 p-1.5 rounded-xl border border-gray-150/40 dark:border-zinc-800/40 shrink-0">
+                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide px-1.5 hidden lg:inline">Add DOB for Birthday Gift 🎁</span>
                     <input
                       type="date"
                       required
                       value={dobInput}
                       onChange={(e) => setDobInput(e.target.value)}
-                      className="px-3 py-2 bg-white dark:bg-zinc-900 border border-gray-205 dark:border-zinc-800 rounded-xl text-xs font-bold text-gray-800 dark:text-gray-200 outline-none focus:border-orange-500 shadow-sm"
+                      className="px-2 py-1 bg-white dark:bg-zinc-900 border border-gray-205 dark:border-zinc-800 rounded-lg text-[10px] font-bold text-gray-850 dark:text-gray-200 outline-none focus:border-orange-500 shadow-sm"
                     />
                     <button
                       type="submit"
                       disabled={updatingDob}
-                      className="px-4 py-2 text-white font-bold text-xs rounded-xl btn-orange whitespace-nowrap cursor-pointer disabled:opacity-50"
+                      className="px-3 py-1.5 text-white font-bold text-[10px] rounded-lg btn-orange whitespace-nowrap cursor-pointer disabled:opacity-50"
                     >
-                      {updatingDob ? "Saving..." : "Save DOB"}
+                      {updatingDob ? "..." : "Save"}
                     </button>
                   </form>
                 ) : null}
@@ -979,7 +991,7 @@ export default function MenuPage({ params }: PageProps) {
         })()}
 
         {/* Sleek Search & Quick Filter Controls Bar */}
-        <div className="w-full flex flex-col md:flex-row items-center justify-between gap-4 bg-white dark:bg-zinc-900/60 p-4 border border-gray-150/40 dark:border-zinc-800/40 rounded-3xl shadow-sm backdrop-blur-md transition-all duration-300">
+        <div id="menu-listing-section" className="w-full flex flex-col md:flex-row items-center justify-between gap-4 bg-white dark:bg-zinc-900/60 p-4 border border-gray-150/40 dark:border-zinc-800/40 rounded-3xl shadow-sm backdrop-blur-md transition-all duration-300">
           <div className="w-full md:w-auto flex flex-col sm:flex-row items-center gap-3">
             {/* Search Input */}
             <div className="relative w-full sm:w-80">
@@ -1017,12 +1029,20 @@ export default function MenuPage({ params }: PageProps) {
         
         {/* Dynamic Category Selector Scroll */}
         {categories.length > 0 && (
-          <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-none select-none">
+          <div className="sticky top-[72px] z-30 -mx-6 px-6 py-3 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-gray-150/40 dark:border-zinc-800/40 flex gap-2.5 overflow-x-auto pb-2 scrollbar-none select-none transition-all duration-200">
             {categories.map((cat) => (
               <button
                 key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-5 py-3 rounded-2xl text-xs font-bold whitespace-nowrap tracking-wide transition-all cursor-pointer shadow-sm ${
+                onClick={() => {
+                  setSelectedCategory(cat);
+                  const element = document.getElementById("menu-listing-section");
+                  if (element) {
+                    const yOffset = -140; // navbar + category selector height
+                    const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+                    window.scrollTo({ top: y, behavior: "smooth" });
+                  }
+                }}
+                className={`px-4.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap tracking-wide transition-all cursor-pointer shadow-sm ${
                   selectedCategory === cat
                     ? "bg-[var(--orange)] text-white shadow-lg shadow-orange-500/20"
                     : "bg-white dark:bg-zinc-900 border border-gray-200/80 dark:border-zinc-800/60 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:border-gray-350 dark:hover:border-zinc-750"
@@ -1049,26 +1069,21 @@ export default function MenuPage({ params }: PageProps) {
             <div className="space-y-1">
               <h3 className="text-lg font-black text-gray-950">No Menu Items Found</h3>
               <p className="text-sm font-medium text-gray-500 max-w-sm mx-auto">
-                No items match your selected filters. Try clearing your search queries or vegetarian preferences.
-              </p>
-            </div>
-          </div>
-        ) : (
-          /* Food Card Listing Grid */
-          <div className="menu-grid grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                No items mat          /* Food Card Listing Grid */
+          <div className="menu-grid grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-5">
             {filteredItems.map((item) => (
               <div
                 key={item.item_id}
-                className={`menu-card-hover bg-white dark:bg-zinc-900 border border-gray-150/40 dark:border-zinc-800/55 rounded-2xl sm:rounded-3xl overflow-hidden flex flex-col relative transition-all duration-300 ${
+                className={`menu-card-hover bg-white dark:bg-zinc-900 border border-gray-150/40 dark:border-zinc-800/55 rounded-xl sm:rounded-2xl overflow-hidden flex flex-col relative transition-all duration-300 ${
                   item.is_available
-                    ? "hover:shadow-xl hover:shadow-orange-100 dark:hover:shadow-orange-950/10 hover:-translate-y-1.5"
+                    ? "hover:shadow-xl hover:shadow-orange-100 dark:hover:shadow-orange-950/10 hover:-translate-y-1"
                     : "opacity-75"
                 }`}
               >
                 {/* Veg/Non-Veg Badge */}
-                <div className="absolute top-3 left-3 z-10 flex gap-2">
+                <div className="absolute top-2.5 left-2.5 z-10 flex gap-2">
                   <span
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black tracking-wide uppercase shadow-md ${
+                    className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[9px] font-black tracking-wide uppercase shadow-md ${
                       item.is_veg
                         ? "bg-emerald-600 text-white"
                         : "bg-red-650 text-white"
@@ -1081,16 +1096,16 @@ export default function MenuPage({ params }: PageProps) {
 
                 {/* Rating Badge */}
                 {item.avg_rating && parseFloat(item.avg_rating) > 0 && (
-                  <div className="absolute top-3 right-3 z-10">
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm text-[10px] font-bold text-yellow-400 shadow-md">
-                      <i className="fas fa-star text-[9px]"></i>
+                  <div className="absolute top-2.5 right-2.5 z-10">
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur-sm text-[9px] font-bold text-yellow-400 shadow-md">
+                      <i className="fas fa-star text-[8px]"></i>
                       {parseFloat(item.avg_rating).toFixed(1)}
                     </span>
                   </div>
                 )}
 
                 {/* Food Image Container — padding-top ratio trick works on all Android versions */}
-                <div className="menu-card-img-wrap">
+                <div className="menu-card-img-wrap !pt-[60%] sm:!pt-[70%]">
                   {item.image_url ? (
                     <img
                       src={item.image_url}
@@ -1102,78 +1117,78 @@ export default function MenuPage({ params }: PageProps) {
                     />
                   ) : (
                     <div className="menu-card-img-placeholder flex flex-col items-center justify-center text-gray-300 dark:text-gray-650">
-                      <Utensils size={36} />
+                      <Utensils size={28} />
                     </div>
                   )}
                   
                   {/* Out of Stock Overlay */}
                   {!item.is_available && (
-                    <div className="absolute inset-0 bg-black/65 flex flex-col items-center justify-center text-white p-4 text-center">
-                      <AlertTriangle className="text-yellow-500 mb-1" size={24} />
-                      <p className="text-xs font-black uppercase tracking-wider">Out of Stock</p>
-                      <p className="text-[10px] opacity-75 mt-0.5">Chef is preparing more!</p>
+                    <div className="absolute inset-0 bg-black/65 flex flex-col items-center justify-center text-white p-2 text-center">
+                      <AlertTriangle className="text-yellow-500 mb-0.5" size={18} />
+                      <p className="text-[10px] font-black uppercase tracking-wider">Out of Stock</p>
+                      <p className="text-[8px] opacity-75 mt-0.5">Chef preparing more!</p>
                     </div>
                   )}
                 </div>
 
                 {/* Card details */}
-                <div className="menu-card-body p-3 sm:p-5 flex-1 flex flex-col justify-between gap-3 sm:gap-4 bg-white dark:bg-zinc-900">
-                  <div className="space-y-1">
-                    <h3 className="font-extrabold text-sm sm:text-base text-gray-900 dark:text-white leading-snug line-clamp-2">
+                <div className="menu-card-body p-2 sm:p-3 flex-1 flex flex-col justify-between gap-1.5 sm:gap-2.5 bg-white dark:bg-zinc-900">
+                  <div className="space-y-0.5">
+                    <h3 className="font-extrabold text-[12px] sm:text-[13px] md:text-sm text-gray-900 dark:text-white leading-snug line-clamp-2">
                       {item.name}
                     </h3>
-                    <p className="text-[11px] sm:text-xs font-semibold text-gray-400 dark:text-gray-500 line-clamp-2 hidden sm:block">
+                    <p className="text-[10px] sm:text-xs font-semibold text-gray-450 dark:text-gray-550 line-clamp-1 sm:line-clamp-2">
                       {item.description}
                     </p>
                   </div>
 
                   <div className="flex items-center justify-between pt-1">
                     <div className="flex flex-col leading-none">
-                      <span className="text-[9px] sm:text-[10px] text-gray-400 dark:text-gray-550 font-bold uppercase tracking-wider">Price</span>
-                      <span className="text-base sm:text-lg font-black text-gray-900 dark:text-white mt-0.5 font-mono">₹{item.price}</span>
+                      <span className="text-[8px] sm:text-[9px] text-gray-400 dark:text-gray-550 font-bold uppercase tracking-wider">Price</span>
+                      <span className="text-sm sm:text-base font-black text-gray-900 dark:text-white mt-0.5 font-mono">₹{item.price}</span>
                     </div>
 
                     {!isOpen ? (
                       <button
                         disabled
-                        className="px-2.5 sm:px-4 py-2 sm:py-2.5 text-gray-400 dark:text-gray-500 font-bold text-[10px] sm:text-xs bg-gray-150 dark:bg-zinc-800 border border-gray-250 dark:border-zinc-800 rounded-xl flex items-center gap-1 sm:gap-1.5 cursor-not-allowed uppercase"
+                        className="px-2 sm:px-3 py-1.5 text-gray-400 dark:text-gray-500 font-bold text-[9px] sm:text-xs bg-gray-150 dark:bg-zinc-800 border border-gray-250 dark:border-zinc-800 rounded-lg flex items-center gap-1 cursor-not-allowed uppercase"
                       >
                         Closed
                       </button>
                     ) : item.is_available ? (
                       cart.find((i) => i.item_id === item.item_id) ? (
                         /* Quantity adjusters */
-                        <div className="flex items-center gap-1.5 sm:gap-2.5 bg-orange-50 dark:bg-orange-950/15 border border-orange-200 dark:border-orange-900/30 rounded-xl p-0.5 sm:p-1 shadow-sm">
+                        <div className="flex items-center gap-1 sm:gap-1.5 bg-orange-50 dark:bg-orange-950/15 border border-orange-200 dark:border-orange-900/30 rounded-lg p-0.5 shadow-sm">
                           <button
                             onClick={() => handleDecreaseQuantity(item.item_id)}
-                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg active:bg-orange-100 dark:active:bg-orange-950/40 flex items-center justify-center text-orange-600 dark:text-orange-400 transition-colors cursor-pointer"
+                            className="w-5.5 h-5.5 sm:w-7 sm:h-7 rounded-md active:bg-orange-100 dark:active:bg-orange-950/40 flex items-center justify-center text-orange-600 dark:text-orange-400 transition-colors cursor-pointer"
                           >
-                            <Minus size={13} />
+                            <Minus size={10} />
                           </button>
-                          <span className="text-sm font-extrabold text-orange-950 dark:text-orange-100 min-w-[16px] text-center">
+                          <span className="text-[11px] sm:text-xs font-extrabold text-orange-950 dark:text-orange-100 min-w-[12px] text-center">
                             {cart.find((i) => i.item_id === item.item_id)?.quantity}
                           </span>
                           <button
                             onClick={() => handleAddToCart(item)}
-                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg active:bg-orange-100 dark:active:bg-orange-950/40 flex items-center justify-center text-orange-600 dark:text-orange-400 transition-colors cursor-pointer"
+                            className="w-5.5 h-5.5 sm:w-7 sm:h-7 rounded-md active:bg-orange-100 dark:active:bg-orange-950/40 flex items-center justify-center text-orange-600 dark:text-orange-400 transition-colors cursor-pointer"
                           >
-                            <Plus size={13} />
+                            <Plus size={10} />
                           </button>
                         </div>
                       ) : (
                         /* Add Button */
                         <button
                           onClick={() => handleAddToCart(item)}
-                          className="px-2.5 sm:px-4 py-2 sm:py-2.5 text-white font-bold text-[10px] sm:text-xs rounded-xl flex items-center gap-1 sm:gap-1.5 btn-orange cursor-pointer"
+                          className="px-2 sm:px-3 py-1.5 text-white font-bold text-[9px] sm:text-xs rounded-lg flex items-center gap-1 btn-orange cursor-pointer"
                         >
-                          <Plus size={13} />
+                          <Plus size={10} />
                           <span>ADD</span>
                         </button>
                       )
                     ) : (
                       <button
                         disabled
-                        className="px-2.5 sm:px-4 py-2 sm:py-2.5 text-gray-400 font-bold text-[10px] sm:text-xs bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-800 rounded-xl flex items-center gap-1 sm:gap-1.5"
+                        className="px-2 sm:px-3 py-1.5 text-gray-400 font-bold text-[9px] sm:text-xs bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-800 rounded-lg flex items-center gap-1"
                       >
                         N/A
                       </button>

@@ -91,6 +91,7 @@ pool.connect(async (err, client, release) => {
                 "ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS hotel_id INTEGER REFERENCES public.hotels(hotel_id) ON DELETE CASCADE;",
                 "ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS email VARCHAR(100);",
                 "ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS google_id VARCHAR(255);",
+                "ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS avatar_url TEXT;",
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_email_hotel ON public.customers (email, hotel_id);",
                 "ALTER TABLE public.menu_category ADD COLUMN IF NOT EXISTS hotel_id INTEGER REFERENCES public.hotels(hotel_id) ON DELETE CASCADE;",
                 "ALTER TABLE public.menu_items ADD COLUMN IF NOT EXISTS hotel_id INTEGER REFERENCES public.hotels(hotel_id) ON DELETE CASCADE;",

@@ -15,8 +15,15 @@ function LoginContent() {
   const [googleScriptLoaded, setGoogleScriptLoaded] = useState(false);
   const [clientId, setClientId] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [isLocalDev, setIsLocalDev] = useState(false);
   const googleInitialized = useRef(false);
   const loginCallbackRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsLocalDev(window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || process.env.NODE_ENV === "development");
+    }
+  }, []);
 
   useEffect(() => {
     loginCallbackRef.current = handleGoogleLoginResponse;
@@ -154,7 +161,7 @@ function LoginContent() {
           </div>
 
           {/* Google Sign-in Widget Holder */}
-          <div className="w-full flex justify-center min-h-[50px] relative z-10 my-4">
+          <div className="w-full flex flex-col items-center justify-center min-h-[50px] relative z-10 my-4 gap-4">
             {!clientId ? (
               <div className="flex flex-col items-center gap-2">
                 <div className="w-8 h-8 border-3 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
@@ -162,6 +169,16 @@ function LoginContent() {
               </div>
             ) : (
               <div id="google-login-btn" className="transition-all duration-300 hover:scale-103 active:scale-97"></div>
+            )}
+
+            {/* Mock Google Login for Local Development */}
+            {isLocalDev && (
+              <button
+                onClick={() => handleGoogleLoginResponse({ credential: "mock_google_dev_token" })}
+                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gray-50 hover:bg-gray-100 dark:bg-zinc-800/40 dark:hover:bg-zinc-800/85 text-gray-700 dark:text-gray-200 border border-dashed border-gray-200 dark:border-zinc-750 rounded-xl text-[10px] font-extrabold uppercase tracking-widest transition-all duration-200 w-full max-w-[320px] cursor-pointer shadow-sm hover:shadow-md hover:scale-[1.01] active:scale-[0.99] select-none"
+              >
+                🛠️ Local Dev: Bypass Google SSO
+              </button>
             )}
           </div>
 
