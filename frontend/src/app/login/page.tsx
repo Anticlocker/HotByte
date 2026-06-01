@@ -86,7 +86,7 @@ function LoginContent() {
         client_id: clientId,
         callback: (res: any) => loginCallbackRef.current?.(res),
         cancel_on_tap_outside: false,
-        use_fedcm_for_prompt: true,
+        use_fedcm_for_prompt: false,
       });
 
       // @ts-ignore
