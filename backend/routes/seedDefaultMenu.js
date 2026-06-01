@@ -12,10 +12,11 @@
  *
  * Usage (inside any async function):
  *   const { seedDefaultMenu } = require('./seedDefaultMenu');
-const logger = require("../utils/logger");
  *   const result = await seedDefaultMenu(db, hotelId);
  *   // result → { seeded: true|false, categoriesCreated, itemsCreated, reason? }
  */
+
+const logger = require("../utils/logger");
 
 // ─── 1. Default Category Definitions ────────────────────────────────────────
 const DEFAULT_CATEGORIES = [

@@ -1923,4 +1923,129 @@ router.put("/settings/location", requireAdmin, async (req, res) => {
   }
 });
 
+// ─── Settings: GET /settings/auth-settings ──────────────────────────
+router.get("/auth-settings", requireAdmin, async (req, res) => {
+  try {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req)
+      : req.admin.hotelId;
+
+    if (!hotelId || hotelId === -1) {
+      return res.status(404).json({ success: false, message: "Hotel not resolved." });
+    }
+
+    const result = await db.query(
+      "SELECT require_customer_auth, customer_auth_required, suspicious_activity_mode FROM public.hotels WHERE hotel_id = $1",
+      [hotelId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found" });
+    }
+
+    const row = result.rows[0];
+    return res.json({
+      success: true,
+      requireCustomerAuth: row.customer_auth_required || row.require_customer_auth || false,
+      suspiciousActivityMode: row.suspicious_activity_mode || false
+    });
+  } catch (error) {
+    logger.error("Get hotel auth settings error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch authentication settings" });
+  }
+});
+
+// ─── Settings: PUT /settings/auth-settings ──────────────────────────
+router.put("/auth-settings", requireAdmin, async (req, res) => {
+  try {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req)
+      : req.admin.hotelId;
+
+    if (!hotelId || hotelId === -1) {
+      return res.status(404).json({ success: false, message: "Hotel not resolved." });
+    }
+
+    const { requireCustomerAuth, suspiciousActivityMode, note } = req.body;
+
+    const sets = [];
+    const params = [];
+    const auditActions = [];
+
+    if (requireCustomerAuth !== undefined) {
+      const val = requireCustomerAuth === true || requireCustomerAuth === 'true';
+      params.push(val);
+      sets.push("require_customer_auth = $" + params.length);
+      sets.push("customer_auth_required = $" + params.length);
+      auditActions.push(val ? 'enable_customer_auth' : 'disable_customer_auth');
+    }
+
+    if (suspiciousActivityMode !== undefined) {
+      const val = suspiciousActivityMode === true || suspiciousActivityMode === 'true';
+      params.push(val);
+      sets.push("suspicious_activity_mode = $" + params.length);
+      auditActions.push(val ? 'enable_suspicious_protection' : 'disable_suspicious_protection');
+      if (val) {
+        params.push(true);
+        sets.push("require_customer_auth = $" + params.length);
+        sets.push("customer_auth_required = $" + params.length);
+        if (!auditActions.includes('enable_customer_auth')) auditActions.push('enable_customer_auth');
+      }
+    }
+
+    if (sets.length === 0) {
+      return res.status(400).json({ success: false, message: "No settings to update." });
+    }
+
+    params.push(hotelId);
+    await db.query(
+      "UPDATE public.hotels SET " + sets.join(', ') + " WHERE hotel_id = $" + params.length,
+      params
+    );
+
+    // Audit logs
+    for (const action of auditActions) {
+      await db.query(
+        "INSERT INTO public.auth_logs (hotel_id, admin_id, admin_username, admin_role, action, note) VALUES ($1, $2, $3, $4, $5, $6)",
+        [hotelId, req.admin.id, req.admin.username, req.admin.role, action, note || 'Updated via Hotel Settings Dashboard']
+      );
+    }
+
+    return res.json({ success: true, message: "Authentication settings updated successfully." });
+  } catch (error) {
+    logger.error("Update hotel auth settings error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update authentication settings." });
+  }
+});
+
+// ─── Settings: GET /settings/auth-logs ──────────────────────────────
+router.get("/auth-logs", requireAdmin, async (req, res) => {
+  try {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req)
+      : req.admin.hotelId;
+
+    if (!hotelId || hotelId === -1) {
+      return res.status(404).json({ success: false, message: "Hotel not resolved." });
+    }
+
+    const { limit = 50 } = req.query;
+
+    const result = await db.query(
+      `SELECT al.id, al.hotel_id, al.admin_id, al.admin_username, al.admin_role,
+              al.action, al.note, al.created_at
+       FROM public.auth_logs al
+       WHERE al.hotel_id = $1
+       ORDER BY al.created_at DESC
+       LIMIT $2`,
+      [hotelId, parseInt(limit) || 50]
+    );
+
+    return res.json({ success: true, logs: result.rows });
+  } catch (error) {
+    logger.error("Get hotel auth logs error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch authentication logs" });
+  }
+});
+
 module.exports = router;
