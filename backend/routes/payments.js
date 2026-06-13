@@ -187,39 +187,42 @@ router.post("/verify", requireAuth, async (req, res) => {
       return res.status(409).json({ success: false, message: "This payment has already been verified and processed." });
     }
 
-    await db.query("BEGIN");
-
+    const client = await db.connect();
     try {
+      await client.query("BEGIN");
+
       // Check if payment record exists
-      const paymentCheck = await db.query(
+      const paymentCheck = await client.query(
         "SELECT payment_id FROM payments WHERE order_id = $1",
         [order_id]
       );
 
       if (paymentCheck.rows.length > 0) {
-        await db.query(
+        await client.query(
           `UPDATE payments 
            SET payment_status = 'completed', payment_method = 'razorpay', razorpay_payment_id = $1, amount = $2
            WHERE order_id = $3`,
           [razorpay_payment_id, order.total_amount, order_id]
         );
       } else {
-        await db.query(
+        await client.query(
           `INSERT INTO payments (order_id, amount, payment_status, payment_method, razorpay_payment_id) 
            VALUES ($1, $2, 'completed', 'razorpay', $3)`,
           [order_id, order.total_amount, razorpay_payment_id]
         );
       }
 
-      await db.query("COMMIT");
+      await client.query("COMMIT");
 
       return res.json({
         success: true,
         message: "Payment verified and saved successfully",
       });
     } catch (error) {
-      await db.query("ROLLBACK");
+      await client.query("ROLLBACK");
       throw error;
+    } finally {
+      client.release();
     }
   } catch (error) {
     logger.error("Verify payment error:", error);
@@ -1036,11 +1039,11 @@ router.post("/complete-onboarding", async (req, res) => {
         path: "/"
       });
 
-      logger.info(`\uD83D\uDCB3 Redesigned SaaS Onboarding Completed: Hotel ID ${newHotelId} ("${hotelName}", /${cleanSlug}) is now live!`);
+      logger.info(`💳 Onboarding Signup Successful: Hotel ID ${newHotelId} ("${hotelName}", /${cleanSlug}) is now active.`);
 
       return res.json({
         success: true,
-        message: "Hotel onboarded successfully!",
+        message: "Hotel onboarded and active subscription enabled successfully!",
         hotel_slug: cleanSlug
       });
     } catch (txnError) {
@@ -1050,11 +1053,9 @@ router.post("/complete-onboarding", async (req, res) => {
       client.release();
     }
   } catch (error) {
-    logger.error("Complete onboarding error:", error);
-    return res.status(500).json({ success: false, message: error.message || "Failed to complete onboarding and activate account." });
+    logger.error("Verify onboarding subscription error:", error);
+    return res.status(500).json({ success: false, message: "Failed to verify payment and complete onboarding." });
   }
 });
 
 module.exports = router;
-
-

@@ -116,16 +116,17 @@ router.put("/categories/:id", requireAdmin, async (req, res) => {
       return res.status(400).json({ success: false, message: "Category name is required" });
     }
 
+    const sanitizedName = xss(category_name.trim());
     let result;
     if (req.admin.role === 'super_admin') {
       result = await db.query(
         "UPDATE menu_category SET category_name = $1 WHERE category_id = $2 RETURNING category_id, category_name",
-        [category_name.trim(), id]
+        [sanitizedName, id]
       );
     } else {
       result = await db.query(
         "UPDATE menu_category SET category_name = $1 WHERE category_id = $2 AND hotel_id = $3 RETURNING category_id, category_name",
-        [category_name.trim(), id, req.admin.hotelId]
+        [sanitizedName, id, req.admin.hotelId]
       );
     }
 
@@ -664,29 +665,33 @@ router.delete("/orders/:id", requireAdmin, async (req, res) => {
     }
 
     // Start transaction
-    await db.query("BEGIN");
+    const client = await db.connect();
 
     try {
+      await client.query("BEGIN");
+
       // Delete order items first (foreign key constraint)
-      await db.query("DELETE FROM order_items WHERE order_id = $1", [id]);
+      await client.query("DELETE FROM order_items WHERE order_id = $1", [id]);
 
       // Delete payment if exists
-      await db.query("DELETE FROM payments WHERE order_id = $1", [id]);
+      await client.query("DELETE FROM payments WHERE order_id = $1", [id]);
 
       // Delete order
-      const result = await db.query("DELETE FROM orders WHERE order_id = $1 RETURNING order_id", [id]);
+      const result = await client.query("DELETE FROM orders WHERE order_id = $1 RETURNING order_id", [id]);
 
       if (result.rows.length === 0) {
-        await db.query("ROLLBACK");
+        await client.query("ROLLBACK");
         return res.status(404).json({ success: false, message: "Order not found" });
       }
 
-      await db.query("COMMIT");
+      await client.query("COMMIT");
 
       return res.json({ success: true, message: "Order deleted successfully" });
     } catch (error) {
-      await db.query("ROLLBACK");
+      await client.query("ROLLBACK");
       throw error;
+    } finally {
+      client.release();
     }
   } catch (error) {
     logger.error("Delete order error:", error);
@@ -754,35 +759,39 @@ router.put("/orders/:id/mark-paid", requireAdmin, async (req, res) => {
     const order = orderCheck.rows[0];
 
     // Start transaction
-    await db.query("BEGIN");
+    const client = await db.connect();
 
     try {
+      await client.query("BEGIN");
+
       // Check if payment record exists
-      const paymentCheck = await db.query(
+      const paymentCheck = await client.query(
         "SELECT payment_id FROM payments WHERE order_id = $1",
         [id]
       );
 
       // Update ONLY payments table - NO orders table update
       if (paymentCheck.rows.length > 0) {
-        await db.query(
+        await client.query(
           "UPDATE payments SET payment_status = 'completed', payment_method = 'cash' WHERE order_id = $1",
           [id]
         );
       } else {
         // Create payment record
-        await db.query(
+        await client.query(
           "INSERT INTO payments (order_id, amount, payment_status, payment_method) VALUES ($1, $2, 'completed', 'cash')",
           [id, order.total_amount]
         );
       }
 
-      await db.query("COMMIT");
+      await client.query("COMMIT");
 
       return res.json({ success: true, message: "Order marked as paid successfully" });
     } catch (error) {
-      await db.query("ROLLBACK");
+      await client.query("ROLLBACK");
       throw error;
+    } finally {
+      client.release();
     }
   } catch (error) {
     logger.error("Mark order as paid error:", error);
@@ -1800,22 +1809,44 @@ router.post("/settings/upload", requireAdmin, upload.single("image"), async (req
     const fileExt = path.extname(safeOriginalName).toLowerCase() || ".png";
     const fileName = `${type}_${hotelId}_${Date.now()}${fileExt}`;
 
-    // Upload to CDN
-    const uploadResult = await bunnyCDN.uploadImage(file.buffer, fileName, "branding");
-    if (!uploadResult.success) {
-      return res.status(500).json({ success: false, message: uploadResult.error || "Failed to upload to CDN" });
+    // Upload to CDN (with local fallback when Bunny CDN is not configured)
+    const isBunnyConfigured = process.env.BUNNY_ACCESS_KEY &&
+      !process.env.BUNNY_ACCESS_KEY.startsWith("your_");
+
+    let uploadedUrl;
+
+    if (isBunnyConfigured) {
+      const uploadResult = await bunnyCDN.uploadImage(file.buffer, fileName, "branding");
+      if (!uploadResult.success) {
+        return res.status(500).json({ success: false, message: uploadResult.error || "Failed to upload to CDN" });
+      }
+      uploadedUrl = uploadResult.url;
+    } else {
+      // Fallback to local storage
+      try {
+        const uploadsDir = path.join(__dirname, "../public/uploads/branding");
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        const filePath = path.join(uploadsDir, fileName);
+        fs.writeFileSync(filePath, file.buffer);
+        uploadedUrl = `/uploads/branding/${fileName}`;
+      } catch (localError) {
+        logger.error("Local upload fallback error:", localError);
+        return res.status(500).json({ success: false, message: "Failed to save image locally" });
+      }
     }
 
     // Update database for hotel
     const dbColumn = type === "logo" ? "logo_url" : "banner_url";
     await db.query(
       `UPDATE public.hotels SET ${dbColumn} = $1 WHERE hotel_id = $2`,
-      [uploadResult.url, hotelId]
+      [uploadedUrl, hotelId]
     );
 
     return res.json({
       success: true,
-      url: uploadResult.url,
+      url: uploadedUrl,
       message: `${type === 'logo' ? 'Logo' : 'Banner'} uploaded successfully`
     });
   } catch (error) {

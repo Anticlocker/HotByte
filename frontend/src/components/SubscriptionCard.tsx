@@ -1,5 +1,5 @@
 // src/components/SubscriptionCard.tsx
-import React from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, Clock } from 'lucide-react';
 import Swal from 'sweetalert2';
@@ -30,14 +30,20 @@ const badgeColors: Record<string, string> = {
 };
 
 export const SubscriptionCard: React.FC<Props> = ({ plan, currentSubscription, onRenew, onUpgrade, isRecommended }) => {
+  const [now, setNow] = useState<number | null>(null);
+
+  useEffect(() => {
+    setNow(Date.now());
+  }, []);
+
   const isCurrent = currentSubscription?.plan_id === plan.plan_id;
-  const daysRemaining = currentSubscription
-    ? Math.max(0, Math.ceil((new Date(currentSubscription.expiry_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+  const daysRemaining = currentSubscription && now !== null
+    ? Math.max(0, Math.ceil((new Date(currentSubscription.expiry_date).getTime() - now) / (1000 * 60 * 60 * 24)))
     : null;
   const expired = currentSubscription && currentSubscription.status === 'expired';
 
-  const progress = daysRemaining && currentSubscription?.expiry_date
-    ? Math.min(100, Math.max(0, Math.round(((new Date(currentSubscription.expiry_date).getTime() - Date.now()) / (new Date(currentSubscription.expiry_date).getTime() - new Date(currentSubscription.start_date ?? Date.now()).getTime())) * 100)))
+  const progress = daysRemaining !== null && currentSubscription?.expiry_date && now !== null
+    ? Math.min(100, Math.max(0, Math.round(((new Date(currentSubscription.expiry_date).getTime() - now) / (new Date(currentSubscription.expiry_date).getTime() - new Date(currentSubscription.start_date ?? new Date().toISOString()).getTime())) * 100)))
     : 0;
 
   const cardClasses = `bg-gray-900/70 backdrop-blur-xl rounded-xl border border-gray-800 p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-1 hover:scale-105 transition-all duration-300 ${isRecommended ? 'border-2 border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.3)]' : ''}`;
@@ -169,7 +175,7 @@ export const SubscriptionCard: React.FC<Props> = ({ plan, currentSubscription, o
           </div>
           <div className="flex items-center space-x-2 text-sm mt-1">
             <Clock className="text-yellow-400 w-4 h-4" />
-            <span>{daysRemaining} days remaining</span>
+            <span>{daysRemaining !== null ? `${daysRemaining} days remaining` : 'Calculating remaining days...'}</span>
           </div>
           <div className="w-full bg-gray-700 rounded-full h-1.5 mt-2">
             <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${progress}%` }} />

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslation } from "react-i18next";
+import "@/i18n";
 import {
   Building,
   Palette,
@@ -79,6 +81,8 @@ const getErrorMessage = (message: any): string => {
 
 export default function AdminSettings() {
   const router = useRouter();
+  const { t } = useTranslation();
+
 
   const [activeTab, setActiveTab] = useState<"profile" | "branding" | "operations" | "location" | "security">("profile");
   const [hotel, setHotel] = useState<HotelSettings | null>(null);
@@ -143,6 +147,16 @@ export default function AdminSettings() {
 
   const [showCurrentPass, setShowCurrentPass] = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
+
+  const loadAuthLogs = async () => {
+    setAuthLogsLoading(true);
+    try {
+      const res = await fetch("/api/admin/auth-logs");
+      const data = await res.json();
+      if (data.success) setAuthLogs(data.logs || []);
+    } catch {}
+    finally { setAuthLogsLoading(false); }
+  };
 
   const loadSettings = async () => {
     try {
@@ -210,20 +224,21 @@ export default function AdminSettings() {
           setAdminPhone(data.admin.phone || "");
         }
       } else {
-        Swal.fire("Error", getErrorMessage(data.message) || "Failed to load hotel configs", "error");
+        Swal.fire(t("common.error"), getErrorMessage(data.message) || t("admin.settings.general"), "error");
       }
     } catch (err) {
       console.error(err);
-      Swal.fire("Connection Offline", "Could not connect to the settings endpoints", "error");
+      Swal.fire(t("common.error"), "Could not connect to the settings endpoints", "error");
     } finally {
       setLoading(false);
     }
   };
 
+  
   useEffect(() => {
     loadSettings();
     loadAuthLogs();
-  }, [router]);
+  }, []);
 
   // Handle image upload logic
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: "logo" | "banner") => {
@@ -233,13 +248,13 @@ export default function AdminSettings() {
       // Validation constraints check
       const maxSize = type === "logo" ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
       if (file.size > maxSize) {
-        Swal.fire("File Too Big", `${type === "logo" ? "Logo" : "Banner cover"} must be smaller than ${type === "logo" ? "2MB" : "5MB"}.`, "warning");
+        Swal.fire(t("common.warning"), `${type === "logo" ? "Logo" : "Banner cover"} must be smaller than ${type === "logo" ? "2MB" : "5MB"}.`, "warning");
         return;
       }
 
       const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
       if (!allowedTypes.includes(file.type)) {
-        Swal.fire("Incorrect Format", "Only JPG, JPEG, PNG, or WEBP formats are supported.", "warning");
+        Swal.fire(t("common.warning"), "Only JPG, JPEG, PNG, or WEBP formats are supported.", "warning");
         return;
       }
 
@@ -277,7 +292,7 @@ export default function AdminSettings() {
       }
       if (data.success) {
         Swal.fire({
-          title: "Asset Saved!",
+          title: t("admin.settings.saved"),
           text: `${type === "logo" ? "Logo image" : "Banner cover"} uploaded successfully.`,
           icon: "success",
           timer: 1200,
@@ -292,11 +307,11 @@ export default function AdminSettings() {
         }
         loadSettings();
       } else {
-        Swal.fire("Upload Failure", getErrorMessage(data.message) || "Failed to deliver asset to storage CDN", "error");
+        Swal.fire(t("common.error"), getErrorMessage(data.message) || "Failed to deliver asset to storage CDN", "error");
       }
     } catch (err) {
       console.error(err);
-      Swal.fire("Network Error", "Unable to complete asset upload connection.", "error");
+      Swal.fire(t("common.error"), "Unable to complete asset upload connection.", "error");
     } finally {
       if (type === "logo") setLogoUploading(false);
       else setBannerUploading(false);
@@ -317,7 +332,7 @@ export default function AdminSettings() {
   const saveHotelProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!hotelName.trim()) {
-      Swal.fire("Required", "Hotel Name cannot be blank", "warning");
+      Swal.fire(t("common.warning"), "Hotel Name cannot be blank", "warning");
       return;
     }
 
@@ -352,7 +367,7 @@ export default function AdminSettings() {
       }
       if (data.success) {
         Swal.fire({
-          title: "Branding Saved!",
+          title: t("admin.settings.saved"),
           text: "Branding and profile settings loaded successfully.",
           icon: "success",
           timer: 1500,
@@ -360,11 +375,11 @@ export default function AdminSettings() {
         });
         loadSettings();
       } else {
-        Swal.fire("Error", getErrorMessage(data.message) || "Failed to commit modifications", "error");
+        Swal.fire(t("common.error"), getErrorMessage(data.message) || "Failed to commit modifications", "error");
       }
     } catch (err) {
       console.error(err);
-      Swal.fire("Error", "Network connection issues", "error");
+      Swal.fire(t("common.error"), "Network connection issues", "error");
     } finally {
       setSaving(false);
     }
@@ -374,21 +389,21 @@ export default function AdminSettings() {
   const saveAccountSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adminEmail.trim()) {
-      Swal.fire("Required", "Email details cannot be blank", "warning");
+      Swal.fire(t("common.warning"), "Email details cannot be blank", "warning");
       return;
     }
 
     if (newPassword) {
       if (!currentPassword) {
-        Swal.fire("Security check", "Please key in your current password to authorize password reset", "warning");
+        Swal.fire(t("common.warning"), "Please key in your current password to authorize password reset", "warning");
         return;
       }
       if (newPassword !== confirmPassword) {
-        Swal.fire("Security check", "New passwords do not match", "warning");
+        Swal.fire(t("common.warning"), "New passwords do not match", "warning");
         return;
       }
       if (newPassword.length < 6) {
-        Swal.fire("Security check", "New password must be at least 6 characters", "warning");
+        Swal.fire(t("common.warning"), "New password must be at least 6 characters", "warning");
         return;
       }
     }
@@ -414,7 +429,7 @@ export default function AdminSettings() {
       }
       if (data.success) {
         Swal.fire({
-          title: "Account Secured!",
+          title: t("admin.settings.saved"),
           text: "Admin information and security profiles updated.",
           icon: "success",
           timer: 1500,
@@ -425,11 +440,11 @@ export default function AdminSettings() {
         setConfirmPassword("");
         loadSettings();
       } else {
-        Swal.fire("Operation Denied", getErrorMessage(data.message) || "Email/phone unique constraint conflicts", "error");
+        Swal.fire(t("common.error"), getErrorMessage(data.message) || "Email/phone unique constraint conflicts", "error");
       }
     } catch (err) {
       console.error(err);
-      Swal.fire("Error", "Verification connection failure", "error");
+      Swal.fire(t("common.error"), "Verification connection failure", "error");
     } finally {
       setSaving(false);
     }
@@ -438,12 +453,12 @@ export default function AdminSettings() {
   // Terminate other sessions
   const terminateAllOtherDevices = async () => {
     const result = await Swal.fire({
-      title: "Logout all other sessions?",
-      text: "This immediately invalidates and deletes sessions on all other browsers and tablets.",
+      title: t("admin.settings.security.logoutOtherTitle"),
+      text: t("admin.settings.security.logoutOtherMsg"),
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#EF4444",
-      confirmButtonText: "Logout other devices"
+      confirmButtonText: t("admin.settings.security.logoutOtherBtn")
     });
 
     if (result.isConfirmed) {
@@ -458,14 +473,14 @@ export default function AdminSettings() {
           data = { success: false, message: "Server returned an invalid response." };
         }
         if (data.success) {
-          Swal.fire("Logged out!", "Successfully terminated other device sessions.", "success");
+          Swal.fire(t("admin.settings.security.loggedOut"), t("admin.settings.security.loggedOutMsg"), "success");
           loadSettings();
         } else {
-          Swal.fire("Error", getErrorMessage(data.message) || "Failed to disconnect devices", "error");
+          Swal.fire(t("common.error"), getErrorMessage(data.message) || "Failed to disconnect devices", "error");
         }
       } catch (err) {
         console.error(err);
-        Swal.fire("Network error", "Unable to disconnect devices", "error");
+        Swal.fire(t("common.error"), "Unable to disconnect devices", "error");
       }
     }
   };
@@ -485,24 +500,14 @@ export default function AdminSettings() {
       });
       const data = await res.json();
       if (data.success) {
-        Swal.fire({ title: "Saved!", text: "Authentication settings updated.", icon: "success", timer: 1500, showConfirmButton: false });
+        Swal.fire({ title: t("admin.settings.saved"), text: "Authentication settings updated.", icon: "success", timer: 1500, showConfirmButton: false });
         // Reload auth logs
         loadAuthLogs();
       } else {
-        Swal.fire("Error", data.message || "Failed to save auth settings", "error");
+        Swal.fire(t("common.error"), data.message || t("admin.settings.saveFailed"), "error");
       }
-    } catch { Swal.fire("Error", "Network connection issue", "error"); }
+    } catch { Swal.fire(t("common.error"), "Network connection issue", "error"); }
     finally { setAuthSettingsSaving(false); }
-  };
-
-  const loadAuthLogs = async () => {
-    setAuthLogsLoading(true);
-    try {
-      const res = await fetch("/api/admin/auth-logs");
-      const data = await res.json();
-      if (data.success) setAuthLogs(data.logs || []);
-    } catch {}
-    finally { setAuthLogsLoading(false); }
   };
 
   const [detectingLocation, setDetectingLocation] = useState(false);
@@ -791,7 +796,6 @@ export default function AdminSettings() {
         setLocationMapReady(false);
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   return (
@@ -801,21 +805,21 @@ export default function AdminSettings() {
         <div>
           <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
             <Building className="text-[var(--orange)]" />
-            <span>Terminal Configurations</span>
+            <span>{t("admin.settings.pageTitle")}</span>
           </h1>
           <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mt-1">
-            Manage multi-tenant branding, ordering states, assets, and audit logs
+            {t("admin.settings.pageSubtitle")}
           </p>
         </div>
 
         {/* Tab triggers */}
         <div className="flex flex-wrap bg-gray-900/60 p-1.5 rounded-2xl border border-gray-850">
           {[
-            { id: "profile", label: "Hotel Profile", icon: Building },
-            { id: "branding", label: "Branding & Neon", icon: Palette },
-            { id: "operations", label: "Operations", icon: Sliders },
-            { id: "location", label: "GPS Location", icon: MapPin },
-            { id: "security", label: "Security & Account", icon: Lock },
+            { id: "profile", label: t("admin.settings.tabs.profile"), icon: Building },
+            { id: "branding", label: t("admin.settings.tabs.branding"), icon: Palette },
+            { id: "operations", label: t("admin.settings.tabs.operations"), icon: Sliders },
+            { id: "location", label: t("admin.settings.tabs.location"), icon: MapPin },
+            { id: "security", label: t("admin.settings.tabs.security"), icon: Lock },
           ].map((tab) => {
             const Icon = tab.icon;
             return (

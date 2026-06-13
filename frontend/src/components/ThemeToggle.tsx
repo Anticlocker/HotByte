@@ -3,63 +3,70 @@
 import { useEffect, useState } from "react";
 import { Sun, Moon } from "lucide-react";
 
-export default function ThemeToggle() {
-  const [theme, setTheme] = useState("dark");
+interface ThemeToggleProps {
+  currentTheme?: string;
+  onToggle?: (newTheme: string) => void;
+}
+
+export default function ThemeToggle({ currentTheme, onToggle }: ThemeToggleProps) {
+  const [localTheme, setLocalTheme] = useState("dark");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    const savedTheme = localStorage.getItem("hotbyte_theme") || "dark";
-    setTheme(savedTheme);
-    if (savedTheme === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
+    if (!currentTheme) {
+      const savedTheme = localStorage.getItem("hotbyte_theme") || "dark";
+      setLocalTheme(savedTheme);
+      if (savedTheme === "dark") {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
     }
-  }, []);
+  }, [currentTheme]);
+
+  const activeTheme = currentTheme || localTheme;
 
   const toggleTheme = () => {
-    const nextTheme = theme === "dark" ? "light" : "dark";
-    setTheme(nextTheme);
-    localStorage.setItem("hotbyte_theme", nextTheme);
-    if (nextTheme === "dark") {
-      document.documentElement.classList.add("dark");
-      document.documentElement.style.colorScheme = "dark";
+    const nextTheme = activeTheme === "dark" ? "light" : "dark";
+    if (onToggle) {
+      onToggle(nextTheme);
     } else {
-      document.documentElement.classList.remove("dark");
-      document.documentElement.style.colorScheme = "light";
+      setLocalTheme(nextTheme);
+      localStorage.setItem("hotbyte_theme", nextTheme);
+      if (nextTheme === "dark") {
+        document.documentElement.classList.add("dark");
+        document.documentElement.style.colorScheme = "dark";
+      } else {
+        document.documentElement.classList.remove("dark");
+        document.documentElement.style.colorScheme = "light";
+      }
     }
   };
 
   if (!mounted) {
-    return <div className="w-16 h-8 rounded-full bg-slate-200 dark:bg-zinc-800 animate-pulse opacity-50"></div>;
+    return <div className="w-11 h-6 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse opacity-50"></div>;
   }
 
   return (
     <button
       onClick={toggleTheme}
-      className="group relative w-16 h-8 rounded-full bg-gradient-to-r from-slate-200 to-slate-100 dark:from-zinc-900 dark:to-zinc-800 border border-slate-300/40 dark:border-zinc-700/50 shadow-inner flex items-center justify-between px-1.5 cursor-pointer outline-none transition-all duration-300 hover:scale-105 active:scale-95 focus:ring-2 focus:ring-orange-500/20 select-none"
-      title={`Switch to ${theme === "dark" ? "Light" : "Dark"} Mode`}
+      className="group relative w-11 h-6 rounded-full bg-gray-200 dark:bg-slate-700/80 border border-gray-300/30 dark:border-slate-600/50 shadow-inner flex items-center cursor-pointer outline-none transition-all duration-300 hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-orange-500/30 focus-visible:ring-offset-2 select-none"
+      title={`Switch to ${activeTheme === "dark" ? "Light" : "Dark"} Mode`}
+      aria-label={`Switch to ${activeTheme === "dark" ? "Light" : "Dark"} Mode`}
     >
-      {/* Halo Glow effect */}
-      <span className="absolute inset-0 w-full h-full rounded-full opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity duration-300 bg-orange-500/5 blur-md"></span>
-
-      {/* Track Indicator Icons (fixed background) */}
-      <Sun size={12} className="text-amber-500 font-bold transition-opacity duration-300 dark:opacity-30" />
-      <Moon size={12} className="text-indigo-400 font-bold transition-opacity duration-300 opacity-30 dark:opacity-100" />
-
-      {/* Sliding Glowing Knob */}
+      {/* Sliding Knob */}
       <span
-        className={`absolute top-0.5 left-0.5 w-7 h-7 rounded-full flex items-center justify-center transition-all duration-500 ease-out shadow-md border ${
-          theme === "dark"
-            ? "translate-x-8 bg-zinc-950 border-zinc-800 text-indigo-400 shadow-indigo-500/10"
-            : "translate-x-0 bg-gradient-to-tr from-amber-400 to-orange-500 border-amber-300 text-white shadow-orange-500/20"
+        className={`absolute top-[1px] left-[1px] w-[22px] h-[22px] rounded-full flex items-center justify-center transition-transform duration-300 cubic-bezier(0.4, 0, 0.2, 1) shadow-sm border ${
+          activeTheme === "dark"
+            ? "translate-x-[20px] bg-slate-900 border-slate-800 shadow-indigo-500/10"
+            : "translate-x-0 bg-white border-gray-200 shadow-orange-500/10"
         }`}
       >
-        {theme === "dark" ? (
-          <Moon size={13} className="animate-spin-slow rotate-12" />
+        {activeTheme === "dark" ? (
+          <Moon size={11} className="text-indigo-300 transition-transform duration-300" />
         ) : (
-          <Sun size={13} className="animate-spin-slow" />
+          <Sun size={11} className="text-amber-500 transition-transform duration-300" />
         )}
       </span>
     </button>

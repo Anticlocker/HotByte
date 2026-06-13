@@ -1,15 +1,16 @@
 const request = require("supertest");
 const crypto = require("crypto");
 
+const mockClient = {
+  query: jest.fn().mockResolvedValue({ rows: [] }),
+  release: jest.fn(),
+};
+
 // Mock routes/database
 jest.mock("../routes/database", () => {
-  const mClient = {
-    query: jest.fn().mockResolvedValue({ rows: [] }),
-    release: jest.fn(),
-  };
   return {
     query: jest.fn().mockResolvedValue({ rows: [] }),
-    connect: jest.fn().mockResolvedValue(mClient),
+    connect: jest.fn().mockResolvedValue(mockClient),
   };
 });
 
@@ -82,6 +83,25 @@ describe("Orders APIs", () => {
       if (queryText.includes("SELECT table_count")) {
         return Promise.resolve({
           rows: [{ table_count: 5 }],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    // Default mock for client queries (transactions)
+    mockClient.query.mockImplementation((queryText, params) => {
+      if (queryText.includes("INSERT INTO orders")) {
+        return Promise.resolve({
+          rows: [
+            {
+              order_id: 100,
+              customer_id: 1,
+              table_number: "T-1",
+              total_amount: 300.0,
+              status: "pending",
+              created_at: new Date(),
+            },
+          ],
         });
       }
       return Promise.resolve({ rows: [] });

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
+import Script from "next/script";
 
 const plusJakarta = Plus_Jakarta_Sans({
   variable: "--font-plus-jakarta",
@@ -27,6 +28,10 @@ export const viewport: Viewport = {
   ],
 };
 
+import { LocaleProvider } from "../context/LocaleContext";
+import I18nProvider from "../components/I18nProvider";
+
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -43,22 +48,22 @@ export default function RootLayout({
           rel="stylesheet"
           href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              try {
-                if (localStorage.getItem('hotbyte_theme') === 'dark') {
-                  document.documentElement.classList.add('dark');
-                } else {
-                  document.documentElement.classList.remove('dark');
-                }
-              } catch (_) {}
-            `,
-          }}
-        />
+        <Script id="theme-initializer" strategy="beforeInteractive">
+          {`
+            try {
+              if (localStorage.getItem('hotbyte_theme') === 'dark') {
+                document.documentElement.classList.add('dark');
+              } else {
+                document.documentElement.classList.remove('dark');
+              }
+            } catch (_) {}
+          `}
+        </Script>
       </head>
       <body className="min-h-full flex flex-col font-sans selection:bg-orange-100 selection:text-orange-700 bg-white dark:bg-[#0b0d11] transition-colors duration-300" suppressHydrationWarning>
-        {children}
+        <I18nProvider>
+          <LocaleProvider>{children}</LocaleProvider>
+        </I18nProvider>
       </body>
     </html>
   );

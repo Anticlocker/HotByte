@@ -10,7 +10,7 @@ require("dotenv").config();
 
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
 
-if (!RAZORPAY_KEY_SECRET) {
+if (!RAZORPAY_KEY_SECRET && process.env.NODE_ENV === 'production') {
   logger.error("CRITICAL: RAZORPAY_KEY_SECRET environment variable is missing.");
   process.exit(1);
 }
@@ -376,10 +376,11 @@ router.post("/create", requireAuth, async (req, res) => {
       totalAmount += verifiedPrice * parseInt(item.quantity);
     }
 
-    await db.query("BEGIN");
-
+    const client = await db.connect();
     try {
-      const orderResult = await db.query(
+      await client.query("BEGIN");
+
+      const orderResult = await client.query(
         `INSERT INTO orders (customer_id, table_number, total_amount, status, hotel_id) 
          VALUES ($1, $2, $3, 'pending', $4) 
          RETURNING order_id, customer_id, table_number, total_amount, status, created_at`,
@@ -397,18 +398,18 @@ router.post("/create", requireAuth, async (req, res) => {
         orderItemsParams.push(item.item_id, item.quantity, item.price);
       });
 
-      await db.query(
+      await client.query(
         `INSERT INTO order_items (order_id, item_id, quantity, price) VALUES ${orderItemsValues}`,
         orderItemsParams
       );
 
-      await db.query(
+      await client.query(
         `INSERT INTO payments (order_id, amount, payment_status, payment_method) 
          VALUES ($1, $2, 'pending', 'cash')`,
         [order.order_id, totalAmount]
       );
 
-      await db.query("COMMIT");
+      await client.query("COMMIT");
 
       return res.json({
         success: true,
@@ -422,8 +423,10 @@ router.post("/create", requireAuth, async (req, res) => {
         },
       });
     } catch (error) {
-      await db.query("ROLLBACK");
+      await client.query("ROLLBACK");
       throw error;
+    } finally {
+      client.release();
     }
   } catch (error) {
     logger.error("Create order error:", error);
@@ -466,19 +469,22 @@ router.delete("/cancel/:id", requireAuth, async (req, res) => {
       });
     }
 
-    await db.query("BEGIN");
-
+    const client = await db.connect();
     try {
-      await db.query("DELETE FROM order_items WHERE order_id = $1", [id]);
-      await db.query("DELETE FROM payments WHERE order_id = $1", [id]);
-      await db.query("DELETE FROM orders WHERE order_id = $1", [id]);
+      await client.query("BEGIN");
 
-      await db.query("COMMIT");
+      await client.query("DELETE FROM order_items WHERE order_id = $1", [id]);
+      await client.query("DELETE FROM payments WHERE order_id = $1", [id]);
+      await client.query("DELETE FROM orders WHERE order_id = $1", [id]);
+
+      await client.query("COMMIT");
 
       return res.json({ success: true, message: "Order cancelled successfully" });
     } catch (error) {
-      await db.query("ROLLBACK");
+      await client.query("ROLLBACK");
       throw error;
+    } finally {
+      client.release();
     }
   } catch (error) {
     logger.error("Cancel order error:", error);

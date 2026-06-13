@@ -468,7 +468,6 @@ export default function SuperAdminDashboard() {
         setMapReady(false);
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, editingHotel]);
 
   const handleLogout = async () => {

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslation } from "react-i18next";
+import "@/i18n";
 import {
   Settings,
   Plus,
@@ -37,6 +39,7 @@ interface MenuItem {
 
 export default function AdminMenu() {
   const router = useRouter();
+  const { t } = useTranslation();
 
   const [activeTab, setActiveTab] = useState<"items" | "categories">("items");
   const [categories, setCategories] = useState<Category[]>([]);
@@ -151,13 +154,13 @@ export default function AdminMenu() {
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim() || !formCategory || !formPrice) {
-      Swal.fire("Required Fields", "Please populate Name, Category, and Price.", "warning");
+      Swal.fire(t("admin.menu.requiredFields"), t("admin.menu.requiredFieldsMsg"), "warning");
       return;
     }
 
     Swal.fire({
-      title: "Saving Item...",
-      text: "Uploading photo and saving configurations...",
+      title: t("admin.menu.savingItem"),
+      text: t("admin.menu.savingItemMsg"),
       allowOutsideClick: false,
       didOpen: () => Swal.showLoading(),
     });
@@ -186,8 +189,8 @@ export default function AdminMenu() {
 
       if (data.success) {
         Swal.fire({
-          title: "Saved!",
-          text: editingItem ? "Item modified successfully." : "New item created.",
+          title: t("admin.menu.saved"),
+          text: editingItem ? t("admin.menu.itemModified") : t("admin.menu.itemCreated"),
           icon: "success",
           timer: 1200,
           showConfirmButton: false,
@@ -196,10 +199,10 @@ export default function AdminMenu() {
         resetItemForm();
         fetchSettingsData();
       } else {
-        Swal.fire("Failure", data.message || "Failed to commit record.", "error");
+        Swal.fire(t("admin.menu.failure"), data.message || t("admin.menu.failedToCommit"), "error");
       }
     } catch (err) {
-      Swal.fire("Network Error", "Unable to establish communication with API.", "error");
+      Swal.fire(t("admin.menu.networkError"), t("admin.menu.networkErrorMsg"), "error");
     }
   };
 
@@ -229,13 +232,13 @@ export default function AdminMenu() {
 
   const handleDeleteItem = async (itemId: number) => {
     const result = await Swal.fire({
-      title: "Delete Item?",
-      text: "Are you sure? This removes this food item from all menus.",
+      title: t("admin.menu.deleteItemTitle2"),
+      text: t("admin.menu.deleteItemMsg"),
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#EF4444",
       cancelButtonColor: "#aaa",
-      confirmButtonText: "Delete",
+      confirmButtonText: t("admin.deleteItem"),
     });
 
     if (result.isConfirmed) {
@@ -244,13 +247,13 @@ export default function AdminMenu() {
         const data = await res.json();
 
         if (data.success) {
-          Swal.fire("Deleted", "Item has been deleted.", "success");
+          Swal.fire(t("admin.menu.deleted"), t("admin.menu.itemDeleted"), "success");
           fetchSettingsData();
         } else {
-          Swal.fire("Failure", data.message || "Could not delete.", "error");
+          Swal.fire(t("admin.menu.failure"), data.message || t("admin.menu.couldNotDelete"), "error");
         }
       } catch (err) {
-        Swal.fire("Error", "Server communications offline.", "error");
+        Swal.fire(t("common.error"), t("admin.menu.serverOffline"), "error");
       }
     }
   };
@@ -258,15 +261,15 @@ export default function AdminMenu() {
   // Category Actions
   const handleAddCategory = async () => {
     const { value: catName } = await Swal.fire({
-      title: "Add Food Category",
+      title: t("admin.menu.addFoodCategory"),
       input: "text",
-      inputLabel: "Category Name",
-      inputPlaceholder: "e.g., Cool Drinks, Pizzas",
+      inputLabel: t("admin.menu.categoryName"),
+      inputPlaceholder: t("admin.menu.categoryPlaceholder"),
       showCancelButton: true,
       confirmButtonColor: "#FF5A1F",
       inputValidator: (value) => {
         if (!value.trim()) {
-          return "You need to write something!";
+          return t("admin.menu.categoryRequired");
         }
       },
     });
@@ -281,27 +284,27 @@ export default function AdminMenu() {
         const data = await res.json();
 
         if (data.success) {
-          Swal.fire("Created!", `Category "${catName}" added.`, "success");
+          Swal.fire(t("admin.menu.categoryCreated"), t("admin.menu.categoryCreatedMsg"), "success");
           fetchSettingsData();
         } else {
-          Swal.fire("Error", data.message || "Conflict occurred.", "error");
+          Swal.fire(t("common.error"), data.message || t("admin.menu.categoryConflict"), "error");
         }
       } catch (err) {
-        Swal.fire("Error", "Failed to add category.", "error");
+        Swal.fire(t("common.error"), t("admin.menu.failedToAdd"), "error");
       }
     }
   };
 
   const handleEditCategory = async (cat: Category) => {
     const { value: catName } = await Swal.fire({
-      title: "Edit Category Name",
+      title: t("admin.menu.editCategoryTitle"),
       input: "text",
       inputValue: cat.category_name,
       showCancelButton: true,
       confirmButtonColor: "#FF5A1F",
       inputValidator: (value) => {
         if (!value.trim()) {
-          return "Name cannot be empty!";
+          return t("admin.menu.categoryNameRequired");
         }
       },
     });
@@ -316,26 +319,26 @@ export default function AdminMenu() {
         const data = await res.json();
 
         if (data.success) {
-          Swal.fire("Updated!", "Category updated successfully.", "success");
+          Swal.fire(t("admin.menu.updated"), t("admin.menu.categoryUpdated"), "success");
           fetchSettingsData();
         } else {
-          Swal.fire("Error", data.message || "Failed.", "error");
+          Swal.fire(t("common.error"), data.message || t("admin.menu.failed"), "error");
         }
       } catch (err) {
-        Swal.fire("Error", "Network offline.", "error");
+        Swal.fire(t("common.error"), t("admin.menu.networkOffline"), "error");
       }
     }
   };
 
   const handleDeleteCategory = async (catId: number) => {
     const result = await Swal.fire({
-      title: "Delete Category?",
-      text: "Warning: Category cannot be deleted if active items are nested in it!",
+      title: t("admin.menu.deleteCategoryTitle"),
+      text: t("admin.menu.deleteCategoryMsg"),
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#EF4444",
       cancelButtonColor: "#aaa",
-      confirmButtonText: "Delete",
+      confirmButtonText: t("admin.deleteCategory"),
     });
 
     if (result.isConfirmed) {
@@ -344,13 +347,13 @@ export default function AdminMenu() {
         const data = await res.json();
 
         if (data.success) {
-          Swal.fire("Deleted", "Category cleared successfully.", "success");
+          Swal.fire(t("admin.menu.deleted"), t("admin.menu.categoryDeleted"), "success");
           fetchSettingsData();
         } else {
-          Swal.fire("Unavailable", data.message || "Please remove its items first.", "error");
+          Swal.fire(t("common.warning"), data.message || t("admin.menu.removeItemsFirst"), "error");
         }
       } catch (err) {
-        Swal.fire("Error", "Operation failed.", "error");
+        Swal.fire(t("common.error"), t("admin.menu.operationFailed"), "error");
       }
     }
   };
@@ -362,11 +365,11 @@ export default function AdminMenu() {
         <div>
           <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
             <Settings className="text-[var(--orange)]" />
-            <span>Menu & Categories</span>
+            <span>{t("admin.menu.title")}</span>
           </h1>
           <div className="flex items-center gap-3 mt-1">
             <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">
-              Configure menu list, categories, and inventory items
+              {t("admin.menu.subtitle")}
             </p>
             {/* Hotel Type Badge */}
             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
@@ -374,7 +377,7 @@ export default function AdminMenu() {
               hotelType === "nonveg" ? "bg-red-500/10 border-red-500/25 text-red-400" :
               "bg-yellow-500/10 border-yellow-500/25 text-yellow-400"
             }`}>
-              <span>{hotelType === "veg" ? "🌱 Veg Only" : hotelType === "nonveg" ? "🍗 Non-Veg Only" : "🟡 Both"}</span>
+              <span>{hotelType === "veg" ? t("admin.menu.vegOnly") : hotelType === "nonveg" ? t("admin.menu.nonVegOnly") : t("admin.menu.both")}</span>
             </span>
           </div>
         </div>
@@ -388,7 +391,7 @@ export default function AdminMenu() {
                 : "text-gray-400 hover:text-white"
             }`}
           >
-            Menu Items
+            {t("admin.menu.menuItemsTab")}
           </button>
           <button
             onClick={() => setActiveTab("categories")}
@@ -398,7 +401,7 @@ export default function AdminMenu() {
                 : "text-gray-400 hover:text-white"
             }`}
           >
-            Categories
+            {t("admin.menu.categoriesTab")}
           </button>
         </div>
       </div>
@@ -413,7 +416,7 @@ export default function AdminMenu() {
           <div className="flex justify-between items-center px-1">
             <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
               <FolderOpen size={16} className="text-orange-500" />
-              <span>Available Food Cards ({items.length})</span>
+              <span>{t("admin.menu.availableFoodCards")} ({items.length})</span>
             </h2>
 
             <button
@@ -421,7 +424,7 @@ export default function AdminMenu() {
               className="btn-orange px-4 py-2.5 rounded-xl text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer shadow-lg shadow-orange-500/10"
             >
               <Plus size={14} />
-              <span>Add Menu Item</span>
+              <span>{t("admin.menu.addMenuItem")}</span>
             </button>
           </div>
 
@@ -430,13 +433,13 @@ export default function AdminMenu() {
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-gray-850 bg-gray-900/30 text-gray-500 uppercase tracking-widest font-black">
-                    <th className="p-4 pl-6">Food Photo</th>
-                    <th className="p-4">Item Name</th>
-                    <th className="p-4">Category</th>
-                    <th className="p-4">Veg Status</th>
-                    <th className="p-4">Pricing</th>
-                    <th className="p-4">Instock Toggle</th>
-                    <th className="p-4 pr-6 text-right">Actions</th>
+                    <th className="p-4 pl-6">{t("admin.menu.foodPhoto")}</th>
+                    <th className="p-4">{t("admin.menu.itemName")}</th>
+                    <th className="p-4">{t("admin.menu.categoryCol")}</th>
+                    <th className="p-4">{t("admin.menu.vegStatus")}</th>
+                    <th className="p-4">{t("admin.menu.pricing")}</th>
+                    <th className="p-4">{t("admin.menu.instockToggle")}</th>
+                    <th className="p-4 pr-6 text-right">{t("admin.menu.actions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-850/60 font-semibold text-gray-300">
@@ -463,7 +466,7 @@ export default function AdminMenu() {
                           {item.item_name}
                         </span>
                         <span className="text-[10px] text-gray-500 block truncate max-w-xs mt-0.5">
-                          {item.description || "No descriptions available"}
+                          {item.description || t("admin.menu.noDescription")}
                         </span>
                       </td>
 
@@ -482,7 +485,7 @@ export default function AdminMenu() {
                           }`}
                         >
                           <Leaf size={10} className={item.is_veg ? "fill-emerald-400" : ""} />
-                          <span>{item.is_veg ? "Veg" : "Non-Veg"}</span>
+                          <span>{item.is_veg ? t("admin.menu.veg") : t("admin.menu.nonVeg")}</span>
                         </span>
                       </td>
 
@@ -504,12 +507,12 @@ export default function AdminMenu() {
                           {item.is_available ? (
                             <>
                               <CheckCircle size={10} />
-                              <span>In Stock</span>
+                              <span>{t("admin.menu.inStock")}</span>
                             </>
                           ) : (
                             <>
                               <XCircle size={10} />
-                              <span>Sold Out</span>
+                              <span>{t("admin.menu.soldOut")}</span>
                             </>
                           )}
                         </button>
@@ -521,14 +524,14 @@ export default function AdminMenu() {
                           <button
                             onClick={() => handleOpenEditModal(item)}
                             className="p-2 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors cursor-pointer"
-                            title="Edit Item"
+                            title={t("admin.menu.editItemTitle")}
                           >
                             <Edit2 size={13} />
                           </button>
                           <button
                             onClick={() => handleDeleteItem(item.item_id)}
                             className="p-2 hover:bg-red-500/10 text-gray-500 hover:text-red-500 rounded-lg transition-colors cursor-pointer"
-                            title="Delete Item"
+                            title={t("admin.menu.deleteItemTitle")}
                           >
                             <Trash2 size={13} />
                           </button>
@@ -547,7 +550,7 @@ export default function AdminMenu() {
           <div className="flex justify-between items-center px-1">
             <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
               <PlusCircle size={16} className="text-orange-500" />
-              <span>Menu Categories Directory ({categories.length})</span>
+              <span>{t("admin.menu.menuCategoriesDirectory")} ({categories.length})</span>
             </h2>
 
             <button
@@ -555,7 +558,7 @@ export default function AdminMenu() {
               className="btn-orange px-4 py-2.5 rounded-xl text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer shadow-lg shadow-orange-500/10"
             >
               <Plus size={14} />
-              <span>Add Category</span>
+              <span>{t("admin.menu.addCategory")}</span>
             </button>
           </div>
 
@@ -563,9 +566,9 @@ export default function AdminMenu() {
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-gray-850 bg-gray-900/30 text-gray-500 uppercase tracking-widest font-black">
-                  <th className="p-4 pl-6">ID #</th>
-                  <th className="p-4">Category Name</th>
-                  <th className="p-4 pr-6 text-right">Actions</th>
+                  <th className="p-4 pl-6">{t("admin.menu.idCol")}</th>
+                  <th className="p-4">{t("admin.menu.categoryNameCol")}</th>
+                  <th className="p-4 pr-6 text-right">{t("admin.menu.actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-850/60 font-semibold text-gray-300">
@@ -615,7 +618,7 @@ export default function AdminMenu() {
             <div className="p-6 border-b border-gray-850 flex justify-between items-center">
               <h3 className="text-base font-black text-white flex items-center gap-2">
                 <ImageIcon size={18} className="text-orange-500" />
-                <span>{editingItem ? "Edit Menu Item Details" : "Create New Menu Item"}</span>
+                <span>{editingItem ? t("admin.menu.editMenuItemDetails") : t("admin.menu.createNewMenuItem")}</span>
               </h3>
               <button
                 onClick={() => setIsItemModalOpen(false)}
@@ -632,14 +635,14 @@ export default function AdminMenu() {
                 {/* Name */}
                 <div className="space-y-2 col-span-2">
                   <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider block">
-                    Dish Name
+                    {t("admin.menu.dishName")}
                   </label>
                   <input
                     type="text"
                     required
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    placeholder="e.g., Butter Chicken"
+                    placeholder={t("admin.menu.dishNamePlaceholder")}
                     className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-xs font-semibold text-gray-200 focus:border-orange-500 outline-none transition-all"
                   />
                 </div>
@@ -647,7 +650,7 @@ export default function AdminMenu() {
                 {/* Category select */}
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider block">
-                    Category Group
+                    {t("admin.menu.categoryGroup")}
                   </label>
                   <select
                     value={formCategory}
@@ -665,7 +668,7 @@ export default function AdminMenu() {
                 {/* Price */}
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider block">
-                    Price (INR)
+                    {t("admin.menu.priceINR")}
                   </label>
                   <input
                     type="number"
@@ -674,7 +677,7 @@ export default function AdminMenu() {
                     step="0.01"
                     value={formPrice}
                     onChange={(e) => setFormPrice(e.target.value)}
-                    placeholder="₹ 299"
+                    placeholder={t("admin.menu.pricePlaceholder")}
                     className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-xs font-bold text-white focus:border-orange-500 outline-none transition-all"
                   />
                 </div>
@@ -683,12 +686,12 @@ export default function AdminMenu() {
               {/* Description */}
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider block">
-                  Dish Description
+                  {t("admin.menu.dishDescription")}
                 </label>
                 <textarea
                   value={formDescription}
                   onChange={(e) => setFormDescription(e.target.value)}
-                  placeholder="Tell customers about key ingredients, taste modifiers, and chef specials..."
+                  placeholder={t("admin.menu.dishDescriptionPlaceholder")}
                   className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-xs font-semibold text-gray-200 focus:border-orange-500 outline-none min-h-[70px] transition-all"
                 ></textarea>
               </div>
@@ -696,14 +699,14 @@ export default function AdminMenu() {
               {/* File Upload Selector */}
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider block">
-                  Dish Photo
+                  {t("admin.menu.dishPhoto")}
                 </label>
                 <div className="grid grid-cols-5 gap-4 items-center">
                   <div className="col-span-3">
                     <label className="flex flex-col items-center justify-center border border-dashed border-gray-800 hover:border-orange-500/50 rounded-xl p-4 cursor-pointer bg-gray-900/40 hover:bg-gray-900/60 transition-all text-center">
                       <Upload size={18} className="text-gray-500 mb-1.5" />
-                      <span className="text-[10px] font-bold text-gray-400">Choose Image File</span>
-                      <span className="text-[8px] text-gray-650 mt-0.5">PNG, JPG up to 10MB</span>
+                      <span className="text-[10px] font-bold text-gray-400">{t("admin.menu.chooseImageFile")}</span>
+                      <span className="text-[8px] text-gray-650 mt-0.5">{t("admin.menu.imageHint")}</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -740,8 +743,8 @@ export default function AdminMenu() {
                       className="w-4 h-4 rounded text-orange-500 focus:ring-0 focus:ring-offset-0 accent-emerald-500 cursor-pointer"
                     />
                     <div className="flex flex-col leading-none">
-                      <span className="text-[11px] font-extrabold text-gray-300">Pure Vegetarian</span>
-                      <span className="text-[8px] text-gray-500 font-semibold mt-0.5">Leaf status mark</span>
+                      <span className="text-[11px] font-extrabold text-gray-300">{t("admin.menu.pureVegetarian")}</span>
+                      <span className="text-[8px] text-gray-500 font-semibold mt-0.5">{t("admin.menu.leafStatusMark")}</span>
                     </div>
                   </label>
                 ) : (
@@ -752,9 +755,9 @@ export default function AdminMenu() {
                   }`}>
                     <div className="flex flex-col leading-none">
                       <span className={`text-[11px] font-extrabold ${ hotelType === "veg" ? "text-emerald-400" : "text-red-400" }`}>
-                        {hotelType === "veg" ? "🌱 Veg Only Hotel" : "🍗 Non-Veg Only Hotel"}
+                        {hotelType === "veg" ? t("admin.menu.vegOnlyHotel") : t("admin.menu.nonVegOnlyHotel")}
                       </span>
-                      <span className="text-[8px] text-gray-500 font-semibold mt-0.5">Veg status is locked by hotel type</span>
+                      <span className="text-[8px] text-gray-500 font-semibold mt-0.5">{t("admin.menu.vegStatusLocked")}</span>
                     </div>
                   </div>
                 )}
@@ -768,8 +771,8 @@ export default function AdminMenu() {
                     className="w-4 h-4 rounded text-orange-500 focus:ring-0 focus:ring-offset-0 accent-orange-500 cursor-pointer"
                   />
                   <div className="flex flex-col leading-none">
-                    <span className="text-[11px] font-extrabold text-gray-305">Instock & Active</span>
-                    <span className="text-[8px] text-gray-500 font-semibold mt-0.5">Visible on browse</span>
+                    <span className="text-[11px] font-extrabold text-gray-305">{t("admin.menu.instockActive")}</span>
+                    <span className="text-[8px] text-gray-500 font-semibold mt-0.5">{t("admin.menu.visibleOnBrowse")}</span>
                   </div>
                 </label>
               </div>
@@ -781,13 +784,13 @@ export default function AdminMenu() {
                   onClick={() => setIsItemModalOpen(false)}
                   className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-white rounded-xl text-xs font-bold border border-gray-800 transition-colors cursor-pointer"
                 >
-                  Cancel
+                  {t("admin.menu.cancel")}
                 </button>
                 <button
                   type="submit"
                   className="btn-orange px-6 py-2.5 rounded-xl text-xs font-black text-white cursor-pointer shadow-lg shadow-orange-500/10"
                 >
-                  Save Changes
+                  {t("admin.menu.saveChanges")}
                 </button>
               </div>
 

@@ -3,8 +3,12 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LogOut, User, Utensils, ShieldAlert, Sun, Moon, ShoppingCart } from "lucide-react";
+import LanguageSelector from "./LanguageSelector";
+import ThemeToggle from "./ThemeToggle";
+import { ShoppingCart, Menu, X, LogOut, User, Utensils, ShieldAlert } from "lucide-react";
 import Swal from "sweetalert2";
+import { useTranslation } from 'react-i18next';
+import '../i18n';
 
 interface Customer {
   id: number;
@@ -15,15 +19,18 @@ interface Customer {
 }
 
 export default function CustomerNavbar() {
+  const { t } = useTranslation();
   const pathname = usePathname();
   const router = useRouter();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [cartCount, setCartCount] = useState(0);
+  const [tableName, setTableName] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    // 1. Scoped session check: fetch with hotel_slug parameter if browsing menu
+    // Session check
     const pathParts = window.location.pathname.split("/");
     const hotelSlug = pathParts[1];
     const isHotelMenu = hotelSlug && !["admin", "super-admin", "login", "profile", "menu"].includes(hotelSlug);
@@ -39,17 +46,23 @@ export default function CustomerNavbar() {
       })
       .catch(() => setLoading(false));
 
-    // 2. Initialize Theme
+    // Get Table Name
+    const storedTable = localStorage.getItem("hotbyte_table_name");
+    setTableName(storedTable);
+
+    // Init theme
     const savedTheme = localStorage.getItem("hotbyte_theme");
     if (savedTheme === "dark") {
       setTheme("dark");
       document.documentElement.classList.add("dark");
+      document.documentElement.style.colorScheme = "dark";
     } else {
       setTheme("light");
       document.documentElement.classList.remove("dark");
+      document.documentElement.style.colorScheme = "light";
     }
 
-    // 3. Initialize & Sync Cart
+    // Initialize & Sync Cart
     const updateCartCount = () => {
       const savedCart = localStorage.getItem("hotbyte_cart");
       if (savedCart) {
@@ -76,15 +89,26 @@ export default function CustomerNavbar() {
     };
   }, []);
 
-  const toggleTheme = () => {
-    if (theme === "light") {
-      setTheme("dark");
+  const toggleTheme = async (forcedTheme?: string) => {
+    const newTheme = forcedTheme === "dark" || forcedTheme === "light"
+      ? forcedTheme
+      : (theme === "light" ? "dark" : "light");
+
+    setTheme(newTheme);
+    if (newTheme === "dark") {
       document.documentElement.classList.add("dark");
-      localStorage.setItem("hotbyte_theme", "dark");
+      document.documentElement.style.colorScheme = "dark";
     } else {
-      setTheme("light");
       document.documentElement.classList.remove("dark");
-      localStorage.setItem("hotbyte_theme", "light");
+      document.documentElement.style.colorScheme = "light";
+    }
+    localStorage.setItem("hotbyte_theme", newTheme);
+    if (customer) {
+      fetch('/api/user/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: newTheme }),
+      }).catch(() => {});
     }
   };
 
@@ -104,13 +128,13 @@ export default function CustomerNavbar() {
 
   const handleLogout = async () => {
     const result = await Swal.fire({
-      title: "Logout?",
-      text: "Are you sure you want to sign out?",
+      title: t('logout.title'),
+      text: t('logout.message'),
       icon: "question",
       showCancelButton: true,
       confirmButtonColor: "#FF5A1F",
       cancelButtonColor: "#3085d6",
-      confirmButtonText: "Yes, Logout",
+      confirmButtonText: t('logout.confirm'),
     });
 
     if (result.isConfirmed) {
@@ -118,162 +142,234 @@ export default function CustomerNavbar() {
         const res = await fetch("/api/auth/logout", { method: "POST" });
         const data = await res.json();
         if (data.success) {
-          Swal.fire({
-            title: "Logged Out",
-            text: "Signed out successfully!",
-            icon: "success",
-            timer: 1500,
-            showConfirmButton: false,
-          });
           setCustomer(null);
           router.push("/");
         }
       } catch (err) {
-        Swal.fire("Error", "Logout failed", "error");
+        Swal.fire(t('common.error'), t('logout.error'), "error");
       }
     }
   };
 
+  const path = pathname || "";
+  const firstSegment = path.split("/")[1];
+  const isHotelSlug = firstSegment && !["admin", "super-admin", "login", "profile", ""].includes(firstSegment);
+  const activeSlug = isHotelSlug ? firstSegment : (customer?.hotelSlug || "");
+  const menuHref = activeSlug ? `/${activeSlug}/menu` : "/";
+
+  const isHotelMenu = firstSegment && !["admin", "super-admin", "login", "profile", "menu"].includes(firstSegment);
+  const loginHref = isHotelMenu ? `/login?hotel=${firstSegment}` : "/login";
+
+  const isAdminRoute = firstSegment && !["admin", "super-admin", "login", "profile"].includes(firstSegment);
+  const adminHref = isAdminRoute ? `/admin/login?hotel=${firstSegment}` : "/admin/login";
+
   return (
-    <nav className="glass-nav sticky top-0 z-50 px-5 lg:px-16 py-3.5 flex items-center justify-between">
-      {/* Brand Logo */}
-      <Link href="/" className="flex items-center gap-3 cursor-pointer group">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg transition-all duration-300 group-hover:scale-105 btn-orange">
-          <i className="fas fa-fire text-base"></i>
-        </div>
-        <div className="flex flex-col leading-none">
-          <span className="text-xl font-black tracking-tighter text-gray-900 dark:text-white">
-            Hot<span className="text-[var(--orange)]">Byte</span>
+    <nav className="sticky top-0 z-50 glass-nav h-14 md:h-14 w-full select-none">
+      <div className="container mx-auto px-4 flex items-center justify-between h-full">
+        {/* Branding (Left) */}
+        <Link href="/" className="flex items-center gap-2 group" aria-label="Home">
+          <span className="text-xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-orange-500 to-amber-500 group-hover:opacity-90 transition-opacity flex items-center gap-1.5 leading-none">
+            <span className="text-lg">🔥</span>HotByte
           </span>
-          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-0.5 opacity-80">
-            Serve with Love
-          </span>
-        </div>
-      </Link>
-
-      {/* Nav Actions */}
-      <div className="flex items-center gap-2 sm:gap-3">
-        {/* Cart Icon Link */}
-        <button
-          onClick={handleCartClick}
-          className="relative p-2.5 text-gray-600 dark:text-gray-450 hover:text-[var(--orange)] hover:bg-orange-50 dark:hover:bg-gray-800 rounded-xl transition-all cursor-pointer flex items-center justify-center group"
-          title="View Shopping Cart"
-        >
-          <ShoppingCart size={18} className="group-hover:scale-110 transition-transform duration-200" />
-          {cartCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 w-5 h-5 rounded-full bg-[var(--orange)] text-white text-[9.5px] font-black flex items-center justify-center shadow-lg border-2 border-white dark:border-[#141821] animate-pulse">
-              {cartCount}
-            </span>
-          )}
-        </button>
-
-        {/* Theme Toggle Button */}
-        <button
-          onClick={toggleTheme}
-          className="p-2.5 text-gray-600 dark:text-gray-450 hover:text-[var(--orange)] hover:bg-orange-50 dark:hover:bg-gray-800 rounded-xl transition-all cursor-pointer flex items-center justify-center group"
-          title="Toggle Dark/Light Mode"
-        >
-          {theme === "dark" ? (
-            <Sun size={18} className="text-amber-400 animate-spin-slow group-hover:scale-110 transition-transform" />
-          ) : (
-            <Moon size={18} className="text-gray-600 group-hover:scale-110 transition-transform" />
-          )}
-        </button>
-
-        {(() => {
-          const path = pathname || "";
-          const hotelSlug = path.split("/")[1];
-          const isHotelMenu = hotelSlug && !["admin", "super-admin", "login", "profile", "menu"].includes(hotelSlug);
-          const resolvedMenuSlug = isHotelMenu ? hotelSlug : (customer?.hotelSlug || "hotbyte");
-          const menuHref = `/${resolvedMenuSlug}/menu`;
-
-          return (
-          <Link
-            key="menu-link"
-            href={menuHref}
-            className={`nav-link px-3 py-2 text-sm font-semibold rounded-lg flex items-center gap-1.5 transition-colors ${
-              pathname === menuHref
-                ? "text-[var(--orange)] bg-[var(--orange-light)]"
-                : "text-gray-600 hover:text-[var(--orange)] hover:bg-orange-50"
-            }`}
+        </Link>
+        
+        {/* Mobile controls & toggle buttons (Visible only on mobile) */}
+        <div className="flex items-center gap-1 md:hidden">
+          <ThemeToggle currentTheme={theme} onToggle={toggleTheme} />
+          
+          <button 
+            onClick={handleCartClick} 
+            className="nav-action-btn icon-only relative"
+            aria-label="View Cart"
           >
-            <Utensils size={16} />
-            <span>Menu</span>
-          </Link>
-        );
-      })()}
+            <ShoppingCart size={15} />
+            {cartCount > 0 && (
+              <span className="nav-cart-badge ring-2 ring-white dark:ring-slate-950">
+                {cartCount > 99 ? '99+' : cartCount}
+              </span>
+            )}
+          </button>
+          
+          <button 
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+            className="nav-action-btn icon-only"
+            aria-label="Toggle Menu"
+          >
+            {isMobileMenuOpen ? <X size={16} /> : <Menu size={16} />}
+          </button>
+        </div>
 
-        {loading ? (
-          <div className="w-8 h-8 rounded-full border-2 border-orange-500 border-t-transparent animate-spin"></div>
-        ) : customer ? (
-          <>
+        {/* Desktop controls & navigation links (Visible only on desktop/tablet) */}
+        <div className="hidden md:flex items-center gap-2">
+          {/* Controls Cluster */}
+          <div className="flex items-center gap-1.5">
             <Link
-              href="/profile"
-              className={`nav-link px-3 py-2 text-sm font-semibold rounded-lg flex items-center gap-1.5 transition-colors ${
-                pathname === "/profile"
-                  ? "text-[var(--orange)] bg-[var(--orange-light)]"
-                  : "text-gray-600 hover:text-[var(--orange)] hover:bg-orange-50"
-              }`}
+              href={menuHref}
+              className={`nav-action-btn ${pathname === menuHref ? "active" : ""}`}
+              title={t('nav.menu')}
             >
-              {customer.avatarUrl ? (
-                <img
-                  src={customer.avatarUrl}
-                  alt={customer.name}
-                  className="w-5 h-5 rounded-full object-cover border border-orange-500/25 shadow-inner"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <User size={16} />
-              )}
-              <span className="hidden sm:inline">{customer.name}</span>
+              <Utensils size={14} />
+              <span>{t('nav.menu')}</span>
             </Link>
-            <button
-              onClick={handleLogout}
-              className="nav-link px-3 py-2 text-sm font-semibold text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+
+            <button 
+              onClick={handleCartClick} 
+              className="nav-action-btn icon-only relative"
+              title="View Cart"
             >
-              <LogOut size={16} />
-              <span className="hidden sm:inline">Logout</span>
+              <ShoppingCart size={15} />
+              {cartCount > 0 && (
+                <span className="nav-cart-badge ring-2 ring-white dark:ring-slate-950">
+                  {cartCount > 99 ? '99+' : cartCount}
+                </span>
+              )}
             </button>
-          </>
-        ) : (
-          <>
-            {(() => {
-              const path = pathname || "";
-              const hotelSlug = path.split("/")[1];
-              const isHotelMenu = hotelSlug && !["admin", "super-admin", "login", "profile", "menu"].includes(hotelSlug);
-              const loginHref = isHotelMenu ? `/login?hotel=${hotelSlug}` : "/login";
-              return (
+
+            <ThemeToggle currentTheme={theme} onToggle={toggleTheme} />
+            
+            <LanguageSelector />
+          </div>
+
+          {/* Separator between Controls and Auth */}
+          <div className="nav-separator" />
+
+          {/* Auth/Profile Section */}
+          <div className="flex items-center gap-1.5">
+            {loading ? (
+              <div className="w-5 h-5 rounded-full border-2 border-orange-500 border-t-transparent animate-spin ml-2"></div>
+            ) : customer ? (
+              <>
+                <Link
+                  href="/profile"
+                  className={`nav-action-btn ${pathname === "/profile" ? "active" : ""}`}
+                >
+                  {customer.avatarUrl ? (
+                    <img
+                      src={customer.avatarUrl}
+                      alt={customer.name}
+                      className="w-5 h-5 rounded-full object-cover ring-2 ring-orange-500/20"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center ring-2 ring-orange-500/20">
+                      <span className="text-[9px] font-black text-white">{customer.name?.charAt(0).toUpperCase()}</span>
+                    </div>
+                  )}
+                  <span className="max-w-[100px] truncate">{customer.name}</span>
+                </Link>
+                
+                <button
+                  onClick={handleLogout}
+                  className="nav-action-btn icon-only text-gray-500 hover:text-red-600 dark:hover:text-red-400"
+                  title="Logout"
+                >
+                  <LogOut size={15} />
+                </button>
+              </>
+            ) : (
+              <>
                 <Link
                   href={loginHref}
-                  className={`nav-link px-3 py-2 text-sm font-semibold rounded-lg flex items-center gap-1.5 transition-colors ${
-                    pathname === "/login"
-                      ? "text-[var(--orange)] bg-[var(--orange-light)]"
-                      : "text-gray-600 hover:text-[var(--orange)] hover:bg-orange-50"
-                  }`}
+                  className={`nav-action-btn ${pathname === "/login" ? "active" : ""}`}
                 >
-                  <User size={16} />
-                  <span>Login</span>
+                  <User size={14} />
+                  <span>{t('nav.login')}</span>
                 </Link>
-              );
-            })()}
-            {(() => {
-              const path = pathname || "";
-              const firstSegment = path.split("/")[1];
-              const isAdminRoute = firstSegment && !["admin", "super-admin", "login", "profile"].includes(firstSegment);
-              const adminHref = isAdminRoute ? `/admin/login?hotel=${firstSegment}` : "/admin/login";
-              return (
+                
                 <Link
                   href={adminHref}
-                  className="nav-link px-4 py-2 text-white text-sm font-bold rounded-xl flex items-center gap-1.5 btn-orange"
+                  className="nav-cta-btn ml-1"
                 >
                   <ShieldAlert size={14} className="opacity-95" />
-                  <span>Admin</span>
+                  <span>{t('nav.admin')}</span>
                 </Link>
-              );
-            })()}
-          </>
-        )}
+              </>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Slide-down mobile panel (only visible on mobile screens) */}
+      {isMobileMenuOpen && (
+        <div className="nav-mobile-panel md:hidden">
+          {/* Language Selector row */}
+          <div className="flex items-center justify-between px-3.5 py-2 hover:bg-gray-50 dark:hover:bg-slate-800/40 rounded-lg">
+            <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">{t('nav.language')}</span>
+            <LanguageSelector />
+          </div>
+          
+          <div className="h-px bg-gray-150 dark:bg-slate-800/50 my-1" />
+
+          {/* Menu Link */}
+          <Link
+            href={menuHref}
+            onClick={() => setIsMobileMenuOpen(false)}
+            className={`nav-action-btn ${pathname === menuHref ? "active" : ""}`}
+          >
+            <Utensils size={14} />
+            <span>{t('nav.menu')}</span>
+          </Link>
+
+          {loading ? (
+            <div className="flex justify-center py-2">
+              <div className="w-5 h-5 rounded-full border-2 border-orange-500 border-t-transparent animate-spin"></div>
+            </div>
+          ) : customer ? (
+            <>
+              <Link
+                href="/profile"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={`nav-action-btn ${pathname === "/profile" ? "active" : ""}`}
+              >
+                {customer.avatarUrl ? (
+                  <img
+                    src={customer.avatarUrl}
+                    alt={customer.name}
+                    className="w-5 h-5 rounded-full object-cover ring-2 ring-orange-500/20"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center ring-2 ring-orange-500/20">
+                    <span className="text-[9px] font-black text-white">{customer.name?.charAt(0).toUpperCase()}</span>
+                  </div>
+                )}
+                <span>{customer.name}</span>
+              </Link>
+              
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  handleLogout();
+                }}
+                className="nav-action-btn text-gray-500 hover:text-red-600 dark:hover:text-red-400"
+              >
+                <LogOut size={15} />
+                <span>{t('nav.logout')}</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                href={loginHref}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={`nav-action-btn ${pathname === "/login" ? "active" : ""}`}
+              >
+                <User size={14} />
+                <span>{t('nav.login')}</span>
+              </Link>
+              
+              <Link
+                href={adminHref}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="nav-cta-btn mt-1 text-center justify-center w-full"
+              >
+                <ShieldAlert size={14} className="opacity-95" />
+                <span>{t('nav.adminPortal')}</span>
+              </Link>
+            </>
+          )}
+        </div>
+      )}
     </nav>
   );
 }

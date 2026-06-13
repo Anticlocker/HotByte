@@ -309,6 +309,51 @@ app.get('/ping', (req, res) => {
 // एडमिन पैनल के सभी पेजों को भी अब Next.js फ़्रंटएंड हैंडल करता है।
 // इसलिए बैकएंड के इन HTML फ़ाइलों को सर्व करने वाले रूट्स को पूरी तरह से हटा दिया गया है।
 
+// ================= USER PREFERENCES (i18n Locale Sync) =================
+const db = require('./routes/database');
+const { verifySession, verifyAdminSession } = require('./routes/auth');
+
+app.post('/api/user/preferences', async (req, res) => {
+  try {
+    const { locale } = req.body;
+    const allowedLocales = ['en', 'hi', 'mr'];
+
+    if (locale && !allowedLocales.includes(locale)) {
+      return res.status(400).json({ success: false, message: 'Unsupported locale.' });
+    }
+
+    // Try customer session first
+    const customerSessionId = req.cookies.sessionId;
+    if (customerSessionId) {
+      const session = await verifySession(customerSessionId);
+      if (session) {
+        if (locale) {
+          await db.query('UPDATE public.customers SET locale = $1 WHERE customer_id = $2', [locale, session.customerId]);
+        }
+        return res.json({ success: true, message: 'Preferences updated.' });
+      }
+    }
+
+    // Try admin session
+    const adminSessionId = req.cookies.superAdminSessionId || req.cookies.adminSessionId;
+    if (adminSessionId) {
+      const session = await verifyAdminSession(adminSessionId, req);
+      if (session) {
+        if (locale) {
+          await db.query('UPDATE public.admins SET locale = $1 WHERE admin_id = $2', [locale, session.adminId]);
+        }
+        return res.json({ success: true, message: 'Preferences updated.' });
+      }
+    }
+
+    // No valid session — still return success (guest users save to localStorage only)
+    return res.json({ success: true, message: 'Preferences noted (guest).' });
+  } catch (error) {
+    logger.error('User preferences update error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update preferences.' });
+  }
+});
+
 // ================= 404 HANDLER =================
 // ❌ जब कोई भी API रूट मैच नहीं होगा, तब यह कोड चलेगा।
 // चूंकि यह अब एक स्वतंत्र API सर्वर है, इसलिए हम HTML फ़ाइल भेजने के बजाय JSON एरर रिस्पॉन्स भेजते हैं।

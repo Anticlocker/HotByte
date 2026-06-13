@@ -14,19 +14,19 @@ const redactPaths = [
   'razorpay_signature'
 ];
 
-const isProduction = process.env.NODE_ENV === 'production';
+const isDev = process.env.NODE_ENV === 'development';
 
 // In development, use pino-pretty for human-readable output
-const transport = isProduction
-  ? undefined
-  : {
+const transport = isDev
+  ? {
       target: 'pino-pretty',
       options: {
         colorize: true,
         translateTime: 'SYS:yyyy-mm-dd HH:MM:ss',
         ignore: 'pid,hostname',
       },
-    };
+    }
+  : undefined;
 
 const pinoLogger = pino({
   level: process.env.LOG_LEVEL || 'info',

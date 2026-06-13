@@ -6,8 +6,11 @@ import Script from "next/script";
 import CustomerNavbar from "@/components/CustomerNavbar";
 import { KeyRound, ShieldCheck } from "lucide-react";
 import Swal from "sweetalert2";
+import { useTranslation } from 'react-i18next';
+import '@/i18n';
 
 function LoginContent() {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const hotelSlug = searchParams?.get("hotel") || "hotbyte";
@@ -25,9 +28,6 @@ function LoginContent() {
     }
   }, []);
 
-  useEffect(() => {
-    loginCallbackRef.current = handleGoogleLoginResponse;
-  });
 
   useEffect(() => {
     // 1. Session check to redirect logged-in users to their correct menu
@@ -66,22 +66,27 @@ function LoginContent() {
 
       if (data.success) {
         Swal.fire({
-          title: "Logged In!",
-          text: "Welcome to HotByte!",
+          title: t('login.loggedIn'),
+          text: t('login.welcomeMsg'),
           icon: "success",
           timer: 1500,
           showConfirmButton: false,
         });
         router.push(`/${hotelSlug}/menu`);
       } else {
-        Swal.fire("Verification Failed", data.message || "Google login failed.", "error");
+        Swal.fire(t('login.verificationFailed'), data.message || "Google login failed.", "error");
       }
     } catch (err) {
-      Swal.fire("Network Error", "Unable to contact verification server.", "error");
+      Swal.fire(t('login.networkError'), t('login.networkErrorMsg'), "error");
     } finally {
       setLoading(false);
     }
   };
+
+  // Keep callback ref up to date without triggering re-initialization
+  useEffect(() => {
+    loginCallbackRef.current = handleGoogleLoginResponse;
+  });
 
   useEffect(() => {
     if (!clientId || !googleScriptLoaded || googleInitialized.current) return;
@@ -108,12 +113,9 @@ function LoginContent() {
         }
       );
 
-      // Support Google One Tap
       // @ts-ignore
-      window.google?.accounts.id.prompt((notification) => {
-        if (notification.isNotDisplayed()) {
-          console.warn("One Tap not displayed:", notification.getNotDisplayedReason());
-        }
+      window.google?.accounts.id.prompt((_notification: any) => {
+        // One Tap prompt shown
       });
     } catch (err) {
       googleInitialized.current = false;
@@ -146,17 +148,19 @@ function LoginContent() {
           </div>
 
           <h2 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white tracking-tight mb-2">
-            Welcome to HotByte
+            {t('login.title')}
           </h2>
           
           <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-8">
-            Secure, Instant & Passwordless Dining
+            {t('login.subtitle')}
           </p>
+          
+
 
           <div className="w-full bg-[#fafafa] dark:bg-zinc-900/40 border border-gray-100 dark:border-zinc-800/30 rounded-2xl py-5 px-6 mb-8 flex flex-col items-center justify-center gap-1.5">
-            <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Fast Authentication Scoped to</span>
+            <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{t('login.scopedTo')}</span>
             <span className="text-xs font-extrabold text-orange-500 uppercase tracking-widest font-mono">
-              {hotelSlug === "hotbyte" ? "HotByte Platform" : `Hotel: ${hotelSlug}`}
+              {hotelSlug === "hotbyte" ? t('login.platform') : `${t('login.hotel')}: ${hotelSlug}`}
             </span>
           </div>
 
@@ -165,7 +169,7 @@ function LoginContent() {
             {!clientId ? (
               <div className="flex flex-col items-center gap-2">
                 <div className="w-8 h-8 border-3 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Preparing Secure Login...</span>
+                <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider">{t('login.preparing')}</span>
               </div>
             ) : (
               <div id="google-login-btn" className="transition-all duration-300 hover:scale-103 active:scale-97"></div>
@@ -185,14 +189,14 @@ function LoginContent() {
           {loading && (
             <div className="flex items-center justify-center gap-2.5 mt-6 text-sm font-bold text-orange-500 animate-pulse">
               <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-              <span>Verifying Profile Credentials...</span>
+              <span>{t('login.verifying')}</span>
             </div>
           )}
 
           <div className="flex items-center justify-center gap-2 mt-8 text-gray-400 dark:text-gray-600">
             <ShieldCheck size={16} />
             <span className="text-[11px] font-semibold tracking-wide uppercase">
-              Powered by Google Identity Services
+              {t('login.poweredBy')}
             </span>
           </div>
 
@@ -201,7 +205,7 @@ function LoginContent() {
 
       <footer className="w-full py-4 border-t border-gray-150/40 dark:border-zinc-800/40 bg-white/60 dark:bg-zinc-950/20 text-center transition-colors">
         <p className="text-[10px] font-bold text-gray-450 dark:text-gray-500 uppercase tracking-[0.2em]">
-          &copy; 2026 HotByte. Encrypted SSO Authentication.
+          {t('common.copyright')}
         </p>
       </footer>
     </div>

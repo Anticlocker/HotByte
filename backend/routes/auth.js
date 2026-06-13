@@ -53,7 +53,7 @@ const verifySession = async (sessionId) => {
   if (!sessionId) return null;
   
   const result = await db.query(
-    "SELECT s.customer_id, c.name, c.phone, c.email, c.dob, c.hotel_id, c.avatar_url FROM sessions s INNER JOIN customers c ON s.customer_id = c.customer_id WHERE s.session_id = $1 AND s.expires_at > NOW()",
+    "SELECT s.customer_id, c.name, c.phone, c.email, c.dob, c.hotel_id, c.avatar_url, c.locale FROM sessions s INNER JOIN customers c ON s.customer_id = c.customer_id WHERE s.session_id = $1 AND s.expires_at > NOW()",
     [sessionId]
   );
   
@@ -68,7 +68,8 @@ const verifySession = async (sessionId) => {
     email: result.rows[0].email,
     dob: result.rows[0].dob,
     hotelId: result.rows[0].hotel_id,
-    avatarUrl: result.rows[0].avatar_url
+    avatarUrl: result.rows[0].avatar_url,
+    locale: result.rows[0].locale || 'en'
   };
 };
 
@@ -115,7 +116,7 @@ const verifyAdminSession = async (sessionId, req) => {
   const currentUserAgent = req.headers["user-agent"] || "";
 
   const result = await db.query(
-    `SELECT s.admin_id, a.username, a.hotel_id, a.role
+    `SELECT s.admin_id, a.username, a.hotel_id, a.role, a.locale
      FROM sessions s
      JOIN admins a ON a.admin_id = s.admin_id
      WHERE s.session_id = $1
@@ -132,7 +133,8 @@ const verifyAdminSession = async (sessionId, req) => {
     adminId: session.admin_id,
     username: session.username,
     hotelId: session.hotel_id,
-    role: session.role
+    role: session.role,
+    locale: session.locale || 'en'
   };
 };
 
@@ -365,7 +367,8 @@ router.get("/session-check", async (req, res) => {
         hasDob,
         hotelId: session.hotelId,
         hotelSlug,
-        avatarUrl: session.avatarUrl
+        avatarUrl: session.avatarUrl,
+        locale: session.locale
       }
     });
   } catch (error) {
@@ -468,6 +471,16 @@ router.post("/admin/login", async (req, res) => {
         // Fallback for seeded SHA-256 accounts (64-char hex strings)
         const sha256 = crypto.createHash("sha256").update(password).digest("hex");
         passwordMatch = (sha256 === admin.password);
+        if (passwordMatch) {
+          // Re-hash and migrate to bcrypt
+          try {
+            const hashedPassword = await bcrypt.hash(password, 12);
+            await db.query("UPDATE admins SET password = $1 WHERE admin_id = $2", [hashedPassword, admin.admin_id]);
+            logger.info(`Migrated admin password to bcrypt for admin_id: ${admin.admin_id}`);
+          } catch (migrateErr) {
+            logger.error(`Failed to migrate admin password to bcrypt for admin_id: ${admin.admin_id}`, migrateErr);
+          }
+        }
       }
     } catch (err) {
       passwordMatch = false;
@@ -712,7 +725,7 @@ router.get("/admin/session-check", async (req, res) => {
     
     return res.json({
       authenticated: true,
-      admin: { id: session.adminId, username: session.username, hotelId: session.hotelId, role: session.role, hotelSlug, hotelName },
+      admin: { id: session.adminId, username: session.username, hotelId: session.hotelId, role: session.role, hotelSlug, hotelName, locale: session.locale },
       isFrozen
     });
   } catch (error) {
@@ -741,6 +754,99 @@ router.post("/admin/logout", async (req, res) => {
   }
 });
 
+// Guest check-in: lets unauthenticated customers place orders without Google login
+// Only allowed when the hotel has customer_auth_required = false
+router.post("/guest-checkin", async (req, res) => {
+  try {
+    const { name, hotel_slug } = req.body;
+
+    if (!name || typeof name !== "string" || name.trim().length < 2) {
+      return res.status(400).json({ success: false, message: "Please provide a valid name (at least 2 characters)." });
+    }
+
+    const cleanName = name.trim().replace(/\s+/g, " ").substring(0, 60);
+
+    // Resolve hotel
+    const hotelResult = await db.query(
+      "SELECT hotel_id, customer_auth_required, is_frozen FROM public.hotels WHERE slug = $1",
+      [hotel_slug || "hotbyte"]
+    );
+
+    if (hotelResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found." });
+    }
+
+    const { hotel_id: hotelId, customer_auth_required: customerAuthRequired, is_frozen: isFrozen } = hotelResult.rows[0];
+
+    if (isFrozen) {
+      return res.status(403).json({ success: false, message: "This hotel account is currently frozen." });
+    }
+
+    // If hotel requires Google auth, block guest checkin
+    if (customerAuthRequired) {
+      return res.status(403).json({
+        success: false,
+        requireAuth: true,
+        message: "This hotel requires Google authentication to place orders."
+      });
+    }
+
+    // Find existing guest customer by name + hotel (no phone/email) or create one
+    // Use a synthetic guest marker so guests don't collide with real accounts
+    const guestEmail = `guest_${cleanName.toLowerCase().replace(/\s+/g, "_")}_${hotelId}@hotbyte.guest`;
+
+    let customer;
+    const existing = await db.query(
+      "SELECT customer_id, name, phone, email, dob, hotel_id, avatar_url FROM customers WHERE LOWER(email) = $1 AND hotel_id = $2",
+      [guestEmail.toLowerCase(), hotelId]
+    );
+
+    if (existing.rows.length > 0) {
+      customer = existing.rows[0];
+    } else {
+      const inserted = await db.query(
+        "INSERT INTO customers (name, email, hotel_id) VALUES ($1, $2, $3) RETURNING customer_id, name, phone, email, dob, hotel_id, avatar_url",
+        [cleanName, guestEmail, hotelId]
+      );
+      customer = inserted.rows[0];
+    }
+
+    // Create session
+    await db.query("DELETE FROM sessions WHERE customer_id = $1", [customer.customer_id]);
+    const { sessionId } = await createSession(customer.customer_id, req);
+
+    res.cookie("sessionId", sessionId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: SESSION_EXPIRY_HOURS * 60 * 60 * 1000,
+      path: "/"
+    });
+
+    return res.json({
+      success: true,
+      message: "Guest check-in successful.",
+      customer: {
+        id: customer.customer_id,
+        name: customer.name,
+        phone: customer.phone || null,
+        email: null, // don't expose synthetic guest email
+        dob: customer.dob || null,
+        hasDob: false,
+        hotelId: customer.hotel_id,
+        hotelSlug: hotel_slug,
+        avatarUrl: customer.avatar_url || null,
+        isGuest: true
+      }
+    });
+  } catch (error) {
+    logger.error("Guest checkin error:", error);
+    return res.status(500).json({ success: false, message: "Guest check-in failed. Please try again." });
+  }
+});
+
 module.exports = router;
 module.exports.requireAuth = requireAuth;
 module.exports.requireAdmin = requireAdmin;
+module.exports.verifySession = verifySession;
+module.exports.verifyAdminSession = verifyAdminSession;

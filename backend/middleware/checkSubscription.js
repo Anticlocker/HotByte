@@ -3,6 +3,7 @@
 // Applied to customer-facing routes (/api/menu, /api/orders) that use hotel_slug.
 
 const db = require('../routes/database');
+const logger = require('../utils/logger');
 
 module.exports = async (req, res, next) => {
   // Determine hotel slug from query, body, or header
@@ -34,7 +35,7 @@ module.exports = async (req, res, next) => {
         [hotel.hotel_id]
       );
       hotel.is_frozen = true;
-      console.log(`⚠️ Auto-froze hotel "${hotelSlug}" — trial expired at ${hotel.trial_ends_at}`);
+      logger.warn(`Auto-froze hotel "${hotelSlug}" — trial expired at ${hotel.trial_ends_at}`);
     }
 
     if (hotel.is_frozen) {
@@ -53,7 +54,7 @@ module.exports = async (req, res, next) => {
     req.hotel = { slug: hotelSlug, id: hotel.hotel_id, plan: hotel.plan };
     next();
   } catch (err) {
-    console.error('Subscription check middleware error:', err);
+    logger.error('Subscription check middleware error:', err);
     return res.status(500).json({ success: false, message: 'Server error during subscription validation.' });
   }
 };

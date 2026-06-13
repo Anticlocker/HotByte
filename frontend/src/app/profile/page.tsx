@@ -15,6 +15,8 @@ import {
   AlertCircle,
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { useTranslation } from "react-i18next";
+import "@/i18n";
 
 interface ProfileStats {
   id: number;
@@ -45,6 +47,7 @@ interface Order {
 
 export default function Profile() {
   const router = useRouter();
+  const { t } = useTranslation();
   
   const [profile, setProfile] = useState<ProfileStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -102,29 +105,29 @@ export default function Profile() {
       if (data.success) {
         setHasDob(true);
         Swal.fire({
-          title: "Profile Updated!",
-          text: "Date of Birth saved! You are now eligible for Birthday rewards.",
+          title: t('profile.updated', 'Profile Updated!'),
+          text: t('profile.birthdaySaved', 'Date of Birth saved! You are now eligible for Birthday rewards.'),
           icon: "success",
           confirmButtonColor: "#FF5A1F",
         });
         fetchProfileAndOrders();
       } else {
-        Swal.fire("Validation Error", data.message || "Invalid Date.", "error");
+        Swal.fire(t('common.validationError', 'Validation Error'), data.message || t('common.invalidDate', 'Invalid Date.'), "error");
       }
     } catch (err) {
-      Swal.fire("Error", "Failed to update Date of Birth", "error");
+      Swal.fire(t('common.error', 'Error'), t('profile.dobFailed', 'Failed to update Date of Birth'), "error");
     }
   };
 
   const handleCancelOrder = async (orderId: number) => {
     const result = await Swal.fire({
-      title: "Cancel Order?",
-      text: "Are you sure you want to cancel this order? This action cannot be undone.",
+      title: t('orders.cancelTitle', 'Cancel Order?'),
+      text: t('orders.cancelText', 'Are you sure you want to cancel this order? This action cannot be undone.'),
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#EF4444",
       cancelButtonColor: "#aaa",
-      confirmButtonText: "Yes, Cancel Order",
+      confirmButtonText: t('orders.cancelConfirm', 'Yes, Cancel Order'),
     });
 
     if (result.isConfirmed) {
@@ -133,37 +136,37 @@ export default function Profile() {
         const data = await res.json();
 
         if (data.success) {
-          Swal.fire("Cancelled", "Order was deleted successfully.", "success");
+          Swal.fire(t('orders.cancelled', 'Cancelled'), t('orders.cancelSuccess', 'Order was deleted successfully.'), "success");
           fetchProfileAndOrders();
         } else {
-          Swal.fire("Error", data.message || "Cannot cancel order.", "error");
+          Swal.fire(t('common.error', 'Error'), data.message || t('orders.cancelFailed', 'Cannot cancel order.'), "error");
         }
       } catch (err) {
-        Swal.fire("Error", "Network connection failed.", "error");
+        Swal.fire(t('common.error', 'Error'), t('errors.networkError', 'Network connection failed.'), "error");
       }
     }
   };
 
   const handleRateOrder = async (orderId: number) => {
     const { value: formValues } = await Swal.fire({
-      title: "Rate Your Dining Experience",
+      title: t('rating.title', 'Rate Your Dining Experience'),
       html: `
         <div class="space-y-4 text-left">
-          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide">Rating Score</label>
+          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide">${t('rating.score', 'Rating Score')}</label>
           <select id="rating-score" class="w-full p-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-orange-500 font-bold">
-            <option value="5">⭐⭐⭐⭐⭐ Excellent (5/5)</option>
-            <option value="4">⭐⭐⭐⭐ Very Good (4/5)</option>
-            <option value="3">⭐⭐⭐ Good (3/5)</option>
-            <option value="2">⭐⭐ Fair (2/5)</option>
-            <option value="1">⭐ Poor (1/5)</option>
+            <option value="5">⭐⭐⭐⭐⭐ ${t('rating.excellent', 'Excellent (5/5)')}</option>
+            <option value="4">⭐⭐⭐⭐ ${t('rating.veryGood', 'Very Good (4/5)')}</option>
+            <option value="3">⭐⭐⭐ ${t('rating.good', 'Good (3/5)')}</option>
+            <option value="2">⭐⭐ ${t('rating.fair', 'Fair (2/5)')}</option>
+            <option value="1">⭐ ${t('rating.poor', 'Poor (1/5)')}</option>
           </select>
-          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide pt-2">Write Review (Optional)</label>
-          <textarea id="rating-text" placeholder="Tell us how the food was..." class="w-full p-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-orange-500 text-sm min-h-[80px]"></textarea>
+          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide pt-2">${t('rating.writeReview', 'Write Review (Optional)')}</label>
+          <textarea id="rating-text" placeholder="${t('rating.placeholder', 'Tell us how the food was...')}" class="w-full p-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-orange-500 text-sm min-h-[80px]"></textarea>
         </div>
       `,
       focusConfirm: false,
       showCancelButton: true,
-      confirmButtonText: "Submit Review",
+      confirmButtonText: t('rating.submit', 'Submit Review'),
       confirmButtonColor: "#FF5A1F",
       preConfirm: () => {
         return {
@@ -190,17 +193,17 @@ export default function Profile() {
 
         if (data.success) {
           Swal.fire({
-            title: "Review Submitted!",
-            text: data.message || "Thank you for sharing your feedback!",
+            title: t('rating.thankYou', 'Review Submitted!'),
+            text: data.message || t('rating.thankYouMsg', 'Thank you for sharing your feedback!'),
             icon: "success",
             confirmButtonColor: "#FF5A1F",
           });
           fetchProfileAndOrders();
         } else {
-          Swal.fire("Failure", data.message || "Could not submit review.", "error");
+          Swal.fire(t('common.failure', 'Failure'), data.message || t('rating.failed', 'Could not submit review.'), "error");
         }
       } catch (err) {
-        Swal.fire("Error", "Failed to submit rating.", "error");
+        Swal.fire(t('common.error', 'Error'), t('rating.failedSubmit', 'Failed to submit rating.'), "error");
       }
     }
   };
@@ -229,7 +232,7 @@ export default function Profile() {
         {loading ? (
           <div className="flex-1 flex flex-col items-center justify-center py-32 gap-3">
             <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">Loading Dashboard...</p>
+            <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">{t('profile.loading', 'Loading Dashboard...')}</p>
           </div>
         ) : (
           <>
@@ -241,9 +244,9 @@ export default function Profile() {
                     <Gift size={22} />
                   </div>
                   <div className="space-y-1">
-                    <h3 className="font-extrabold text-sm text-gray-900 leading-snug">Claim Birthday Rewards!</h3>
+                    <h3 className="font-extrabold text-sm text-gray-900 leading-snug">{t('profile.birthdayRewardsTitle', 'Claim Birthday Rewards!')}</h3>
                     <p className="text-xs font-semibold text-gray-500">
-                      Provide your Date of Birth to unlock exclusive digital vouchers and complimentary meals on your special day!
+                      {t('profile.birthdayRewardsDesc', 'Provide your Date of Birth to unlock exclusive digital vouchers and complimentary meals on your special day!')}
                     </p>
                   </div>
                 </div>
@@ -261,7 +264,7 @@ export default function Profile() {
                     type="submit"
                     className="px-4 py-2.5 text-white font-bold text-xs rounded-xl btn-orange whitespace-nowrap cursor-pointer"
                   >
-                    Submit
+                    {t('common.submit', 'Submit')}
                   </button>
                 </form>
               </div>
@@ -277,7 +280,7 @@ export default function Profile() {
                     <User size={20} />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Customer Name</p>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{t('profile.customerName', 'Customer Name')}</p>
                     <h2 className="text-lg font-black text-gray-900 truncate mt-0.5">{profile.name}</h2>
                     <p className="text-xs font-semibold text-gray-500 mt-0.5">+91 {profile.phone}</p>
                   </div>
@@ -289,7 +292,7 @@ export default function Profile() {
                     <ShoppingBag size={20} />
                   </div>
                   <div>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Total Orders</p>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{t('admin.totalOrders', 'Total Orders')}</p>
                     <h3 className="text-xl font-black text-gray-900 mt-0.5">{profile.totalOrders}</h3>
                   </div>
                 </div>
@@ -300,7 +303,7 @@ export default function Profile() {
                     <DollarSign size={20} />
                   </div>
                   <div>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Total Spent</p>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{t('profile.totalSpent', 'Total Spent')}</p>
                     <h3 className="text-xl font-black text-gray-900 mt-0.5">₹{profile.totalSpent.toFixed(2)}</h3>
                   </div>
                 </div>
@@ -311,7 +314,7 @@ export default function Profile() {
                     <Calendar size={20} />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Member Since</p>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{t('profile.memberSince', 'Member Since')}</p>
                     <h3 className="text-sm font-black text-gray-900 truncate mt-0.5">
                       {new Date(profile.joinDate).toLocaleDateString("en-IN", {
                         day: "numeric",
@@ -329,7 +332,7 @@ export default function Profile() {
             <div className="space-y-6">
               <h2 className="text-xl font-black text-gray-900 tracking-tight flex items-center gap-2">
                 <Clock className="text-orange-500" />
-                <span>Your Order Tracking & History</span>
+                <span>{t('profile.orderHistory', 'Your Order Tracking & History')}</span>
               </h2>
 
               {orders.length === 0 ? (
@@ -338,16 +341,16 @@ export default function Profile() {
                     <ShoppingBag size={28} />
                   </div>
                   <div className="space-y-1">
-                    <h3 className="text-lg font-black text-gray-950">No Orders Yet</h3>
+                    <h3 className="text-lg font-black text-gray-950">{t('profile.noOrders', 'No Orders Yet')}</h3>
                     <p className="text-sm font-medium text-gray-500 max-w-sm mx-auto">
-                      Looks like you haven&apos;t ordered anything yet. Head to the menu to place your first table order!
+                      {t('profile.noOrdersSubtitle', 'Looks like you haven\'t ordered anything yet. Head to the menu to place your first table order!')}
                     </p>
                   </div>
                   <button
-                    onClick={() => router.push("/menu")}
+                    onClick={() => router.push(profile ? `/${profile.id}/menu` : "/menu")}
                     className="btn-orange px-6 py-3 rounded-xl font-bold text-xs text-white cursor-pointer"
                   >
-                    View Menu
+                    {t('nav.menu', 'View Menu')}
                   </button>
                 </div>
               ) : (
@@ -359,17 +362,17 @@ export default function Profile() {
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-black text-gray-900">Order ID: #{order.orderId}</span>
+                            <span className="text-sm font-black text-gray-900">{t('orders.orderId', 'Order #')}{order.orderId}</span>
                             <span
                               className={`px-2.5 py-1 text-[10px] font-black uppercase rounded-lg border tracking-wide ${getStatusColor(
                                 order.status
                               )}`}
                             >
-                              {order.status}
+                              {t(`orders.${order.status}`, order.status)}
                             </span>
                           </div>
                           <p className="text-[10px] font-bold text-gray-450 uppercase tracking-wider">
-                            Placed on{" "}
+                            {t('orders.placedOn', 'Placed on')}{" "}
                             {new Date(order.createdAt).toLocaleDateString("en-IN", {
                               day: "numeric",
                               month: "short",
@@ -381,7 +384,7 @@ export default function Profile() {
 
                         <div className="flex items-center gap-3">
                           <div className="text-right flex flex-col leading-none">
-                            <span className="text-[10px] text-gray-450 font-bold uppercase tracking-wider">Table</span>
+                            <span className="text-[10px] text-gray-450 font-bold uppercase tracking-wider">{t('orders.table', 'Table')}</span>
                             <span className="text-base font-black text-gray-900 mt-0.5">
                               {order.tableNumber.replace("T-", "")}
                             </span>
@@ -393,7 +396,7 @@ export default function Profile() {
                               className="px-3.5 py-2.5 text-red-650 hover:bg-red-50 rounded-xl text-xs font-bold border border-red-200 flex items-center gap-1.5 cursor-pointer transition-colors"
                             >
                               <Trash2 size={14} />
-                              <span>Cancel</span>
+                              <span>{t('common.cancel', 'Cancel')}</span>
                             </button>
                           )}
 
@@ -403,7 +406,7 @@ export default function Profile() {
                               className="px-3.5 py-2.5 text-orange-650 hover:bg-orange-50 rounded-xl text-xs font-bold border border-orange-200 flex items-center gap-1.5 cursor-pointer transition-colors"
                             >
                               <Star size={14} className="fill-orange-600 text-orange-600" />
-                              <span>Rate Order</span>
+                              <span>{t('profile.rateOrder', 'Rate Order')}</span>
                             </button>
                           )}
                         </div>
@@ -431,9 +434,9 @@ export default function Profile() {
                             ></div>
 
                             {[
-                              { key: "pending", label: "Confirmed" },
-                              { key: "preparing", label: "Preparing" },
-                              { key: "ready", label: "Ready to Serve" },
+                              { key: "pending", label: t('orders.confirmed', 'Confirmed') },
+                              { key: "preparing", label: t('orders.preparing', 'Preparing') },
+                              { key: "ready", label: t('orders.ready', 'Ready') },
                             ].map((step, idx) => {
                               const steps = ["pending", "preparing", "ready"];
                               const currentIdx = steps.indexOf(order.status);
@@ -470,7 +473,7 @@ export default function Profile() {
                             <div className="mt-6 p-4 bg-orange-50 border border-orange-200 rounded-2xl flex items-center gap-3 animate-pulse">
                               <AlertCircle size={18} className="text-orange-600 flex-shrink-0" />
                               <p className="text-xs font-bold text-orange-950">
-                                Chef has set your order as Ready! Waiter is bringing the hot plates to table {order.tableNumber.replace("T-", "")} right now.
+                                {t('orders.chefReady', 'Chef has set your order as Ready! Waiter is bringing the hot plates to table {{table}} right now.').replace('{{table}}', order.tableNumber.replace("T-", ""))}
                               </p>
                             </div>
                           )}
@@ -480,9 +483,9 @@ export default function Profile() {
                       {/* Items details list */}
                       <div className="space-y-3.5 bg-gray-50/50 p-4 sm:p-5 rounded-2xl border border-gray-150/40">
                         <div className="flex justify-between items-center px-1">
-                          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Ordered Items</span>
+                          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{t('orders.items', 'Items')}</span>
                           <span className="text-xs font-bold text-gray-800">
-                            Total Bill: <span className="font-extrabold text-orange-600">₹{order.totalAmount}</span>
+                            {t('checkout.total', 'Total')}: <span className="font-extrabold text-orange-600">₹{order.totalAmount}</span>
                           </span>
                         </div>
 
@@ -522,7 +525,7 @@ export default function Profile() {
 
       <footer className="w-full py-4 border-t border-gray-150/40 bg-white/60 text-center mt-6">
         <p className="text-[10px] font-bold text-gray-450 uppercase tracking-[0.2em]">
-          &copy; 2026 HotByte. Realtime Orders Live.
+          {t('common.copyright', '© 2026 HotByte. Realtime Orders Live.')}
         </p>
       </footer>
     </div>

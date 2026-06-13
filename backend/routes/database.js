@@ -87,11 +87,13 @@ pool.connect(async (err, client, release) => {
                 END $$;`,
                 // admins table
                 "ALTER TABLE public.admins ADD COLUMN IF NOT EXISTS phone VARCHAR(15) UNIQUE;",
+                "ALTER TABLE public.admins ADD COLUMN IF NOT EXISTS locale VARCHAR(10) DEFAULT 'en';",
                 // customers, menu_category, menu_items
                 "ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS hotel_id INTEGER REFERENCES public.hotels(hotel_id) ON DELETE CASCADE;",
                 "ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS email VARCHAR(100);",
                 "ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS google_id VARCHAR(255);",
                 "ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS avatar_url TEXT;",
+                "ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS locale VARCHAR(10) DEFAULT 'en';",
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_email_hotel ON public.customers (email, hotel_id);",
                 "ALTER TABLE public.menu_category ADD COLUMN IF NOT EXISTS hotel_id INTEGER REFERENCES public.hotels(hotel_id) ON DELETE CASCADE;",
                 "ALTER TABLE public.menu_items ADD COLUMN IF NOT EXISTS hotel_id INTEGER REFERENCES public.hotels(hotel_id) ON DELETE CASCADE;",

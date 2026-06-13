@@ -4,6 +4,8 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAdminSession } from "@/context/AdminSessionContext";
+import { useTranslation } from "react-i18next";
+import "@/i18n";
 import {
   DollarSign,
   Users,
@@ -53,6 +55,7 @@ interface DashboardStats {
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { admin } = useAdminSession();
   const hotelName = (admin as any)?.hotelName || "";
   const hotelSlug = admin?.hotelSlug || "";
@@ -136,30 +139,30 @@ export default function AdminDashboard() {
 
       if (data.success) {
         Swal.fire({
-          title: "Status Updated",
-          text: `Order #${orderId} changed to ${nextStatus}.`,
+          title: t('admin.statusUpdated', 'Status Updated'),
+          text: t('admin.statusChangedMsg', 'Order #{{id}} changed to {{status}}.').replace('{{id}}', String(orderId)).replace('{{status}}', nextStatus),
           icon: "success",
           timer: 1000,
           showConfirmButton: false,
         });
         fetchDashboardData();
       } else {
-        Swal.fire("Failure", data.message || "Failed to update status.", "error");
+        Swal.fire(t('common.failure', 'Failure'), data.message || t('admin.statusUpdateFailed', 'Failed to update status.'), "error");
       }
     } catch (err) {
-      Swal.fire("Error", "Network connection failure.", "error");
+      Swal.fire(t('common.error', 'Error'), t('errors.networkError', 'Network connection failure.'), "error");
     }
   };
 
   const handleMarkPaid = async (orderId: number) => {
     const result = await Swal.fire({
-      title: "Approve Payment?",
-      text: `Mark order #${orderId} cash payment as Completed?`,
+      title: t('admin.approvePaymentTitle', 'Approve Payment?'),
+      text: t('admin.approvePaymentText', 'Mark order #{{id}} cash payment as Completed?').replace('{{id}}', String(orderId)),
       icon: "question",
       showCancelButton: true,
       confirmButtonColor: "#10B981",
       cancelButtonColor: "#aaa",
-      confirmButtonText: "Yes, Confirm Payment",
+      confirmButtonText: t('admin.confirmPaymentBtn', 'Yes, Confirm Payment'),
     });
 
     if (result.isConfirmed) {
@@ -170,26 +173,26 @@ export default function AdminDashboard() {
         const data = await res.json();
 
         if (data.success) {
-          Swal.fire("Paid", "Order payment status marked completed.", "success");
+          Swal.fire(t('orders.paid', 'Paid'), t('admin.paymentCompletedMsg', 'Order payment status marked completed.'), "success");
           fetchDashboardData();
         } else {
-          Swal.fire("Failure", data.message || "Failed to mark paid.", "error");
+          Swal.fire(t('common.failure', 'Failure'), data.message || t('admin.paymentFailedMsg', 'Failed to mark paid.'), "error");
         }
       } catch (err) {
-        Swal.fire("Error", "Failed to contact API server.", "error");
+        Swal.fire(t('common.error', 'Error'), t('admin.serverContactFailed', 'Failed to contact API server.'), "error");
       }
     }
   };
 
   const handleDeleteOrder = async (orderId: number) => {
     const result = await Swal.fire({
-      title: "Cancel Order?",
-      text: "Warning: This cancels and completely deletes this order transaction!",
+      title: t('orders.cancelTitle', 'Cancel Order?'),
+      text: t('admin.deleteWarningText', 'Warning: This cancels and completely deletes this order transaction!'),
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#EF4444",
       cancelButtonColor: "#aaa",
-      confirmButtonText: "Delete Order",
+      confirmButtonText: t('common.delete', 'Delete Order'),
     });
 
     if (result.isConfirmed) {
@@ -200,13 +203,13 @@ export default function AdminDashboard() {
         const data = await res.json();
 
         if (data.success) {
-          Swal.fire("Deleted", "Order was deleted successfully.", "success");
+          Swal.fire(t('orders.cancelled', 'Cancelled'), t('orders.cancelSuccess', 'Order was deleted successfully.'), "success");
           fetchDashboardData();
         } else {
-          Swal.fire("Failure", data.message || "Could not delete order.", "error");
+          Swal.fire(t('common.failure', 'Failure'), data.message || t('admin.deleteFailedMsg', 'Could not delete order.'), "error");
         }
       } catch (err) {
-        Swal.fire("Error", "Network error encountered.", "error");
+        Swal.fire(t('common.error', 'Error'), t('errors.networkError', 'Network error encountered.'), "error");
       }
     }
   };
@@ -230,13 +233,13 @@ export default function AdminDashboard() {
                   className="inline-flex items-center gap-2 px-3 py-1 rounded-xl border border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/10 text-orange-400 text-[10px] font-black uppercase tracking-wider transition-all duration-300 cursor-pointer group"
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-ping"></span>
-                  <span>Active Terminal — {hotelName}</span>
+                  <span>{t('admin.activeTerminal', 'Active Terminal')} — {hotelName}</span>
                   <ExternalLink size={10} className="text-orange-500/50 group-hover:text-orange-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-300" />
                 </Link>
               ) : (
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl border border-orange-500/20 bg-orange-500/5 text-orange-400 text-[10px] font-black uppercase tracking-wider">
                   <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-ping"></span>
-                  <span>Active Terminal — {hotelName}</span>
+                  <span>{t('admin.activeTerminal', 'Active Terminal')} — {hotelName}</span>
                 </div>
               )}
 
@@ -246,7 +249,7 @@ export default function AdminDashboard() {
                 hotelType === "nonveg" ? "bg-red-500/10 border-red-500/25 text-red-450 dark:text-red-400" :
                 "bg-yellow-500/10 border-yellow-500/25 text-yellow-450 dark:text-yellow-400"
               }`}>
-                <span>{hotelType === "veg" ? "🌱 Pure Veg" : hotelType === "nonveg" ? "🍗 Non-Veg" : "🟡 Both Veg/Non-Veg"}</span>
+                <span>{hotelType === "veg" ? t('menu.veg', '🌱 Pure Veg') : hotelType === "nonveg" ? t('menu.nonVeg', '🍗 Non-Veg') : t('menu.both', '🟡 Both Veg/Non-Veg')}</span>
               </span>
             </div>
           )}
@@ -258,21 +261,21 @@ export default function AdminDashboard() {
                 rel="noopener noreferrer"
                 className="hover:text-[var(--orange)] text-white transition-all duration-300 ease-in-out flex items-center gap-2 group cursor-pointer"
               >
-                <span>{hotelName || "Hotel Console"}</span>
+                <span>{hotelName || t('admin.hotelConsole', 'Hotel Console')}</span>
                 <ExternalLink
                   size={20}
                   className="text-gray-500 group-hover:text-[var(--orange)] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-300"
                 />
               </Link>
             ) : (
-              <span>{hotelName || "Hotel Console"}</span>
+              <span>{hotelName || t('admin.hotelConsole', 'Hotel Console')}</span>
             )}
             {refreshing && (
               <RefreshCw size={18} className="text-orange-500 animate-spin" />
             )}
           </h1>
           <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">
-            Real-time digital menu checkout & kitchen operations queue
+            {t('admin.dashboardSubtitle', 'Real-time digital menu checkout & kitchen operations queue')}
           </p>
         </div>
 
@@ -284,7 +287,7 @@ export default function AdminDashboard() {
           className="px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-200 hover:text-white rounded-xl text-xs font-bold border border-gray-800 flex items-center gap-2 transition-all cursor-pointer"
         >
           <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
-          <span>Refresh Orders</span>
+          <span>{t('admin.refresh', 'Refresh Orders')}</span>
         </button>
       </div>
 
@@ -308,7 +311,7 @@ export default function AdminDashboard() {
                 <DollarSign size={20} />
               </div>
               <div className="min-w-0">
-                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Today&apos;s Revenue</p>
+                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">{t('admin.todayRevenue', "Today's Revenue")}</p>
                 <h3 className="text-xl font-black text-white mt-0.5 truncate">₹{stats.todayRevenue.toFixed(2)}</h3>
               </div>
             </div>
@@ -319,7 +322,7 @@ export default function AdminDashboard() {
                 <ShoppingBag size={20} />
               </div>
               <div>
-                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Today&apos;s Orders</p>
+                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">{t('admin.todayOrders', "Today's Orders")}</p>
                 <h3 className="text-xl font-black text-white mt-0.5">{stats.todayOrders}</h3>
               </div>
             </div>
@@ -330,7 +333,7 @@ export default function AdminDashboard() {
                 <Users size={20} />
               </div>
               <div>
-                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Registered Guests</p>
+                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">{t('admin.registeredGuests', 'Registered Guests')}</p>
                 <h3 className="text-xl font-black text-white mt-0.5">{stats.totalCustomers}</h3>
               </div>
             </div>
@@ -341,7 +344,7 @@ export default function AdminDashboard() {
                 <Timer size={20} />
               </div>
               <div>
-                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Active Orders</p>
+                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">{t('admin.activeOrders', 'Active Orders')}</p>
                 <h3 className="text-xl font-black text-white mt-0.5">{stats.pendingOrders}</h3>
               </div>
             </div>
@@ -363,7 +366,7 @@ export default function AdminDashboard() {
             <div className="flex items-center justify-between px-2">
               <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse"></span>
-                <span>Confirmed Pending</span>
+                <span>{t('admin.confirmedPending', 'Confirmed Pending')}</span>
               </h2>
               <span className="px-2.5 py-0.5 bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 rounded-lg text-xs font-black">
                 {pendingOrders.length}
@@ -373,7 +376,7 @@ export default function AdminDashboard() {
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
               {pendingOrders.length === 0 ? (
                 <div className="p-8 text-center bg-[#121212]/30 rounded-2xl border border-dashed border-gray-800 text-gray-500 text-xs font-semibold">
-                  No pending table orders
+                  {t('admin.noPendingOrders', 'No pending table orders')}
                 </div>
               ) : (
                 pendingOrders.map((order) => (
@@ -381,7 +384,7 @@ export default function AdminDashboard() {
                     key={order.order_id}
                     order={order}
                     onNext={() => handleUpdateStatus(order.order_id, "preparing")}
-                    nextLabel="Start Preparing"
+                    nextLabel={t('admin.startPreparing', 'Start Preparing')}
                     nextIcon={<Play size={14} />}
                     onCancel={() => handleDeleteOrder(order.order_id)}
                     onPayConfirm={() => handleMarkPaid(order.order_id)}
@@ -396,7 +399,7 @@ export default function AdminDashboard() {
             <div className="flex items-center justify-between px-2">
               <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
-                <span>Active Cooking</span>
+                <span>{t('admin.activeCooking', 'Active Cooking')}</span>
               </h2>
               <span className="px-2.5 py-0.5 bg-blue-500/10 text-blue-450 border border-blue-500/20 rounded-lg text-xs font-black">
                 {preparingOrders.length}
@@ -406,7 +409,7 @@ export default function AdminDashboard() {
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
               {preparingOrders.length === 0 ? (
                 <div className="p-8 text-center bg-[#121212]/30 rounded-2xl border border-dashed border-gray-800 text-gray-500 text-xs font-semibold">
-                  Kitchen queue empty
+                  {t('admin.kitchenQueueEmpty', 'Kitchen queue empty')}
                 </div>
               ) : (
                 preparingOrders.map((order) => (
@@ -414,7 +417,7 @@ export default function AdminDashboard() {
                     key={order.order_id}
                     order={order}
                     onNext={() => handleUpdateStatus(order.order_id, "ready")}
-                    nextLabel="Mark Ready"
+                    nextLabel={t('admin.markReady', 'Mark Ready')}
                     nextIcon={<Truck size={14} />}
                     onCancel={() => handleDeleteOrder(order.order_id)}
                     onPayConfirm={() => handleMarkPaid(order.order_id)}
@@ -429,7 +432,7 @@ export default function AdminDashboard() {
             <div className="flex items-center justify-between px-2">
               <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse"></span>
-                <span>Ready to Serve</span>
+                <span>{t('admin.readyToServe', 'Ready to Serve')}</span>
               </h2>
               <span className="px-2.5 py-0.5 bg-orange-500/10 text-orange-500 border border-orange-500/20 rounded-lg text-xs font-black">
                 {readyOrders.length}
@@ -439,7 +442,7 @@ export default function AdminDashboard() {
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
               {readyOrders.length === 0 ? (
                 <div className="p-8 text-center bg-[#121212]/30 rounded-2xl border border-dashed border-gray-800 text-gray-500 text-xs font-semibold">
-                  No plates ready for serving
+                  {t('admin.noPlatesReady', 'No plates ready for serving')}
                 </div>
               ) : (
                 readyOrders.map((order) => (
@@ -447,7 +450,7 @@ export default function AdminDashboard() {
                     key={order.order_id}
                     order={order}
                     onNext={() => handleUpdateStatus(order.order_id, "completed")}
-                    nextLabel="Deliver & Close"
+                    nextLabel={t('admin.deliverClose', 'Deliver & Close')}
                     nextIcon={<CheckCircle size={14} />}
                     onCancel={() => handleDeleteOrder(order.order_id)}
                     onPayConfirm={() => handleMarkPaid(order.order_id)}
@@ -479,6 +482,7 @@ function OrderKanbanCard({
   onCancel: () => void;
   onPayConfirm: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="glass-card-dark p-5 rounded-2xl space-y-4 hover:border-gray-700 transition-all border border-gray-850 shadow-lg">
       
@@ -488,7 +492,7 @@ function OrderKanbanCard({
           <div className="flex items-center gap-2">
             <span className="font-extrabold text-sm text-white">#{order.order_id}</span>
             <span className="px-2 py-0.5 bg-orange-500/10 text-[var(--orange)] border border-orange-500/20 rounded text-[9px] font-black uppercase tracking-wide">
-              Table {order.table_number.replace("T-", "")}
+              {t('checkout.tableNumber', 'Table')} {order.table_number.replace("T-", "")}
             </span>
           </div>
           <p className="text-[10px] text-gray-500 font-semibold mt-1">
@@ -500,8 +504,8 @@ function OrderKanbanCard({
         </div>
 
         <div className="text-right flex flex-col items-end">
-          <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Bill Amount</span>
-          <span className="text-sm font-black text-white mt-0.5">₹{order.total_amount}</span>
+          <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{t('admin.billAmount', 'Bill Amount')}</span>
+          <span className="text-sm font-black text-white mt-0.5 font-mono">₹{order.total_amount}</span>
         </div>
       </div>
 
@@ -513,7 +517,7 @@ function OrderKanbanCard({
 
       {/* Items list */}
       <div className="space-y-2">
-        <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Items Queue</p>
+        <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">{t('admin.itemsQueue', 'Items Queue')}</p>
         <div className="space-y-1.5 pl-0.5">
           {order.items.map((item, index) => (
             <div key={index} className="flex justify-between items-center text-xs">
@@ -536,13 +540,13 @@ function OrderKanbanCard({
         </span>
 
         {order.payment_status === "completed" ? (
-          <span className="font-black text-emerald-500 uppercase tracking-wider">Paid Verified</span>
+          <span className="font-black text-emerald-500 uppercase tracking-wider">{t('admin.paidVerified', 'Paid Verified')}</span>
         ) : (
           <button
             onClick={onPayConfirm}
             className="px-2 py-0.5 bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 rounded font-black uppercase tracking-wider cursor-pointer hover:bg-yellow-500/25"
           >
-            Awaiting Pay
+            {t('admin.awaitingPay', 'Awaiting Pay')}
           </button>
         )}
       </div>
@@ -560,7 +564,7 @@ function OrderKanbanCard({
         <button
           onClick={onCancel}
           className="py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-500 hover:text-red-400 rounded-xl flex items-center justify-center cursor-pointer transition-colors"
-          title="Cancel Order"
+          title={t('common.cancel', 'Cancel')}
         >
           <Trash2 size={14} />
         </button>

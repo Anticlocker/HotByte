@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import CustomerNavbar from "@/components/CustomerNavbar";
+import { useTranslation } from "react-i18next";
+import "@/i18n";
 import {
   Search,
   ShoppingCart,
@@ -19,7 +21,8 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 import confetti from "canvas-confetti";
-
+import SearchBar from "@/components/SearchBar";
+import MenuItemCard from "@/components/MenuItemCard";
 interface MenuItem {
   item_id: number;
   name: string;
@@ -52,8 +55,9 @@ const handleImgError = (e: React.SyntheticEvent<HTMLImageElement>) => {
   e.currentTarget.style.background = "#1a1a1a";
 };
 
-export default function MenuPage({ params }: PageProps) {
+export default function MenuPage({ params }: { params: Promise<{ hotel_slug: string }> }) {
   const router = useRouter();
+  const { t } = useTranslation();
   const { hotel_slug } = use(params);
   const hotelSlug = hotel_slug || "hotbyte";
 
@@ -90,12 +94,60 @@ export default function MenuPage({ params }: PageProps) {
   const [confettiTriggered, setConfettiTriggered] = useState(false);
   const [dobInput, setDobInput] = useState("");
   const [updatingDob, setUpdatingDob] = useState(false);
-
   const isBirthdayToday = (() => {
     if (!customer || !customer.dob) return false;
     const dob = new Date(customer.dob);
     const today = new Date();
     return dob.getDate() === today.getDate() && dob.getMonth() === today.getMonth();
+  })();
+
+  const greeting = (() => {
+    const defaultGreeting = {
+      text: t('greetings.welcome', 'Welcome'),
+      sub: t('greetings.welcomeSub', 'We hope you are having an exceptional dining experience!'),
+      icon: "✨",
+      bg: "bg-white/80 dark:bg-zinc-900/65 border-gray-150/40 dark:border-zinc-805/40 text-gray-900 dark:text-gray-100"
+    };
+    if (!customer) return defaultGreeting;
+    
+    if (isBirthdayToday) {
+      return {
+        text: t('greetings.birthday', '🎉 Happy Birthday, {{name}}! 🎂').replace('{{name}}', customer.name || t('common.customer', 'Customer')),
+        sub: t('greetings.birthdaySub', 'Wishing you a fantastic day and delicious meals ahead! Enjoy your special birthday dining.'),
+        icon: "🎈",
+        bg: "bg-gradient-to-r from-pink-500/10 via-purple-500/10 to-amber-500/10 border-pink-500/35 text-gray-900 dark:text-gray-100 dark:shadow-[0_0_20px_rgba(236,72,153,0.15)] animate-pulse"
+      };
+    }
+
+    const hour = new Date().getHours();
+    let text = "";
+    let sub = t('greetings.welcomeSub', 'We hope you are having an exceptional dining experience!');
+    let icon = "✨";
+
+    if (hour >= 5 && hour < 12) {
+      text = t('greetings.morning', 'Good Morning, {{name}} ☀️').replace('{{name}}', customer.name || t('common.customer', 'Customer'));
+      sub = t('greetings.morningSub', 'Start your day with a delightful and fresh breakfast spread!');
+      icon = "🌅";
+    } else if (hour >= 12 && hour < 17) {
+      text = t('greetings.afternoon', 'Good Afternoon, {{name}} 🌤️').replace('{{name}}', customer.name || t('common.customer', 'Customer'));
+      sub = t('greetings.afternoonSub', 'Treat yourself to our exquisite lunch specials and refreshing coolers!');
+      icon = "🥗";
+    } else if (hour >= 17 && hour < 21) {
+      text = t('greetings.evening', 'Good Evening, {{name}} 🌇').replace('{{name}}', customer.name || t('common.customer', 'Customer'));
+      sub = t('greetings.eveningSub', 'Unwind with our premium curated dinner items and chef specials!');
+      icon = "🍛";
+    } else {
+      text = t('greetings.night', 'Good Night, {{name}} 🌙').replace('{{name}}', customer.name || t('common.customer', 'Customer'));
+      sub = t('greetings.nightSub', 'Craving a late night bite or dessert? We\'ve got your sweet tooth covered!');
+      icon = "🍰";
+    }
+
+    return {
+      text,
+      sub,
+      icon,
+      bg: "bg-white/80 dark:bg-zinc-900/65 border-gray-150/40 dark:border-zinc-800/40 text-gray-900 dark:text-gray-100"
+    };
   })();
 
   useEffect(() => {
@@ -392,26 +444,26 @@ export default function MenuPage({ params }: PageProps) {
       if (requireCustomerAuth) {
         // Hotel requires Google login
         const result = await Swal.fire({
-          title: "🔐 Login Required",
-          html: `<div style="color:#aaa;font-size:14px">This hotel requires you to sign in before placing an order.<br/><span style="color:#FF5A1F;font-weight:bold">Please login with Google to continue.</span></div>`,
+          title: t('login.loginRequiredTitle', "🔐 Login Required"),
+          html: `<div style="color:#aaa;font-size:14px">${t('login.loginRequiredDesc', 'This hotel requires you to sign in before placing an order.<br/><span style="color:#FF5A1F;font-weight:bold">Please login with Google to continue.</span>')}</div>`,
           icon: "info",
           showCancelButton: true,
           confirmButtonColor: "#FF5A1F",
           cancelButtonColor: "#6b7280",
-          confirmButtonText: "Login with Google",
+          confirmButtonText: t('login.loginRequiredBtn', "Login with Google"),
         });
         if (result.isConfirmed) router.push(`/login?hotel=${hotelSlug}`);
         return;
       } else {
         // Guest mode: just ask for name
         const nameResult = await Swal.fire({
-          title: "👋 What's your name?",
-          html: `<div style="color:#aaa;font-size:13px;margin-bottom:8px">Enter your name to place the order as a guest</div>`,
+          title: t('login.guestNameTitle', "👋 What's your name?"),
+          html: `<div style="color:#aaa;font-size:13px;margin-bottom:8px">${t('login.guestNameDesc', 'Enter your name to place the order as a guest')}</div>`,
           input: "text",
-          inputPlaceholder: "Your name (e.g. Rahul)",
+          inputPlaceholder: t('login.guestNamePlaceholder', "Your name (e.g. Rahul)"),
           inputAttributes: { autocomplete: "name", maxlength: "60" },
           showCancelButton: true,
-          confirmButtonText: "Continue",
+          confirmButtonText: t('login.guestNameContinue', "Continue"),
           confirmButtonColor: "#FF5A1F",
           cancelButtonColor: "#6b7280",
           background: "#0d0f14",
@@ -421,7 +473,7 @@ export default function MenuPage({ params }: PageProps) {
             input: "rounded-xl bg-gray-900 border border-gray-700 text-white px-4 py-2 focus:border-orange-500"
           },
           inputValidator: (value) => {
-            if (!value || value.trim().length < 2) return "Please enter your name (at least 2 characters)";
+            if (!value || value.trim().length < 2) return t('login.guestNameValidator', "Please enter your name (at least 2 characters)");
           }
         });
         if (!nameResult.isConfirmed || !nameResult.value) return;
@@ -436,16 +488,16 @@ export default function MenuPage({ params }: PageProps) {
           const gcData = await gcRes.json();
           if (!gcData.success) {
             if (gcData.requireAuth) {
-              Swal.fire("Login Required", "This hotel requires Google authentication.", "info");
+              Swal.fire(t('login.loginRequiredTitle', "Login Required"), t('login.signInRequiredMsg', "This hotel requires Google authentication."), "info");
               router.push(`/login?hotel=${hotelSlug}`);
             } else {
-              Swal.fire("Error", gcData.message || "Guest checkin failed.", "error");
+              Swal.fire(t('common.error', "Error"), gcData.message || t('login.guestCheckinFailed', "Guest checkin failed."), "error");
             }
             return;
           }
           setCustomer(gcData.customer);
         } catch {
-          Swal.fire("Network Error", "Unable to complete guest checkin.", "error");
+          Swal.fire(t('login.networkError', "Network Error"), t('errors.networkError', "Unable to complete guest checkin."), "error");
           return;
         }
       }
@@ -465,10 +517,9 @@ export default function MenuPage({ params }: PageProps) {
         const dist = haversineDistance(customerLat, customerLng, hotelLatitude, hotelLongitude);
         if (dist > orderRadius) {
           await Swal.fire({
-            title: "Too Far Away 📍",
+            title: t('checkout.gpsProximityTitle', "Too Far Away 📍"),
             html: `<div style="font-size:13px;color:#aaa;line-height:1.7">
-              You must be within <b style="color:#FF5A1F">${orderRadius} meters</b> of the hotel to place an order.<br/>
-              Your current distance: <b style="color:#ef4444">${Math.round(dist)}m away</b>
+              ${t('checkout.gpsProximityDesc', 'You must be within <b style="color:#FF5A1F">{{radius}} meters</b> of the hotel to place an order.<br/>Your current distance: <b style="color:#ef4444">{{distance}}m away</b>').replace('{{radius}}', String(orderRadius)).replace('{{distance}}', String(Math.round(dist)))}
             </div>`,
             icon: "error",
             confirmButtonColor: "#FF5A1F",
@@ -477,8 +528,8 @@ export default function MenuPage({ params }: PageProps) {
         }
       } catch (err: any) {
         await Swal.fire({
-          title: "Location Required 📍",
-          html: `<div style="font-size:13px;color:#aaa">${err?.code === 1 ? "Location access is blocked. Please enable GPS in your browser settings and try again." : "Could not get your GPS location. Please ensure location services are enabled."}</div>`,
+          title: t('checkout.gpsRequiredTitle', "Location Required 📍"),
+          html: `<div style="font-size:13px;color:#aaa">${err?.code === 1 ? t('checkout.gpsBlockedDesc', "Location access is blocked. Please enable GPS in your browser settings and try again.") : t('checkout.gpsRequiredDesc', "Could not get your GPS location. Please ensure location services are enabled.")}</div>`,
           icon: "warning",
           confirmButtonColor: "#FF5A1F",
         });
@@ -487,9 +538,9 @@ export default function MenuPage({ params }: PageProps) {
     }
 
     const result = await Swal.fire({
-      title: "Place Order",
+      title: t('checkout.placeOrderTitle', "Place Order"),
       html: `
-        <div class="text-gray-400 mb-5 text-sm text-center">Select your preferred payment method for table <span class="text-orange-500 font-bold font-mono">${tableNumber}</span>:</div>
+        <div class="text-gray-400 mb-5 text-sm text-center">${t('checkout.selectPaymentMethod', 'Select your preferred payment method for table')} <span class="text-orange-500 font-bold font-mono">${tableNumber}</span>:</div>
         <div class="flex flex-col gap-3 mt-2 text-left">
           ${enableQrOrdering ? `
           <button id="pay-cash-btn" class="flex items-center justify-between p-4 rounded-xl border border-gray-800 bg-gray-900/40 hover:bg-gray-850 hover:border-orange-500 transition-all duration-300 text-left w-full group focus:outline-none">
@@ -498,8 +549,8 @@ export default function MenuPage({ params }: PageProps) {
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-wallet"><path d="M21 12V7H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14v2"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
               </div>
               <div>
-                <div class="font-bold text-white text-base tracking-wide">Cash / Pay At Table</div>
-                <div class="text-xs text-gray-400 mt-0.5">Pay directly with cash or card at your table</div>
+                <div class="font-bold text-white text-base tracking-wide">${t('checkout.payCashTitle', 'Cash / Pay At Table')}</div>
+                <div class="text-xs text-gray-400 mt-0.5">${t('checkout.payCashDesc', 'Pay directly with cash or card at your table')}</div>
               </div>
             </div>
             <div class="w-5 h-5 rounded-full border-2 border-gray-700 flex items-center justify-center group-hover:border-orange-500 group-hover:bg-orange-500/20 transition-all duration-300">
@@ -515,8 +566,8 @@ export default function MenuPage({ params }: PageProps) {
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-credit-card"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
               </div>
               <div>
-                <div class="font-bold text-white text-base tracking-wide">Online Payment (UPI / Card)</div>
-                <div class="text-xs text-gray-400 mt-0.5">Instant online payment using Razorpay gateway</div>
+                <div class="font-bold text-white text-base tracking-wide">${t('checkout.payOnlineTitle', 'Online Payment (UPI / Card)')}</div>
+                <div class="text-xs text-gray-400 mt-0.5">${t('checkout.payOnlineDesc', 'Instant online payment using Razorpay gateway')}</div>
               </div>
             </div>
             <div class="w-5 h-5 rounded-full border-2 border-gray-700 flex items-center justify-center group-hover:border-orange-500 group-hover:bg-orange-500/20 transition-all duration-300">
@@ -528,7 +579,7 @@ export default function MenuPage({ params }: PageProps) {
       `,
       showConfirmButton: false,
       showCancelButton: true,
-      cancelButtonText: "Cancel",
+      cancelButtonText: t('common.cancel', "Cancel"),
       cancelButtonColor: "#374151",
       background: "#0d0f14",
       color: "#fff",
@@ -566,8 +617,8 @@ export default function MenuPage({ params }: PageProps) {
     if (paymentMethod === "CASH") {
       // Cash Order Placement
       Swal.fire({
-        title: "Processing Order",
-        text: "Sending your order to the kitchen...",
+        title: t('checkout.processingOrder', "Processing Order"),
+        text: t('checkout.sendingToKitchen', "Sending your order to the kitchen..."),
         allowOutsideClick: false,
         didOpen: () => Swal.showLoading(),
       });
@@ -595,23 +646,23 @@ export default function MenuPage({ params }: PageProps) {
           handleClearCart();
           setIsCartOpen(false);
           await Swal.fire({
-            title: "Order Placed!",
-            text: `Your cash order for table ${tableNumber} has been received.`,
+            title: t('checkout.orderPlacedSuccess', "Order Placed!"),
+            text: t('checkout.orderPlacedCashMsg', "Your cash order for table {{tableNumber}} has been received.").replace('{{tableNumber}}', tableNumber),
             icon: "success",
             confirmButtonColor: "#FF5A1F",
           });
           router.push("/profile");
         } else {
-          Swal.fire("Occupied Table", data.message || "Checkout failed.", "error");
+          Swal.fire(t('checkout.occupiedTable', "Occupied Table"), data.message || t('checkout.checkoutFailed', "Checkout failed."), "error");
         }
       } catch (err) {
-        Swal.fire("Network Error", "Unable to send checkout request.", "error");
+        Swal.fire(t('login.networkError', "Network Error"), t('errors.networkError', "Unable to send checkout request."), "error");
       }
     } else {
       // Online Razorpay Payment
       Swal.fire({
-        title: "Initializing Payment",
-        text: "Connecting to payment gateway...",
+        title: t('checkout.initializingPayment', "Initializing Payment"),
+        text: t('checkout.connectingGateway', "Connecting to payment gateway..."),
         allowOutsideClick: false,
         didOpen: () => Swal.showLoading(),
       });
@@ -653,8 +704,8 @@ export default function MenuPage({ params }: PageProps) {
           order_id: rzpOrder.id,
           handler: async (response: any) => {
             Swal.fire({
-              title: "Verifying Transaction",
-              text: "Please wait while we log your order...",
+              title: t('checkout.verifyingTransaction', "Verifying Transaction"),
+              text: t('checkout.sendingToKitchen', "Please wait while we log your order..."),
               allowOutsideClick: false,
               didOpen: () => Swal.showLoading(),
             });
@@ -685,17 +736,17 @@ export default function MenuPage({ params }: PageProps) {
                 handleClearCart();
                 setIsCartOpen(false);
                 await Swal.fire({
-                  title: "Payment Successful!",
-                  text: "Your order is now being prepared in the kitchen.",
+                  title: t('checkout.paymentSuccessful', "Payment Successful!"),
+                  text: t('checkout.preparedInKitchen', "Your order is now being prepared in the kitchen."),
                   icon: "success",
                   confirmButtonColor: "#FF5A1F",
                 });
                 router.push("/profile");
               } else {
-                Swal.fire("Verification Error", verifyData.message || "Signature checks failed.", "error");
+                Swal.fire(t('common.error', "Verification Error"), verifyData.message || t('errors.sessionExpired', "Signature checks failed."), "error");
               }
             } catch (err) {
-              Swal.fire("Verification Error", "Failed to confirm payment signature.", "error");
+              Swal.fire(t('common.error', "Verification Error"), t('checkout.checkoutFailed', "Failed to confirm payment signature."), "error");
             }
           },
           prefill: {
@@ -710,7 +761,7 @@ export default function MenuPage({ params }: PageProps) {
         const rzp = new (window as any).Razorpay(options);
         rzp.open();
       } catch (err: any) {
-        Swal.fire("Gateway Offline", err.message || "Failed to initialize payment gateway.", "error");
+        Swal.fire(t('checkout.gatewayOffline', "Gateway Offline"), err.message || t('errors.serverError', "Failed to initialize payment gateway."), "error");
       }
     }
   };
@@ -728,14 +779,14 @@ export default function MenuPage({ params }: PageProps) {
             🥶
           </div>
           <h2 className="text-2xl md:text-3xl font-black text-gray-100 uppercase tracking-tight mb-3">
-            Hotel Account Frozen
+            {t('menu.frozenTitle', 'Hotel Account Frozen')}
           </h2>
           <div className="w-16 h-1 bg-gradient-to-r from-red-500 to-orange-500 rounded-full mb-6"></div>
           <p className="text-sm font-semibold text-gray-400 leading-relaxed mb-8">
-            Your free trial or subscription period for this digital menu has expired. Please buy a subscription or contact the hotel administration to continue accessing services.
+            {t('menu.frozenDesc', 'Your free trial or subscription period for this digital menu has expired. Please buy a subscription or contact the hotel administration to continue accessing services.')}
           </p>
           <div className="w-full bg-[#141414]/80 border border-gray-900 rounded-2xl py-4 px-6 mb-8 flex flex-col items-center justify-center gap-1">
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Contact System Administrator</span>
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t('menu.contactAdmin', 'Contact System Administrator')}</span>
             <span className="text-xs font-black text-yellow-500 font-mono tracking-widest uppercase">support@hotbyte.in</span>
           </div>
           <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest">
@@ -758,8 +809,8 @@ export default function MenuPage({ params }: PageProps) {
                 🏪
               </div>
               <div className="flex flex-col">
-                <span className="text-sm font-extrabold uppercase tracking-wide">Hotel is Currently Closed</span>
-                <span className="text-xs font-semibold opacity-90 mt-0.5">We are not accepting new orders at the moment. You can still browse our menu.</span>
+                <span className="text-sm font-extrabold uppercase tracking-wide">{t('menu.hotelClosedTitle', 'Hotel is Currently Closed')}</span>
+                <span className="text-xs font-semibold opacity-90 mt-0.5">{t('menu.hotelClosedDesc', 'We are not accepting new orders at the moment. You can still browse our menu.')}</span>
               </div>
             </div>
           </div>
@@ -770,45 +821,42 @@ export default function MenuPage({ params }: PageProps) {
         <div className="w-full bg-gradient-to-r from-amber-900/80 via-yellow-900/80 to-amber-900/80 border-b border-amber-700/50 py-2.5 px-6 z-20 backdrop-blur-sm">
           <div className="max-w-[1280px] mx-auto flex items-center justify-center gap-3">
             <span className="text-lg">🔐</span>
-            <span className="text-xs font-bold text-amber-300 uppercase tracking-wider">Identity Verification Active — Google Login Required</span>
+            <span className="text-xs font-bold text-amber-300 uppercase tracking-wider">{t('login.verificationActive', 'Identity Verification Active — Google Login Required')}</span>
           </div>
         </div>
       )}
 
-      {/* Visual Masterpiece Full-Bleed Cover & Brand Header */}
-      {showBanner ? (
-        <div className="relative w-full h-[200px] sm:h-[240px] md:h-[300px] overflow-hidden select-none border-b border-gray-150/40 dark:border-zinc-800/40">
-          {/* Cover Banner Image */}
-          {bannerUrl ? (
-            <img 
-              src={bannerUrl} 
-              alt={hotelName} 
+
+      <div className="relative">
+        <div className="relative w-full h-36 md:h-40 overflow-hidden rounded-b-2xl">
+          {showBanner ? (
+            <img
+              src={bannerUrl || undefined}
+              alt={hotelName ?? ''}
               loading="eager"
               className="w-full h-full object-cover transition-transform duration-700"
               style={{ transform: 'scale(1.02)' }}
             />
           ) : (
-            /* Aesthetic Fallback Cover Image (stunning high-res dining spread) */
-            <div className="w-full h-full bg-[url('https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1600&q=80')] bg-cover bg-center" />
+            <div className="w-full h-full bg-[url('https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1600&q=80')] bg-cover bg-center"></div>
           )}
-          
-          {/* Modern dark radial overlay to ensure readability */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#0e1017] via-black/45 to-black/35 dark:from-[#0b0d11] transition-colors duration-300" />
-          
-          {/* Floating Brand Elements Container */}
-          <div className="absolute bottom-6 left-6 right-6 lg:left-16 lg:right-16 max-w-[1280px] mx-auto flex flex-col md:flex-row items-center md:items-end justify-between gap-4 md:gap-6 z-10">
+        </div>
+        {/* Modern dark radial overlay to ensure readability */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0e1017] via-black/45 to-black/35 dark:from-[#0b0d11] transition-colors duration-300" />
+        {/* Floating Brand Elements Container */}
+        <div className="absolute bottom-6 left-6 right-6 lg:left-16 lg:right-16 max-w-[1280px] mx-auto flex flex-col md:flex-row items-center md:items-end justify-between gap-4 md:gap-6 z-10">
             <div className="flex flex-col md:flex-row items-center md:items-end gap-4 md:gap-6 text-center md:text-left w-full">
               {/* Elegant overlapping brand logo badge */}
               {showLogo && (
                 <div className="w-20 h-20 md:w-24 md:h-24 rounded-3xl bg-white dark:bg-zinc-900 p-1 border-2 border-orange-500 shadow-xl flex-shrink-0 flex items-center justify-center overflow-hidden transition-all duration-300 transform hover:scale-105 animate-fade-in">
                   {logoUrl ? (
-                    <img 
-                      src={logoUrl} 
-                      alt={`${hotelName} Logo`} 
+                    <img
+                      src={logoUrl ?? ''}
+                      alt={`${hotelName} Logo`}
                       className="w-full h-full object-cover rounded-2xl"
                     />
                   ) : (
-                    /* Sleek Monogram Initials Fallback if no logo is available */
+                    
                     <span className="text-xl md:text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-amber-500">
                       {hotelName ? hotelName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase() : "HB"}
                     </span>
@@ -828,26 +876,27 @@ export default function MenuPage({ params }: PageProps) {
                 {/* Hotel Type Badge */}
                 {hotelType === "veg" && (
                   <span className="inline-flex items-center gap-1 mt-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
-                    🌱 100% Pure Veg Restaurant
+                    {t('menu.pureVegBadge', '🌱 100% Pure Veg Restaurant')}
                   </span>
                 )}
                 {hotelType === "nonveg" && (
                   <span className="inline-flex items-center gap-1 mt-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-red-500/15 border border-red-500/30 text-red-400">
-                    🍗 Non-Veg Speciality
+                    {t('menu.nonVegBadge', '🍗 Non-Veg Speciality')}
                   </span>
                 )}
               </div>
             </div>
           </div>
         </div>
-      ) : (
-        /* Dynamic premium compact header area when banner is hidden */
+
+      {/* Dynamic premium compact header area when banner is hidden */}
+        {!showBanner && (
         <div className="bg-white dark:bg-zinc-900/60 border-b border-gray-150/40 dark:border-zinc-800/40 py-6 px-6 lg:px-16 animate-fade-in">
           <div className="max-w-[1280px] mx-auto flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
             {showLogo && (
               <div className="w-16 h-16 rounded-2xl bg-gray-50 dark:bg-zinc-800 p-1 border-2 border-orange-500 shadow-md flex-shrink-0 flex items-center justify-center overflow-hidden">
                 {logoUrl ? (
-                  <img src={logoUrl} alt={`${hotelName} Logo`} className="w-full h-full object-cover rounded-xl" />
+                  <img src={logoUrl ?? ''} alt={`${hotelName} Logo`} className="w-full h-full object-cover rounded-xl" />
                 ) : (
                   <span className="text-lg font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-amber-500">
                     {hotelName ? hotelName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase() : "HB"}
@@ -866,12 +915,12 @@ export default function MenuPage({ params }: PageProps) {
               {/* Hotel Type Badge (no-banner header) */}
               {hotelType === "veg" && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400">
-                  🌱 100% Pure Veg Restaurant
+                  {t('menu.pureVegBadge', '🌱 100% Pure Veg Restaurant')}
                 </span>
               )}
               {hotelType === "nonveg" && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase bg-red-500/10 border border-red-500/25 text-red-600 dark:text-red-400">
-                  🍗 Non-Veg Speciality
+                  {t('menu.nonVegBadge', '🍗 Non-Veg Speciality')}
                 </span>
               )}
             </div>
@@ -880,164 +929,134 @@ export default function MenuPage({ params }: PageProps) {
       )}
 
       {/* Main Browse Section */}
-      <main className="flex-grow max-w-[1280px] mx-auto w-full px-6 py-8 flex flex-col gap-8 bg-transparent">
+      <main className="flex-grow max-w-[1280px] mx-auto w-full px-6 py-4 flex flex-col gap-4 bg-transparent">
         
-        {/* Dynamic Personalized Greeting Card */}
-        {(() => {
-          if (!customer) {
-            return null;
-          }
-
-          const getGreetingMessage = () => {
-            if (isBirthdayToday) {
-              return {
-                text: `🎉 Happy Birthday, ${customer.name || "Customer"}! 🎂`,
-                sub: "Wishing you a fantastic day and delicious meals ahead! Enjoy your special birthday dining.",
-                icon: "🎈",
-                bg: "bg-gradient-to-r from-pink-500/10 via-purple-500/10 to-amber-500/10 border-pink-500/35 text-gray-900 dark:text-gray-100 dark:shadow-[0_0_20px_rgba(236,72,153,0.15)] animate-pulse"
-              };
-            }
-
-            const hour = new Date().getHours();
-            let text = "";
-            let sub = "We hope you are having an exceptional dining experience!";
-            let icon = "✨";
-
-            if (hour >= 5 && hour < 12) {
-              text = `Good Morning, ${customer.name || "Customer"} ☀️`;
-              sub = "Start your day with a delightful and fresh breakfast spread!";
-              icon = "🌅";
-            } else if (hour >= 12 && hour < 17) {
-              text = `Good Afternoon, ${customer.name || "Customer"} 🌤️`;
-              sub = "Treat yourself to our exquisite lunch specials and refreshing coolers!";
-              icon = "🥗";
-            } else if (hour >= 17 && hour < 21) {
-              text = `Good Evening, ${customer.name || "Customer"} 🌇`;
-              sub = "Unwind with our premium curated dinner items and chef specials!";
-              icon = "🍛";
-            } else {
-              text = `Good Night, ${customer.name || "Customer"} 🌙`;
-              sub = "Craving a late night bite or dessert? We've got your sweet tooth covered!";
-              icon = "🍰";
-            }
-
-            return {
-              text,
-              sub,
-              icon,
-              bg: "bg-white/80 dark:bg-zinc-900/65 border-gray-150/40 dark:border-zinc-800/40 text-gray-900 dark:text-gray-100"
-            };
-          };
-
-          const greeting = getGreetingMessage();
-
-          return (
-            <div className={`w-full border rounded-2xl p-4 shadow-sm backdrop-blur-md transition-all duration-300 relative overflow-hidden group ${greeting.bg}`}>
-              {isBirthdayToday && (
-                <div className="absolute top-0 right-0 w-24 h-24 bg-pink-500/10 rounded-full blur-xl pointer-events-none animate-pulse"></div>
-              )}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10">
-                <div className="flex items-center gap-3 w-full sm:w-auto">
-                  {/* User Profile Avatar */}
-                  {customer.avatarUrl ? (
-                    <img 
-                      src={customer.avatarUrl} 
-                      alt={customer.name || "User"} 
-                      className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-orange-500/30 object-cover shadow-sm shrink-0"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-orange-100 dark:bg-orange-950/20 text-orange-500 flex items-center justify-center font-bold text-sm sm:text-base shadow-inner shrink-0">
-                      {customer.name ? customer.name.charAt(0).toUpperCase() : greeting.icon}
+        {/* Unified Greet Bar */}
+        {!customer ? (
+          <div className="w-full flex items-center justify-between gap-4 px-4 py-2.5 bg-gradient-to-r from-orange-500/[0.06] via-amber-500/[0.04] to-transparent dark:from-orange-500/[0.08] dark:via-amber-500/[0.04] border border-orange-200/30 dark:border-orange-850/30 rounded-2xl backdrop-blur-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-base">👋</span>
+              <span className="text-sm font-bold text-gray-700 dark:text-gray-300 tracking-tight">
+                {t('greetings.welcome', 'Welcome')}, <span className="text-orange-600 dark:text-orange-400">{t('common.guest', 'Guest')}</span>
+              </span>
+            </div>
+            {/* Integrated Search & Veg Filter */}
+            <div className="flex items-center gap-1.5">
+              <SearchBar
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                hotelType={hotelType}
+                isVegOnly={isVegOnly}
+                setIsVegOnly={setIsVegOnly}
+              />
+            </div>
+          </div>
+        ) : (
+          /* For logged in customers */
+          <div className={`w-full rounded-2xl p-[1px] shadow-sm transition-all duration-500 relative overflow-hidden group ${isBirthdayToday ? 'bg-gradient-to-r from-pink-500/30 via-purple-500/25 to-amber-500/30' : 'bg-gradient-to-r from-orange-500/15 via-amber-400/8 to-orange-500/15'}`}>
+            <div className={`w-full rounded-[15px] p-3 backdrop-blur-xl relative overflow-hidden bg-white/90 dark:bg-zinc-900/90`}>
+              {/* Ambient glow effects */}
+              <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full blur-3xl pointer-events-none opacity-45" style={{ background: isBirthdayToday ? 'radial-gradient(circle, rgba(236,72,153,0.25), transparent)' : 'radial-gradient(circle, rgba(249,115,22,0.15), transparent)' }}></div>
+              
+              <div className="flex flex-row items-center justify-between gap-4 relative z-10">
+                <div className="flex items-center gap-3 min-w-0">
+                  {/* Avatar */}
+                  <div className={`relative shrink-0 ${isBirthdayToday ? 'animate-pulse' : ''}`}>
+                    <div className={`w-10 h-10 rounded-xl p-[2px] ${isBirthdayToday ? 'bg-gradient-to-br from-pink-500 via-purple-500 to-amber-500' : 'bg-gradient-to-br from-orange-500 to-amber-500'}`}>
+                      {customer.avatarUrl ? (
+                        <img 
+                          src={customer.avatarUrl} 
+                          alt={customer.name || "User"} 
+                          className="w-full h-full rounded-[14px] object-cover bg-white dark:bg-zinc-900"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-full h-full rounded-[14px] bg-white dark:bg-zinc-900 flex items-center justify-center">
+                          <span className="text-base font-black text-transparent bg-clip-text bg-gradient-to-br from-orange-500 to-amber-600">
+                            {customer.name ? customer.name.charAt(0).toUpperCase() : '?'}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  )}
+                    <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-zinc-900"></div>
+                  </div>
                   
-                  <div className="flex-grow space-y-0.5 text-left">
-                    <div className="flex items-center gap-1.5 leading-none">
-                      <span className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider">Welcome back</span>
-                      {isBirthdayToday && <span className="text-[9px] bg-pink-100 dark:bg-pink-950/30 text-pink-650 dark:text-pink-400 font-extrabold px-1.5 py-0.5 rounded-full animate-bounce">BDAY 🎂</span>}
+                  <div className="flex flex-col min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[9px] text-gray-400 dark:text-gray-550 font-extrabold uppercase tracking-[0.12em]">{t('greetings.welcomeBack', 'Welcome back')}</span>
+                      {isBirthdayToday && (
+                        <span className="inline-flex items-center gap-1 text-[8px] bg-pink-100 dark:bg-pink-950/45 text-pink-600 dark:text-pink-400 font-black px-1.5 py-0.5 rounded-full">
+                          🎂 {t('profile.birthdayBadge', 'Birthday')}
+                        </span>
+                      )}
                     </div>
-                    <h2 className="text-sm sm:text-base font-black text-gray-900 dark:text-white leading-tight">
-                      {customer.name || "Customer"}
+                    <h2 className="text-sm font-black text-gray-900 dark:text-white leading-tight tracking-tight truncate">
+                      {customer.name || t('common.customer', 'Customer')}
                     </h2>
-                    <p className="text-[10px] sm:text-xs font-semibold text-gray-450 dark:text-gray-500">
-                      {greeting.text.split(",")[0]}! {greeting.sub}
-                    </p>
                   </div>
                 </div>
 
-                {!customer.hasDob ? (
-                  <form onSubmit={handleInlineDobSubmit} className="flex items-center gap-2 w-full sm:w-auto bg-gray-50 dark:bg-zinc-950/30 p-1.5 rounded-xl border border-gray-150/40 dark:border-zinc-800/40 shrink-0">
-                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide px-1.5 hidden lg:inline">Add DOB for Birthday Gift 🎁</span>
-                    <input
-                      type="date"
-                      required
-                      value={dobInput}
-                      onChange={(e) => setDobInput(e.target.value)}
-                      className="px-2 py-1 bg-white dark:bg-zinc-900 border border-gray-205 dark:border-zinc-800 rounded-lg text-[10px] font-bold text-gray-850 dark:text-gray-200 outline-none focus:border-orange-500 shadow-sm"
-                    />
-                    <button
-                      type="submit"
-                      disabled={updatingDob}
-                      className="px-3 py-1.5 text-white font-bold text-[10px] rounded-lg btn-orange whitespace-nowrap cursor-pointer disabled:opacity-50"
-                    >
-                      {updatingDob ? "..." : "Save"}
-                    </button>
-                  </form>
-                ) : null}
+                {/* Integrated Search & Veg Filter */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Time of day icon/text for desktop only, hidden on mobile */}
+                  <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gray-50 dark:bg-zinc-800/40 border border-gray-100 dark:border-zinc-700/30">
+                    <span className="text-xs">{greeting.icon}</span>
+                    <span className="text-[9px] font-bold text-gray-550 dark:text-gray-400 uppercase tracking-wider">
+                      {greeting.text.split(',')[0].replace(customer.name || 'Customer', '').replace(/[\s☀️🌤️🌇🌙🎉]/g, '').trim()}
+                    </span>
+                  </div>
+
+                  <SearchBar
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
+                    hotelType={hotelType}
+                    isVegOnly={isVegOnly}
+                    setIsVegOnly={setIsVegOnly}
+                  />
+                </div>
               </div>
+
+              {!customer.hasDob ? (
+                <div className="mt-2 pt-2 border-t border-gray-100 dark:border-zinc-850/60">
+                  <form onSubmit={handleInlineDobSubmit} className="flex flex-col sm:flex-row items-center gap-2">
+                    <div className="flex items-center gap-1 text-[9px] font-bold text-gray-455 dark:text-gray-550 uppercase tracking-wider">
+                      <span>🎁</span>
+                      <span>{t('login.birthdayRewardPrompt', 'Add your birthday for a special treat')}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                      <input
+                        type="date"
+                        required
+                        value={dobInput}
+                        onChange={(e) => setDobInput(e.target.value)}
+                        className="flex-1 sm:flex-none px-2 py-1 bg-gray-50 dark:bg-zinc-850 border border-gray-200 dark:border-zinc-750 rounded-lg text-[10px] font-bold text-gray-700 dark:text-gray-200 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/10 transition-all"
+                      />
+                      <button
+                        type="submit"
+                        disabled={updatingDob}
+                        className="px-3 py-1 text-white font-bold text-[10px] rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 whitespace-nowrap cursor-pointer disabled:opacity-50 transition-all duration-200 active:scale-[0.97]"
+                      >
+                        {updatingDob ? t('common.saving', 'Saving...') : t('common.save', 'Save')}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              ) : null}
             </div>
-          );
-        })()}
-
-        {/* Sleek Search & Quick Filter Controls Bar */}
-        <div id="menu-listing-section" className="w-full flex flex-col md:flex-row items-center justify-between gap-4 bg-white dark:bg-zinc-900/60 p-4 border border-gray-150/40 dark:border-zinc-800/40 rounded-3xl shadow-sm backdrop-blur-md transition-all duration-300">
-          <div className="w-full md:w-auto flex flex-col sm:flex-row items-center gap-3">
-            {/* Search Input */}
-            <div className="relative w-full sm:w-80">
-              <Search className="absolute left-3.5 top-3.5 text-gray-400 dark:text-gray-550" size={16} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search chef's specials..."
-                className="w-full pl-10 pr-4 py-3 rounded-2xl bg-gray-50 dark:bg-zinc-850/80 border border-gray-205 dark:border-zinc-800 focus:border-[var(--orange)] dark:focus:border-[var(--orange)] outline-none text-sm font-semibold text-gray-800 dark:text-gray-200 transition-all shadow-inner"
-              />
-            </div>
-
-            {/* Veg Only Toggle - only show for both-type hotels */}
-            {hotelType === "both" && (
-              <button
-                onClick={() => setIsVegOnly(!isVegOnly)}
-                className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border text-sm font-bold transition-all cursor-pointer shadow-sm select-none ${
-                  isVegOnly
-                    ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-350 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-400"
-                    : "bg-white dark:bg-zinc-900 border-gray-205 dark:border-zinc-800 text-gray-650 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
-                }`}
-              >
-                <Leaf size={16} className={isVegOnly ? "fill-emerald-750" : ""} />
-                <span>Veg Only</span>
-              </button>
-            )}
           </div>
+        )}
 
-          <div className="hidden md:flex items-center gap-2.5 text-xs font-bold text-gray-450 dark:text-gray-500 uppercase tracking-widest bg-gray-50 dark:bg-zinc-850/30 px-3.5 py-2 rounded-xl">
-            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-ping"></span>
-            <span>Digital QR Station: {tableNumber}</span>
-          </div>
-        </div>
-        
-        {/* Dynamic Category Selector Scroll */}
+        {/* Sticky Category Selector Scroll */}
         {categories.length > 0 && (
-          <div className="sticky top-[72px] z-30 -mx-6 px-6 py-3 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-gray-150/40 dark:border-zinc-800/40 flex gap-2.5 overflow-x-auto pb-2 scrollbar-none select-none transition-all duration-200">
+          <div className="sticky top-[56px] z-30 -mx-6 px-6 py-2.5 bg-white/95 dark:bg-zinc-955/95 backdrop-blur-md border-b border-gray-150/40 dark:border-zinc-800/40 flex gap-2.5 overflow-x-auto pb-2 scrollbar-none select-none transition-all duration-200">
             {categories.map((cat) => (
               <button
                 key={cat}
                 onClick={() => {
                   setSelectedCategory(cat);
-                  const element = document.getElementById("menu-listing-section");
+                  const element = document.getElementById("menu-food-grid");
                   if (element) {
-                    const yOffset = -140; // navbar + category selector height
+                    const yOffset = -120; // navbar + category selector height
                     const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
                     window.scrollTo({ top: y, behavior: "smooth" });
                   }
@@ -1059,7 +1078,7 @@ export default function MenuPage({ params }: PageProps) {
         {loading ? (
           <div className="flex-1 flex flex-col items-center justify-center py-20 gap-3">
             <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">Loading Fresh Menu...</p>
+            <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">{t('menu.loading', 'Loading Fresh Menu...')}</p>
           </div>
         ) : filteredItems.length === 0 ? (
           <div className="flex-grow flex flex-col items-center justify-center py-20 text-center space-y-4">
@@ -1067,135 +1086,25 @@ export default function MenuPage({ params }: PageProps) {
               <Search size={28} />
             </div>
             <div className="space-y-1">
-              <h3 className="text-lg font-black text-gray-950">No Menu Items Found</h3>
+              <h3 className="text-lg font-black text-gray-955 dark:text-gray-250">{t('menu.noItems', 'No Menu Items Found')}</h3>
               <p className="text-sm font-medium text-gray-500 max-w-sm mx-auto">
-                No items mat          /* Food Card Listing Grid */
-          <div className="menu-grid grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-5">
-            {filteredItems.map((item) => (
-              <div
+                {t('menu.noItemsDesc', 'No items match your search or filter. Try a different keyword or category.')}
+              </p>
+            </div>
+          </div>
+        ) : (
+          /* Food Card Listing Grid */
+          <div id="menu-food-grid" className="menu-grid grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-5 animate-fade-in">
+            {filteredItems.map(item => (
+              <MenuItemCard
                 key={item.item_id}
-                className={`menu-card-hover bg-white dark:bg-zinc-900 border border-gray-150/40 dark:border-zinc-800/55 rounded-xl sm:rounded-2xl overflow-hidden flex flex-col relative transition-all duration-300 ${
-                  item.is_available
-                    ? "hover:shadow-xl hover:shadow-orange-100 dark:hover:shadow-orange-950/10 hover:-translate-y-1"
-                    : "opacity-75"
-                }`}
-              >
-                {/* Veg/Non-Veg Badge */}
-                <div className="absolute top-2.5 left-2.5 z-10 flex gap-2">
-                  <span
-                    className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[9px] font-black tracking-wide uppercase shadow-md ${
-                      item.is_veg
-                        ? "bg-emerald-600 text-white"
-                        : "bg-red-650 text-white"
-                    }`}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
-                    {item.is_veg ? "Veg" : "Non-Veg"}
-                  </span>
-                </div>
-
-                {/* Rating Badge */}
-                {item.avg_rating && parseFloat(item.avg_rating) > 0 && (
-                  <div className="absolute top-2.5 right-2.5 z-10">
-                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur-sm text-[9px] font-bold text-yellow-400 shadow-md">
-                      <i className="fas fa-star text-[8px]"></i>
-                      {parseFloat(item.avg_rating).toFixed(1)}
-                    </span>
-                  </div>
-                )}
-
-                {/* Food Image Container — padding-top ratio trick works on all Android versions */}
-                <div className="menu-card-img-wrap !pt-[60%] sm:!pt-[70%]">
-                  {item.image_url ? (
-                    <img
-                      src={item.image_url}
-                      alt={item.name}
-                      loading="lazy"
-                      decoding="async"
-                      className="w-full h-full object-cover"
-                      onError={handleImgError}
-                    />
-                  ) : (
-                    <div className="menu-card-img-placeholder flex flex-col items-center justify-center text-gray-300 dark:text-gray-650">
-                      <Utensils size={28} />
-                    </div>
-                  )}
-                  
-                  {/* Out of Stock Overlay */}
-                  {!item.is_available && (
-                    <div className="absolute inset-0 bg-black/65 flex flex-col items-center justify-center text-white p-2 text-center">
-                      <AlertTriangle className="text-yellow-500 mb-0.5" size={18} />
-                      <p className="text-[10px] font-black uppercase tracking-wider">Out of Stock</p>
-                      <p className="text-[8px] opacity-75 mt-0.5">Chef preparing more!</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Card details */}
-                <div className="menu-card-body p-2 sm:p-3 flex-1 flex flex-col justify-between gap-1.5 sm:gap-2.5 bg-white dark:bg-zinc-900">
-                  <div className="space-y-0.5">
-                    <h3 className="font-extrabold text-[12px] sm:text-[13px] md:text-sm text-gray-900 dark:text-white leading-snug line-clamp-2">
-                      {item.name}
-                    </h3>
-                    <p className="text-[10px] sm:text-xs font-semibold text-gray-450 dark:text-gray-550 line-clamp-1 sm:line-clamp-2">
-                      {item.description}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1">
-                    <div className="flex flex-col leading-none">
-                      <span className="text-[8px] sm:text-[9px] text-gray-400 dark:text-gray-550 font-bold uppercase tracking-wider">Price</span>
-                      <span className="text-sm sm:text-base font-black text-gray-900 dark:text-white mt-0.5 font-mono">₹{item.price}</span>
-                    </div>
-
-                    {!isOpen ? (
-                      <button
-                        disabled
-                        className="px-2 sm:px-3 py-1.5 text-gray-400 dark:text-gray-500 font-bold text-[9px] sm:text-xs bg-gray-150 dark:bg-zinc-800 border border-gray-250 dark:border-zinc-800 rounded-lg flex items-center gap-1 cursor-not-allowed uppercase"
-                      >
-                        Closed
-                      </button>
-                    ) : item.is_available ? (
-                      cart.find((i) => i.item_id === item.item_id) ? (
-                        /* Quantity adjusters */
-                        <div className="flex items-center gap-1 sm:gap-1.5 bg-orange-50 dark:bg-orange-950/15 border border-orange-200 dark:border-orange-900/30 rounded-lg p-0.5 shadow-sm">
-                          <button
-                            onClick={() => handleDecreaseQuantity(item.item_id)}
-                            className="w-5.5 h-5.5 sm:w-7 sm:h-7 rounded-md active:bg-orange-100 dark:active:bg-orange-950/40 flex items-center justify-center text-orange-600 dark:text-orange-400 transition-colors cursor-pointer"
-                          >
-                            <Minus size={10} />
-                          </button>
-                          <span className="text-[11px] sm:text-xs font-extrabold text-orange-950 dark:text-orange-100 min-w-[12px] text-center">
-                            {cart.find((i) => i.item_id === item.item_id)?.quantity}
-                          </span>
-                          <button
-                            onClick={() => handleAddToCart(item)}
-                            className="w-5.5 h-5.5 sm:w-7 sm:h-7 rounded-md active:bg-orange-100 dark:active:bg-orange-950/40 flex items-center justify-center text-orange-600 dark:text-orange-400 transition-colors cursor-pointer"
-                          >
-                            <Plus size={10} />
-                          </button>
-                        </div>
-                      ) : (
-                        /* Add Button */
-                        <button
-                          onClick={() => handleAddToCart(item)}
-                          className="px-2 sm:px-3 py-1.5 text-white font-bold text-[9px] sm:text-xs rounded-lg flex items-center gap-1 btn-orange cursor-pointer"
-                        >
-                          <Plus size={10} />
-                          <span>ADD</span>
-                        </button>
-                      )
-                    ) : (
-                      <button
-                        disabled
-                        className="px-2 sm:px-3 py-1.5 text-gray-400 font-bold text-[9px] sm:text-xs bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-800 rounded-lg flex items-center gap-1"
-                      >
-                        N/A
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
+                item={item}
+                cart={cart}
+                isOpen={isOpen}
+                handleAddToCart={handleAddToCart}
+                handleDecreaseQuantity={handleDecreaseQuantity}
+                handleImgError={handleImgError}
+              />
             ))}
           </div>
         )}
@@ -1218,7 +1127,7 @@ export default function MenuPage({ params }: PageProps) {
             </span>
           </div>
           <div className="flex flex-col items-start leading-none gap-0.5">
-            <span className="text-[10px] text-orange-200 uppercase tracking-widest font-black">Your Order</span>
+            <span className="text-[10px] text-orange-200 uppercase tracking-widest font-black">{t('cart.title', 'Your Order')}</span>
             <span className="text-sm font-black">₹{cartTotal}</span>
           </div>
           <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
@@ -1243,9 +1152,9 @@ export default function MenuPage({ params }: PageProps) {
             <div className="p-6 border-b border-gray-150 dark:border-zinc-800/50 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ShoppingCart className="text-[var(--orange)]" />
-                <h2 className="text-lg font-black text-gray-900 dark:text-white">Your Basket</h2>
+                <h2 className="text-lg font-black text-gray-900 dark:text-white">{t('cart.title', 'Your Basket')}</h2>
                 <span className="px-2 py-0.5 bg-orange-100 dark:bg-orange-950/20 text-[var(--orange)] dark:text-orange-400 rounded-lg text-xs font-bold">
-                  {cartCount} Items
+                  {cartCount} {t('cart.items', 'Items')}
                 </span>
               </div>
               <button
@@ -1259,17 +1168,17 @@ export default function MenuPage({ params }: PageProps) {
             {/* Table Number & Quick Options */}
             <div className="p-6 bg-gray-50 dark:bg-zinc-900/40 border-b border-gray-150 dark:border-zinc-800/50 flex items-center justify-between gap-4">
               <div className="flex flex-col">
-                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-550 uppercase tracking-wider">Dining Station</span>
-                <span className="text-sm font-extrabold text-gray-800 dark:text-gray-200 mt-0.5">Enter Table Number</span>
+                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-550 uppercase tracking-wider">{t('checkout.dineIn', 'Dining Station')}</span>
+                <span className="text-sm font-extrabold text-gray-800 dark:text-gray-200 mt-0.5">{t('checkout.tableNumber', 'Enter Table Number')}</span>
               </div>
               <select
                 value={tableNumber}
                 onChange={(e) => setTableNumber(e.target.value)}
                 className="px-4 py-2 bg-white dark:bg-zinc-950 rounded-xl border border-gray-205 dark:border-zinc-850 text-sm font-bold text-gray-800 dark:text-gray-300 outline-none focus:border-[var(--orange)] shadow-sm"
               >
-                {Array.from({ length: tableCount }, (_, i) => `T-${i + 1}`).map((t) => (
-                  <option key={t} value={t}>
-                    Table {t.replace("T-", "")}
+                {Array.from({ length: tableCount }, (_, i) => `T-${i + 1}`).map((tableId) => (
+                  <option key={tableId} value={tableId}>
+                    {t('checkout.tableNumber', 'Table')} {tableId.replace("T-", "")}
                   </option>
                 ))}
               </select>
@@ -1294,7 +1203,7 @@ export default function MenuPage({ params }: PageProps) {
                       <h4 className="font-extrabold text-sm text-gray-900 dark:text-white leading-snug truncate">
                         {item.name}
                       </h4>
-                      <p className="text-xs font-bold text-gray-450 dark:text-gray-500 mt-0.5 font-mono">₹{item.price}</p>
+                      <p className="text-xs font-bold text-gray-450 dark:text-gray-550 mt-0.5 font-mono">₹{item.price}</p>
                     </div>
                   </div>
 
@@ -1335,14 +1244,14 @@ export default function MenuPage({ params }: PageProps) {
             <div className="p-6 border-t border-gray-150 dark:border-zinc-800/50 bg-white dark:bg-[#12141c] space-y-4">
               <div className="flex justify-between items-end">
                 <div className="flex flex-col leading-none">
-                  <span className="text-xs text-gray-400 dark:text-gray-550 font-bold uppercase tracking-wider">Subtotal bill</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-550 font-bold uppercase tracking-wider">{t('cart.subtotal', 'Subtotal bill')}</span>
                   <span className="text-2xl font-black text-gray-900 dark:text-white mt-1 font-mono">₹{cartTotal}</span>
                 </div>
                 <button
                   onClick={handleClearCart}
                   className="text-xs font-bold text-red-500 hover:underline cursor-pointer"
                 >
-                  Clear Cart
+                  {t('cart.clear', 'Clear Cart')}
                 </button>
               </div>
 
@@ -1357,10 +1266,10 @@ export default function MenuPage({ params }: PageProps) {
               >
                 <span>
                   {!isOpen 
-                    ? "Closed - Cannot Place Order" 
+                    ? t('menu.closed', 'Closed - Cannot Place Order') 
                     : (!enableQrOrdering && !enableOnlineOrders)
-                      ? "Ordering is currently disabled"
-                      : "Checkout Dining Order"
+                      ? t('menu.disabled', 'Ordering is currently disabled')
+                      : t('cart.checkout', 'Checkout Dining Order')
                   }
                 </span>
                 <ArrowRight size={18} />
@@ -1381,10 +1290,10 @@ export default function MenuPage({ params }: PageProps) {
               </div>
               <div className="space-y-0.5">
                 <h4 className="text-xs sm:text-sm font-black text-gray-900 dark:text-white leading-tight">
-                  Sign In Required
+                  {t('errors.unauthorized', 'Sign In Required')}
                 </h4>
-                <p className="text-[10px] sm:text-xs font-semibold text-gray-400 dark:text-gray-500">
-                  Please sign in with Google to place your order.
+                <p className="text-[10px] sm:text-xs font-semibold text-gray-455 dark:text-gray-550">
+                  {t('login.signInRequiredMsg', 'Please sign in with Google to place your order.')}
                 </p>
               </div>
             </div>
@@ -1411,7 +1320,7 @@ export default function MenuPage({ params }: PageProps) {
                   d="M12 19.455c-1.345 0-2.7-.436-3.736-1.145l-3.864 3C6.3 23.009 9 24 12 24c4.664 0 8.673-2.673 10.655-6.573l-3.918-3.19c-.873 2.6-3.318 4.545-6.2 4.545z"
                 />
               </svg>
-              <span>Continue with Google</span>
+              <span>{t('login.loginBtn', 'Continue with Google')}</span>
             </button>
           </div>
         </div>
@@ -1419,8 +1328,8 @@ export default function MenuPage({ params }: PageProps) {
 
       {/* Footer */}
       <footer className="w-full py-6 border-t border-gray-150/40 dark:border-zinc-800/40 bg-white/60 dark:bg-zinc-950/20 text-center transition-colors">
-        <p className="text-[10px] font-bold text-gray-450 dark:text-gray-500 uppercase tracking-[0.2em]">
-          &copy; 2026 {hotelName || "HotByte"}. Tables QR Integrated.
+        <p className="text-[10px] font-bold text-gray-455 dark:text-gray-550 uppercase tracking-[0.2em]">
+          {t('common.copyrightQR', '© 2026 {{hotelName}}. Tables QR Integrated.').replace('{{hotelName}}', hotelName || "HotByte")}
         </p>
       </footer>
     </div>
