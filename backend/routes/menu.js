@@ -145,10 +145,33 @@ router.get("/items", async (req, res) => {
     `;
     
     const result = await db.query(query, params);
+    const items = result.rows;
+
+    if (items.length > 0) {
+      const itemIds = items.map(it => it.item_id);
+      const variantsResult = await db.query(
+        "SELECT id, menu_item_id, variant_name, price FROM public.menu_item_variants WHERE menu_item_id = ANY($1) ORDER BY id",
+        [itemIds]
+      );
+      const variantsMap = {};
+      variantsResult.rows.forEach(v => {
+        if (!variantsMap[v.menu_item_id]) {
+          variantsMap[v.menu_item_id] = [];
+        }
+        variantsMap[v.menu_item_id].push({
+          id: v.id,
+          variant_name: v.variant_name,
+          price: parseFloat(v.price)
+        });
+      });
+      items.forEach(it => {
+        it.variants = variantsMap[it.item_id] || [];
+      });
+    }
     
     return res.json({
       success: true,
-      items: result.rows,
+      items,
       hotelType: hotelType || "both"
     });
   } catch (error) {

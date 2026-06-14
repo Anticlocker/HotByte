@@ -3,6 +3,8 @@
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import CustomerNavbar from "@/components/CustomerNavbar";
+import HeroBackground from "@/components/landing/HeroBackground";
+import FloatingElements from "@/components/landing/FloatingElements";
 import { useTranslation } from "react-i18next";
 import "@/i18n";
 import {
@@ -34,10 +36,12 @@ interface MenuItem {
   is_veg: boolean;
   avg_rating?: string;
   reviews_count?: string;
+  variants?: { id: number; variant_name: string; price: number }[];
 }
 
 interface CartItem extends MenuItem {
   quantity: number;
+  selectedVariant?: { id: number; variant_name: string; price: number };
 }
 
 interface PageProps {
@@ -335,7 +339,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
     window.dispatchEvent(new Event("cartUpdated"));
   };
 
-  const handleAddToCart = (item: MenuItem) => {
+  const handleAddToCart = (item: MenuItem, selectedVariant?: { id: number; variant_name: string; price: number }) => {
     if (!isOpen) {
       Swal.fire({
         title: "Hotel Closed",
@@ -346,21 +350,30 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
       return;
     }
     if (!item.is_available) return;
-    const existing = cart.find((i) => i.item_id === item.item_id);
-    if (existing) {
-      const updated = cart.map((i) =>
-        i.item_id === item.item_id ? { ...i, quantity: i.quantity + 1 } : i
+    const priceToUse = selectedVariant ? selectedVariant.price : item.price;
+    
+    const existingIndex = cart.findIndex((i) => {
+      const sameItem = i.item_id === item.item_id;
+      const sameVariant = selectedVariant 
+        ? i.selectedVariant?.id === selectedVariant.id 
+        : !i.selectedVariant;
+      return sameItem && sameVariant;
+    });
+    
+    if (existingIndex > -1) {
+      const updated = cart.map((i, idx) =>
+        idx === existingIndex ? { ...i, quantity: i.quantity + 1 } : i
       );
       saveCartToStorage(updated);
     } else {
-      saveCartToStorage([...cart, { ...item, quantity: 1 }]);
+      saveCartToStorage([...cart, { ...item, price: priceToUse, quantity: 1, selectedVariant }]);
     }
     
     // Light vibration/sparkles feel
     navigator.vibrate?.(50);
   };
 
-  const handleDecreaseQuantity = (itemId: number) => {
+  const handleDecreaseQuantity = (itemId: number, selectedVariant?: { id: number; variant_name: string; price: number }) => {
     if (!isOpen) {
       Swal.fire({
         title: "Hotel Closed",
@@ -370,21 +383,36 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
       });
       return;
     }
-    const existing = cart.find((i) => i.item_id === itemId);
-    if (!existing) return;
+    
+    const existingIndex = cart.findIndex((i) => {
+      const sameItem = i.item_id === itemId;
+      const sameVariant = selectedVariant 
+        ? i.selectedVariant?.id === selectedVariant.id 
+        : !i.selectedVariant;
+      return sameItem && sameVariant;
+    });
+    
+    if (existingIndex === -1) return;
+    const existing = cart[existingIndex];
     if (existing.quantity === 1) {
-      const filtered = cart.filter((i) => i.item_id !== itemId);
+      const filtered = cart.filter((_, idx) => idx !== existingIndex);
       saveCartToStorage(filtered);
     } else {
-      const updated = cart.map((i) =>
-        i.item_id === itemId ? { ...i, quantity: i.quantity - 1 } : i
+      const updated = cart.map((i, idx) =>
+        idx === existingIndex ? { ...i, quantity: i.quantity - 1 } : i
       );
       saveCartToStorage(updated);
     }
   };
 
-  const handleRemoveFromCart = (itemId: number) => {
-    const filtered = cart.filter((i) => i.item_id !== itemId);
+  const handleRemoveFromCart = (itemId: number, selectedVariant?: { id: number; variant_name: string; price: number }) => {
+    const filtered = cart.filter((i) => {
+      const sameItem = i.item_id === itemId;
+      const sameVariant = selectedVariant 
+        ? i.selectedVariant?.id === selectedVariant.id 
+        : !i.selectedVariant;
+      return !(sameItem && sameVariant);
+    });
     saveCartToStorage(filtered);
   };
 
@@ -638,6 +666,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
               item_id: i.item_id,
               price: i.price,
               quantity: i.quantity,
+              selectedVariant: i.selectedVariant,
             })),
           }),
         });
@@ -725,6 +754,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
                     item_id: i.item_id,
                     price: i.price,
                     quantity: i.quantity,
+                    selectedVariant: i.selectedVariant,
                   })),
                   razorpay_order_id: response.razorpay_order_id,
                   razorpay_payment_id: response.razorpay_payment_id,
@@ -800,7 +830,14 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
   }
 
   return (
-    <div className="mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700 bg-white dark:bg-[#0b0d11] transition-colors duration-300">
+    <div className="relative z-0 mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700 bg-white dark:bg-[#0b0d11] transition-colors duration-300">
+      
+      {/* ── Interactive Animated Background ── */}
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        <HeroBackground />
+        <FloatingElements />
+      </div>
+
       <CustomerNavbar />
 
       {!isOpen && (
@@ -1161,14 +1198,14 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
               </div>
               <button
                 onClick={() => setIsCartOpen(false)}
-                className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white cursor-pointer"
+                className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-500 dark:text-gray-400 hover:text-gray-855 dark:hover:text-white cursor-pointer"
               >
                 <X size={20} />
               </button>
             </div>
 
             {/* Table Number & Quick Options */}
-            <div className="p-6 bg-gray-50 dark:bg-zinc-900/40 border-b border-gray-150 dark:border-zinc-800/50 flex items-center justify-between gap-4">
+            <div className="p-6 bg-gray-50 dark:bg-zinc-900/40 border-b border-gray-150 dark:border-zinc-805/50 flex items-center justify-between gap-4">
               <div className="flex flex-col">
                 <span className="text-[10px] font-bold text-gray-400 dark:text-gray-550 uppercase tracking-wider">{t('checkout.dineIn', 'Dining Station')}</span>
                 <span className="text-sm font-extrabold text-gray-800 dark:text-gray-200 mt-0.5">{t('checkout.tableNumber', 'Enter Table Number')}</span>
@@ -1186,60 +1223,76 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
               </select>
             </div>
 
-            {/* Cart Items List scrollable */}
-            <div className="flex-grow overflow-y-auto p-6 space-y-4">
-              {cart.map((item) => (
-                <div
-                  key={item.item_id}
-                  className="flex items-center justify-between gap-4 border-b border-gray-100 dark:border-zinc-800/40 pb-4 last:border-0"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-12 h-12 rounded-xl bg-gray-150 dark:bg-zinc-800 overflow-hidden flex-shrink-0">
-                      <img
-                        src={item.image_url}
-                        alt={item.name}
-                        className="w-full h-full object-cover"
-                      onError={handleImgError} />
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="font-extrabold text-sm text-gray-900 dark:text-white leading-snug truncate">
-                        {item.name}
-                      </h4>
-                      <p className="text-xs font-bold text-gray-450 dark:text-gray-550 mt-0.5 font-mono">₹{item.price}</p>
-                    </div>
+            {/* Basket Items List */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {cart.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center space-y-3">
+                  <div className="w-16 h-16 rounded-full bg-gray-50 dark:bg-zinc-900 flex items-center justify-center text-gray-400">
+                    <Utensils size={24} />
                   </div>
-
-                  <div className="flex items-center gap-3">
-                    {/* Quantity controls */}
-                    <div className="flex items-center gap-2.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-805 rounded-lg p-0.5">
-                      <button
-                        onClick={() => handleDecreaseQuantity(item.item_id)}
-                        disabled={!isOpen}
-                        className={`w-6 h-6 rounded-md flex items-center justify-center text-gray-600 dark:text-gray-400 ${
-                          isOpen ? "hover:bg-gray-200 dark:hover:bg-zinc-800 cursor-pointer" : "opacity-50 cursor-not-allowed"
-                        }`}
-                      >
-                        <Minus size={10} />
-                      </button>
-                      <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{item.quantity}</span>
-                      <button
-                        onClick={() => handleAddToCart(item)}
-                        disabled={!isOpen}
-                        className={`w-6 h-6 rounded-md flex items-center justify-center text-gray-600 dark:text-gray-400 ${
-                          isOpen ? "hover:bg-gray-200 dark:hover:bg-zinc-800 cursor-pointer" : "opacity-50 cursor-not-allowed"
-                        }`}
-                      >
-                        <Plus size={10} />
-                      </button>
-                    </div>
-
-                    {/* Total Price & Delete */}
-                    <span className="text-sm font-black text-gray-955 dark:text-white w-14 text-right font-mono">
-                      ₹{item.price * item.quantity}
-                    </span>
-                  </div>
+                  <h3 className="font-extrabold text-gray-900 dark:text-white">{t('cart.empty', 'Empty Basket')}</h3>
+                  <p className="text-xs text-gray-500 max-w-[200px]">
+                    {t('cart.emptyDesc', 'Add some delicious items from the menu to get started!')}
+                  </p>
                 </div>
-              ))}
+              ) : (
+                cart.map((item) => {
+                  const uniqueKey = item.selectedVariant ? `${item.item_id}_${item.selectedVariant.id}` : `${item.item_id}`;
+                  return (
+                    <div
+                      key={uniqueKey}
+                      className="flex items-center justify-between gap-4 border-b border-gray-100 dark:border-zinc-800/40 pb-4 last:border-0"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-12 h-12 rounded-xl bg-gray-150 dark:bg-zinc-800 overflow-hidden flex-shrink-0">
+                          <img
+                            src={item.image_url}
+                            alt={item.name}
+                            className="w-full h-full object-cover"
+                            onError={handleImgError}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-extrabold text-sm text-gray-900 dark:text-white leading-snug truncate">
+                            {item.name} {item.selectedVariant ? `(${item.selectedVariant.variant_name})` : ""}
+                          </h4>
+                          <p className="text-xs font-bold text-gray-450 dark:text-gray-550 mt-0.5 font-mono">₹{item.price}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        {/* Quantity controls */}
+                        <div className="flex items-center gap-2.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-805 rounded-lg p-0.5">
+                          <button
+                            onClick={() => handleDecreaseQuantity(item.item_id, item.selectedVariant)}
+                            disabled={!isOpen}
+                            className={`w-6 h-6 rounded-md flex items-center justify-center text-gray-600 dark:text-gray-400 ${
+                              isOpen ? "hover:bg-gray-200 dark:hover:bg-zinc-800 cursor-pointer" : "opacity-50 cursor-not-allowed"
+                            }`}
+                          >
+                            <Minus size={10} />
+                          </button>
+                          <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{item.quantity}</span>
+                          <button
+                            onClick={() => handleAddToCart(item, item.selectedVariant)}
+                            disabled={!isOpen}
+                            className={`w-6 h-6 rounded-md flex items-center justify-center text-gray-600 dark:text-gray-400 ${
+                              isOpen ? "hover:bg-gray-200 dark:hover:bg-zinc-805 cursor-pointer" : "opacity-50 cursor-not-allowed"
+                            }`}
+                          >
+                            <Plus size={10} />
+                          </button>
+                        </div>
+
+                        {/* Total Price & Delete */}
+                        <span className="text-sm font-black text-gray-955 dark:text-white w-14 text-right font-mono">
+                          ₹{item.price * item.quantity}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
 
             {/* Drawer Checkout Footer */}

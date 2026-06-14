@@ -158,6 +158,16 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
     );
     const dbItemsMap = new Map(dbItemsResult.rows.map(r => [r.item_id, parseFloat(r.price)]));
 
+    const variantIds = items.filter(i => i.selectedVariant?.id).map(i => i.selectedVariant.id);
+    let dbVariantsMap = new Map();
+    if (variantIds.length > 0) {
+      const dbVariantsResult = await db.query(
+        "SELECT id, menu_item_id, variant_name, price FROM public.menu_item_variants WHERE id = ANY($1)",
+        [variantIds]
+      );
+      dbVariantsMap = new Map(dbVariantsResult.rows.map(r => [r.id, { price: parseFloat(r.price), variant_name: r.variant_name, menu_item_id: r.menu_item_id }]));
+    }
+
     for (const item of items) {
       if (!item.item_id || !item.quantity) {
         return res.status(400).json({
@@ -165,15 +175,30 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
           message: "Invalid item data"
         });
       }
-      const verifiedPrice = dbItemsMap.get(item.item_id);
-      if (verifiedPrice === undefined) {
-        return res.status(400).json({
-          success: false,
-          message: "Item not found or not available at this hotel."
-        });
+      let itemPrice = 0;
+      if (item.selectedVariant?.id) {
+        const verifiedVariant = dbVariantsMap.get(item.selectedVariant.id);
+        if (!verifiedVariant || verifiedVariant.menu_item_id !== item.item_id) {
+          return res.status(400).json({
+            success: false,
+            message: "Selected portion variant not found or mismatch."
+          });
+        }
+        itemPrice = verifiedVariant.price;
+        item.variantName = verifiedVariant.variant_name;
+      } else {
+        const verifiedPrice = dbItemsMap.get(item.item_id);
+        if (verifiedPrice === undefined) {
+          return res.status(400).json({
+            success: false,
+            message: "Item not found or not available at this hotel."
+          });
+        }
+        itemPrice = verifiedPrice;
+        item.variantName = null;
       }
-      item.price = verifiedPrice;
-      totalAmount += verifiedPrice * item.quantity;
+      item.price = itemPrice;
+      totalAmount += itemPrice * item.quantity;
     }
 
     // ---------------- DB TRANSACTION START ----------------
@@ -194,9 +219,16 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
       // 2️⃣ INSERT ORDER ITEMS
       for (const item of items) {
         await client.query(
-          `INSERT INTO order_items (order_id, item_id, quantity, price)
-           VALUES ($1, $2, $3, $4)`,
-          [order.order_id, item.item_id, item.quantity, item.price]
+          `INSERT INTO order_items (order_id, item_id, quantity, price, variant_id, variant_name)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            order.order_id,
+            item.item_id,
+            item.quantity,
+            item.price,
+            item.selectedVariant?.id || null,
+            item.variantName || null
+          ]
         );
       }
 
@@ -361,19 +393,44 @@ router.post("/create", requireAuth, async (req, res) => {
     );
     const dbItemsMap = new Map(dbItemsResult.rows.map(r => [r.item_id, parseFloat(r.price)]));
 
+    const variantIds = items.filter(i => i.selectedVariant?.id).map(i => i.selectedVariant.id);
+    let dbVariantsMap = new Map();
+    if (variantIds.length > 0) {
+      const dbVariantsResult = await db.query(
+        "SELECT id, menu_item_id, variant_name, price FROM public.menu_item_variants WHERE id = ANY($1)",
+        [variantIds]
+      );
+      dbVariantsMap = new Map(dbVariantsResult.rows.map(r => [r.id, { price: parseFloat(r.price), variant_name: r.variant_name, menu_item_id: r.menu_item_id }]));
+    }
+
     for (const item of items) {
       if (!item.item_id || !item.quantity) {
         return res.status(400).json({ success: false, message: "Invalid item data." });
       }
-      const verifiedPrice = dbItemsMap.get(item.item_id);
-      if (verifiedPrice === undefined) {
-        return res.status(400).json({
-          success: false,
-          message: "Item not found or not available at this hotel."
-        });
+      let itemPrice = 0;
+      if (item.selectedVariant?.id) {
+        const verifiedVariant = dbVariantsMap.get(item.selectedVariant.id);
+        if (!verifiedVariant || verifiedVariant.menu_item_id !== item.item_id) {
+          return res.status(400).json({
+            success: false,
+            message: "Selected portion variant not found or mismatch."
+          });
+        }
+        itemPrice = verifiedVariant.price;
+        item.variantName = verifiedVariant.variant_name;
+      } else {
+        const verifiedPrice = dbItemsMap.get(item.item_id);
+        if (verifiedPrice === undefined) {
+          return res.status(400).json({
+            success: false,
+            message: "Item not found or not available at this hotel."
+          });
+        }
+        itemPrice = verifiedPrice;
+        item.variantName = null;
       }
-      item.price = verifiedPrice;
-      totalAmount += verifiedPrice * parseInt(item.quantity);
+      item.price = itemPrice;
+      totalAmount += itemPrice * parseInt(item.quantity);
     }
 
     const client = await db.connect();
@@ -389,19 +446,20 @@ router.post("/create", requireAuth, async (req, res) => {
 
       const order = orderResult.rows[0];
 
-      const orderItemsValues = items.map((item, index) => 
-        `($1, $${index * 3 + 2}, $${index * 3 + 3}, $${index * 3 + 4})`
-      ).join(', ');
-      
-      const orderItemsParams = [order.order_id];
-      items.forEach(item => {
-        orderItemsParams.push(item.item_id, item.quantity, item.price);
-      });
-
-      await client.query(
-        `INSERT INTO order_items (order_id, item_id, quantity, price) VALUES ${orderItemsValues}`,
-        orderItemsParams
-      );
+      for (const item of items) {
+        await client.query(
+          `INSERT INTO order_items (order_id, item_id, quantity, price, variant_id, variant_name)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            order.order_id,
+            item.item_id,
+            item.quantity,
+            item.price,
+            item.selectedVariant?.id || null,
+            item.variantName || null
+          ]
+        );
+      }
 
       await client.query(
         `INSERT INTO payments (order_id, amount, payment_status, payment_method) 

@@ -1,8 +1,13 @@
-import React from "react";
+import React, { useState } from "react";
 import { Minus, Plus, Utensils, AlertTriangle } from "lucide-react";
-import { Leaf } from "lucide-react"; // Assuming Leaf icon is imported from lucide-react
 import { useTranslation } from "react-i18next";
 import "@/i18n";
+
+interface MenuItemVariant {
+  id: number;
+  variant_name: string;
+  price: number;
+}
 
 interface MenuItem {
   item_id: number;
@@ -15,14 +20,15 @@ interface MenuItem {
   is_available: boolean;
   avg_rating?: string;
   is_active?: boolean;
+  variants?: MenuItemVariant[];
 }
 
 interface Props {
   item: MenuItem;
-  cart: { item_id: number; quantity: number }[];
+  cart: any[];
   isOpen: boolean;
-  handleAddToCart: (item: MenuItem) => void;
-  handleDecreaseQuantity: (itemId: number) => void;
+  handleAddToCart: (item: MenuItem, selectedVariant?: MenuItemVariant) => void;
+  handleDecreaseQuantity: (itemId: number, selectedVariant?: MenuItemVariant) => void;
   handleImgError: (e: React.SyntheticEvent<HTMLImageElement, Event>) => void;
 }
 
@@ -35,6 +41,23 @@ const MenuItemCard: React.FC<Props> = ({
   handleImgError,
 }) => {
   const { t } = useTranslation();
+  
+  // Local state for variant selection, defaults to first variant if exists
+  const [selectedVariant, setSelectedVariant] = useState<MenuItemVariant | undefined>(
+    item.variants && item.variants.length > 0 ? item.variants[0] : undefined
+  );
+
+  const currentQuantity = (() => {
+    if (selectedVariant) {
+      const cartItem = cart.find(
+        (i) => i.item_id === item.item_id && i.selectedVariant?.id === selectedVariant.id
+      );
+      return cartItem ? cartItem.quantity : 0;
+    }
+    const cartItem = cart.find((i) => i.item_id === item.item_id && !i.selectedVariant);
+    return cartItem ? cartItem.quantity : 0;
+  })();
+
   return (
     <div
       className={`menu-card-hover bg-white dark:bg-zinc-900 border border-gray-150/40 dark:border-zinc-800/55 rounded-xl sm:rounded-2xl overflow-hidden flex flex-col relative transition-all duration-300 ${
@@ -98,40 +121,71 @@ const MenuItemCard: React.FC<Props> = ({
           <h3 className="font-extrabold text-[12px] sm:text-[13px] md:text-sm text-gray-900 dark:text-white leading-snug line-clamp-2">
             {item.name}
           </h3>
-          <p className="text-[10px] sm:text-xs font-semibold text-gray-450 dark:text-gray-550 line-clamp-1 sm:line-clamp-2">
+          <p className="text-[10px] sm:text-xs font-semibold text-gray-455 dark:text-gray-550 line-clamp-1 sm:line-clamp-2">
             {item.description}
           </p>
         </div>
+
+        {/* Portion Selector pills */}
+        {item.variants && item.variants.length > 0 && (
+          <div className="flex flex-col gap-1 mt-1 border-t border-gray-100 dark:border-zinc-800/40 pt-2 pb-0.5">
+            <span className="text-[8px] font-bold text-gray-450 dark:text-gray-550 uppercase tracking-wider block">
+              Choose Portion:
+            </span>
+            <div className="flex flex-wrap gap-1 mt-0.5">
+              {item.variants.map((v) => {
+                const isSelected = selectedVariant?.id === v.id;
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => setSelectedVariant(v)}
+                    className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase transition-all duration-200 cursor-pointer ${
+                      isSelected
+                        ? "bg-orange-500 text-white shadow-sm"
+                        : "bg-gray-50 dark:bg-zinc-800 border border-gray-200/50 dark:border-zinc-750 text-gray-655 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                    }`}
+                  >
+                    {v.variant_name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between pt-1">
           <div className="flex flex-col leading-none">
-            <span className="text-[8px] sm:text-[9px] text-gray-400 dark:text-gray-550 font-bold uppercase tracking-wider">
+            <span className="text-[8px] sm:text-[9px] text-gray-400 dark:text-gray-555 font-bold uppercase tracking-wider">
               {t('admin.itemPrice', 'Price')}
             </span>
             <span className="text-sm sm:text-base font-black text-gray-900 dark:text-white mt-0.5 font-mono">
-              ₹{item.price}
+              ₹{selectedVariant ? selectedVariant.price : item.price}
             </span>
           </div>
           {!isOpen ? (
             <button
               disabled
-              className="px-2 sm:px-3 py-1.5 text-gray-400 dark:text-gray-550 font-bold text-[9px] sm:text-xs bg-gray-150 dark:bg-zinc-800 border border-gray-250 dark:border-zinc-800 rounded-lg flex items-center gap-1 cursor-not-allowed uppercase"
+              className="px-2 sm:px-3 py-1.5 text-gray-400 dark:text-gray-555 font-bold text-[9px] sm:text-xs bg-gray-150 dark:bg-zinc-800 border border-gray-250 dark:border-zinc-800 rounded-lg flex items-center gap-1 cursor-not-allowed uppercase"
             >
               {t('menu.closed', 'Closed')}
             </button>
           ) : item.is_available ? (
-            cart.find((i) => i.item_id === item.item_id) ? (
+            currentQuantity > 0 ? (
               <div className="flex items-center gap-1 sm:gap-1.5 bg-orange-50 dark:bg-orange-950/15 border border-orange-200 dark:border-orange-900/30 rounded-lg p-0.5 shadow-sm">
                 <button
-                  onClick={() => handleDecreaseQuantity(item.item_id)}
+                  type="button"
+                  onClick={() => handleDecreaseQuantity(item.item_id, selectedVariant)}
                   className="w-5.5 h-5.5 sm:w-7 sm:h-7 rounded-md active:bg-orange-100 dark:active:bg-orange-950/40 flex items-center justify-center text-orange-600 dark:text-orange-400 transition-colors cursor-pointer"
                 >
                   <Minus size={10} />
                 </button>
                 <span className="text-[11px] sm:text-xs font-extrabold text-orange-950 dark:text-orange-100 min-w-[12px] text-center">
-                  {cart.find((i) => i.item_id === item.item_id)?.quantity}
+                  {currentQuantity}
                 </span>
                 <button
-                  onClick={() => handleAddToCart(item)}
+                  type="button"
+                  onClick={() => handleAddToCart(item, selectedVariant)}
                   className="w-5.5 h-5.5 sm:w-7 sm:h-7 rounded-md active:bg-orange-100 dark:active:bg-orange-950/40 flex items-center justify-center text-orange-600 dark:text-orange-400 transition-colors cursor-pointer"
                 >
                   <Plus size={10} />
@@ -139,7 +193,8 @@ const MenuItemCard: React.FC<Props> = ({
               </div>
             ) : (
               <button
-                onClick={() => handleAddToCart(item)}
+                type="button"
+                onClick={() => handleAddToCart(item, selectedVariant)}
                 className="px-2 sm:px-3 py-1.5 text-white font-bold text-[9px] sm:text-xs rounded-lg flex items-center gap-1 btn-orange cursor-pointer"
               >
                 <Plus size={10} />

@@ -32,6 +32,7 @@ interface OrderItem {
   quantity: number;
   price: number;
   imageUrl: string;
+  variantName?: string;
 }
 
 interface Order {
@@ -503,7 +504,7 @@ export default function Profile() {
                                   </div>
                                 )}
                                 <span className="text-xs font-extrabold text-gray-900 truncate">
-                                  {item.name}
+                                  {item.name} {item.variantName ? `(${item.variantName})` : ""}
                                 </span>
                               </div>
                               <span className="text-xs font-bold text-gray-500 whitespace-nowrap">

@@ -34,14 +34,15 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const allowedTypes = /jpeg|jpg|png|webp/;
+    const allowedMimetypes = /image\/(jpeg|jpg|png|webp)/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
+    const mimetype = allowedMimetypes.test(file.mimetype);
 
     if (mimetype && extname) {
       return cb(null, true);
     } else {
-      cb(new Error("Only image files are allowed (jpeg, jpg, png, gif, webp)"));
+      cb(new Error("Only static image files are allowed (jpeg, jpg, png, webp)"));
     }
   },
 });
@@ -198,7 +199,29 @@ router.get("/items", requireAdmin, async (req, res) => {
     }
     query += " ORDER BY mc.category_name, mi.item_name";
     const result = await db.query(query, params);
-    return res.json({ success: true, items: result.rows });
+    const items = result.rows;
+    if (items.length > 0) {
+      const itemIds = items.map(it => it.item_id);
+      const variantsResult = await db.query(
+        "SELECT id, menu_item_id, variant_name, price FROM public.menu_item_variants WHERE menu_item_id = ANY($1) ORDER BY id",
+        [itemIds]
+      );
+      const variantsMap = {};
+      variantsResult.rows.forEach(v => {
+        if (!variantsMap[v.menu_item_id]) {
+          variantsMap[v.menu_item_id] = [];
+        }
+        variantsMap[v.menu_item_id].push({
+          id: v.id,
+          variant_name: v.variant_name,
+          price: parseFloat(v.price)
+        });
+      });
+      items.forEach(it => {
+        it.variants = variantsMap[it.item_id] || [];
+      });
+    }
+    return res.json({ success: true, items });
   } catch (error) {
     logger.error("Get items error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch items" });
@@ -220,7 +243,15 @@ router.post("/items", requireAdmin, (req, res, next) => {
   });
 }, async (req, res) => {
   try {
-    const { item_name, category_id, price, description, is_available, is_veg } = req.body;
+    const { item_name, category_id, price, description, is_available, is_veg, variants } = req.body;
+    let parsedVariants = null;
+    if (variants) {
+      try {
+        parsedVariants = typeof variants === 'string' ? JSON.parse(variants) : variants;
+      } catch (e) {
+        logger.error("Error parsing variants:", e);
+      }
+    }
     let image_url = null;
 
     if (!item_name || !category_id || !price) {
@@ -313,7 +344,19 @@ router.post("/items", requireAdmin, (req, res, next) => {
       [safeItemName, category_id, parseFloat(price), image_url, safeDescription, isAvailableBool, isVegBool, hotelId]
     );
 
-    return res.json({ success: true, item: result.rows[0] });
+    const newItem = result.rows[0];
+
+    if (parsedVariants && parsedVariants.length > 0) {
+      for (const v of parsedVariants) {
+        await db.query(
+          "INSERT INTO public.menu_item_variants (menu_item_id, variant_name, price) VALUES ($1, $2, $3)",
+          [newItem.item_id, v.variant_name.trim(), parseFloat(v.price)]
+        );
+      }
+      newItem.variants = parsedVariants;
+    }
+
+    return res.json({ success: true, item: newItem });
   } catch (error) {
     logger.error("Create item error:", error);
     return res.status(500).json({ success: false, message: "Failed to create item" });
@@ -336,7 +379,15 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
 }, async (req, res) => {
   try {
     const { id } = req.params;
-    const { item_name, category_id, price, description, is_available, is_veg, existing_image_url } = req.body;
+    const { item_name, category_id, price, description, is_available, is_veg, existing_image_url, variants } = req.body;
+    let parsedVariants = null;
+    if (variants) {
+      try {
+        parsedVariants = typeof variants === 'string' ? JSON.parse(variants) : variants;
+      } catch (e) {
+        logger.error("Error parsing variants:", e);
+      }
+    }
 
     if (!item_name || !category_id || !price) {
       return res.status(400).json({ success: false, message: "Item name, category, and price are required" });
@@ -461,7 +512,23 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
       return res.status(404).json({ success: false, message: "Item not found" });
     }
 
-    return res.json({ success: true, item: result.rows[0] });
+    const updatedItem = result.rows[0];
+
+    // Clear old variants and insert new ones
+    await db.query("DELETE FROM public.menu_item_variants WHERE menu_item_id = $1", [id]);
+    if (parsedVariants && parsedVariants.length > 0) {
+      for (const v of parsedVariants) {
+        await db.query(
+          "INSERT INTO public.menu_item_variants (menu_item_id, variant_name, price) VALUES ($1, $2, $3)",
+          [id, v.variant_name.trim(), parseFloat(v.price)]
+        );
+      }
+      updatedItem.variants = parsedVariants;
+    } else {
+      updatedItem.variants = [];
+    }
+
+    return res.json({ success: true, item: updatedItem });
   } catch (error) {
     logger.error("Update item error:", error);
     return res.status(500).json({ success: false, message: "Failed to update item" });
@@ -574,7 +641,8 @@ router.get("/orders", requireAdmin, async (req, res) => {
               'order_item_id', oi.order_item_id,
               'quantity', oi.quantity,
               'price', oi.price,
-              'item_name', mi.item_name
+              'item_name', mi.item_name,
+              'variant_name', oi.variant_name
             )
           ) FILTER (WHERE oi.order_item_id IS NOT NULL),
           '[]'::json
@@ -988,7 +1056,8 @@ router.get("/users/:id", requireAdmin, async (req, res) => {
               'order_item_id', oi.order_item_id,
               'quantity', oi.quantity,
               'price', oi.price,
-              'item_name', mi.item_name
+              'item_name', mi.item_name,
+              'variant_name', oi.variant_name
             ) ORDER BY mi.item_name
           ) FILTER (WHERE oi.order_item_id IS NOT NULL),
           '[]'::json

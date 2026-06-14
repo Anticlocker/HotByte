@@ -117,11 +117,24 @@ CREATE TABLE IF NOT EXISTS public.menu_items
 
 CREATE INDEX IF NOT EXISTS idx_menu_items_hotel_id ON public.menu_items(hotel_id);
 
+CREATE TABLE IF NOT EXISTS public.menu_item_variants
+(
+    id serial PRIMARY KEY,
+    menu_item_id integer REFERENCES public.menu_items(item_id) ON DELETE CASCADE,
+    variant_name character varying(100) NOT NULL,
+    price numeric(10, 2) NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_menu_item_variants_item_id ON public.menu_item_variants(menu_item_id);
+
 CREATE TABLE IF NOT EXISTS public.order_items
 (
     order_item_id serial NOT NULL,
     order_id integer,
     item_id integer,
+    variant_id integer REFERENCES public.menu_item_variants(id) ON DELETE SET NULL,
+    variant_name character varying(100),
     quantity integer NOT NULL,
     price numeric(10, 2) NOT NULL,
     CONSTRAINT order_items_pkey PRIMARY KEY (order_item_id)

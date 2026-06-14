@@ -27,6 +27,7 @@ interface OrderItem {
   item_name: string;
   quantity: number;
   price: number;
+  variant_name?: string;
 }
 
 interface Order {
@@ -521,7 +522,7 @@ function OrderKanbanCard({
         <div className="space-y-1.5 pl-0.5">
           {order.items.map((item, index) => (
             <div key={index} className="flex justify-between items-center text-xs">
-              <span className="font-bold text-gray-300 line-clamp-1">{item.item_name}</span>
+              <span className="font-bold text-gray-300 line-clamp-1">{item.item_name} {item.variant_name ? `(${item.variant_name})` : ""}</span>
               <span className="font-extrabold text-orange-500 ml-3 whitespace-nowrap">x {item.quantity}</span>
             </div>
           ))}

@@ -17,6 +17,7 @@ interface OrderItem {
   item_name: string;
   quantity: number;
   price: number;
+  variant_name?: string;
 }
 
 interface HistoricOrder {
@@ -258,7 +259,7 @@ export default function OrderHistoryArchive() {
 
                           {/* Items Summary */}
                           <td className="p-4 max-w-xs truncate">
-                            {order.items.map((i) => `${i.item_name} (x${i.quantity})`).join(", ")}
+                            {order.items.map((i) => `${i.item_name}${i.variant_name ? ` (${i.variant_name})` : ""} (x${i.quantity})`).join(", ")}
                           </td>
 
                           {/* Gross Amount */}

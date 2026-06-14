@@ -41,8 +41,8 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "checkout.razorpay.com", "accounts.google.com"],
       styleSrc: ["'self'", "'unsafe-inline'", "cdnjs.cloudflare.com", "fonts.googleapis.com"],
-      imgSrc: ["'self'", "data:", "*.b-cdn.net", "images.unsplash.com"],
-      connectSrc: ["'self'", "https://api.razorpay.com"],
+      imgSrc: ["'self'", "data:", "*.b-cdn.net", "images.unsplash.com", "lh3.googleusercontent.com"],
+      connectSrc: ["'self'", "https://api.razorpay.com", "https://accounts.google.com", "https://oauth2.googleapis.com"],
       frameSrc: ["checkout.razorpay.com", "accounts.google.com"],
       fontSrc: ["'self'", "fonts.gstatic.com", "cdnjs.cloudflare.com"],
     }
@@ -145,6 +145,24 @@ const paymentLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// 🔐 Google Login rate limiting — prevent SSO token hammering
+const googleLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Max 20 Google SSO attempts per IP
+  message: { success: false, message: 'Too many login attempts. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 👤 Guest check-in rate limiting — prevent anonymous identity farming
+const guestCheckinLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30, // Max 30 guest check-ins per IP
+  message: { success: false, message: 'Too many guest check-in attempts. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ================= MIDDLEWARE SETUP =================
 // 📦 Middleware = Request aur Response ke beech me kaam karne wale functions
 
@@ -172,6 +190,12 @@ app.use((req, res, next) => {
   // XSS (Cross-Site Scripting) attack se bachata hai
   // Browser ka built-in XSS protection enable karta hai
   res.setHeader('X-XSS-Protection', '1; mode=block');
+
+  // Referrer Policy: don't leak full URL to third-party domains
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  // Permissions Policy: disable browser features this app doesn't use
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
 
   next(); // Agle middleware ko call karta hai
 });
@@ -221,6 +245,8 @@ app.get('/health', (req, res) => {
 app.use('/api/auth/admin/login', adminLoginLimiter); // Admin login limit
 app.use('/api/auth/send-otp', sendOtpLimiter); // OTP bhejne ki limit
 app.use('/api/auth/verify-otp', verifyOtpLimiter); // OTP verify karne ki limit
+app.use('/api/auth/google-login', googleLoginLimiter); // Google SSO login limit
+app.use('/api/auth/guest-checkin', guestCheckinLimiter); // Guest check-in limit
 app.use('/api/payments', paymentLimiter); // Payment requests ki limit
 
 // Authentication routes (Login, Signup, OTP, Session)

@@ -10,6 +10,7 @@ interface OrderItem {
   order_item_id: number;
   item_name: string;
   quantity: number;
+  variant_name?: string;
 }
 
 interface Order {
@@ -270,7 +271,7 @@ function KitchenOrderCard({
         <div className="space-y-2 pt-2 border-t border-gray-900">
           {order.items.map((item, idx) => (
             <div key={idx} className="flex justify-between items-start gap-3">
-              <span className="font-black text-sm text-gray-200">{item.item_name}</span>
+              <span className="font-black text-sm text-gray-200">{item.item_name} {item.variant_name ? `(${item.variant_name})` : ""}</span>
               <span className="font-black text-base text-[var(--orange)] bg-orange-500/5 px-2 py-0.5 rounded border border-orange-500/15 whitespace-nowrap">
                 x {item.quantity}
               </span>

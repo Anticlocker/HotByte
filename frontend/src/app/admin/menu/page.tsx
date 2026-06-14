@@ -35,6 +35,7 @@ interface MenuItem {
   category_name: string;
   is_available: boolean;
   is_veg: boolean;
+  variants?: { id: number; variant_name: string; price: number }[];
 }
 
 export default function AdminMenu() {
@@ -60,6 +61,9 @@ export default function AdminMenu() {
   const [formIsAvailable, setFormIsAvailable] = useState(true);
   const [formFile, setFormFile] = useState<File | null>(null);
   const [formFilePreview, setFormFilePreview] = useState("");
+  const [portionType, setPortionType] = useState<"single" | "half_full">("single");
+  const [formHalfPrice, setFormHalfPrice] = useState("");
+  const [formFullPrice, setFormFullPrice] = useState("");
 
   const fetchSettingsData = async () => {
     try {
@@ -116,6 +120,9 @@ export default function AdminMenu() {
     setFormIsAvailable(true);
     setFormFile(null);
     setFormFilePreview("");
+    setPortionType("single");
+    setFormHalfPrice("");
+    setFormFullPrice("");
   };
 
   const handleOpenAddModal = () => {
@@ -140,6 +147,18 @@ export default function AdminMenu() {
     setFormIsAvailable(item.is_available);
     setFormFile(null);
     setFormFilePreview(item.image_url || "");
+    
+    if (item.variants && item.variants.length > 0) {
+      setPortionType("half_full");
+      const half = item.variants.find(v => v.variant_name === "Half");
+      const full = item.variants.find(v => v.variant_name === "Full");
+      setFormHalfPrice(half ? half.price.toString() : "");
+      setFormFullPrice(full ? full.price.toString() : "");
+    } else {
+      setPortionType("single");
+      setFormHalfPrice("");
+      setFormFullPrice("");
+    }
     setIsItemModalOpen(true);
   };
 
@@ -153,8 +172,11 @@ export default function AdminMenu() {
 
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName.trim() || !formCategory || !formPrice) {
-      Swal.fire(t("admin.menu.requiredFields"), t("admin.menu.requiredFieldsMsg"), "warning");
+    const isSingle = portionType === "single";
+    const resolvedPrice = isSingle ? formPrice : formHalfPrice;
+    
+    if (!formName.trim() || !formCategory || (!isSingle && (!formHalfPrice || !formFullPrice)) || (isSingle && !formPrice)) {
+      Swal.fire("Required Fields", "Please fill in all price and portion variant fields.", "warning");
       return;
     }
 
@@ -168,10 +190,19 @@ export default function AdminMenu() {
     const formData = new FormData();
     formData.append("item_name", formName.trim());
     formData.append("category_id", formCategory);
-    formData.append("price", formPrice);
+    formData.append("price", resolvedPrice);
     formData.append("description", formDescription.trim());
     formData.append("is_veg", String(formIsVeg));
     formData.append("is_available", String(formIsAvailable));
+    if (portionType === "half_full") {
+      const variantsList = [
+        { variant_name: "Half", price: parseFloat(formHalfPrice) },
+        { variant_name: "Full", price: parseFloat(formFullPrice) }
+      ];
+      formData.append("variants", JSON.stringify(variantsList));
+    } else {
+      formData.append("variants", "[]");
+    }
     if (formFile) {
       formData.append("image", formFile);
     } else if (editingItem) {
@@ -490,8 +521,18 @@ export default function AdminMenu() {
                       </td>
 
                       {/* Price */}
-                      <td className="p-4 text-sm font-black text-white">
-                        ₹{item.price}
+                      <td className="p-4 text-xs font-bold text-white">
+                        {item.variants && item.variants.length > 0 ? (
+                          <div className="flex flex-col gap-0.5">
+                            {item.variants.map((v) => (
+                              <span key={v.id} className="text-gray-400 block whitespace-nowrap">
+                                {v.variant_name}: <span className="text-white font-black font-mono">₹{v.price}</span>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="font-black font-mono text-sm">₹{item.price}</span>
+                        )}
                       </td>
 
                       {/* Stock Switch */}
@@ -665,22 +706,71 @@ export default function AdminMenu() {
                   </select>
                 </div>
 
-                {/* Price */}
+                {/* Portion Type */}
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider block">
-                    {t("admin.menu.priceINR")}
+                    Portion Type
                   </label>
-                  <input
-                    type="number"
-                    required
-                    min="0"
-                    step="0.01"
-                    value={formPrice}
-                    onChange={(e) => setFormPrice(e.target.value)}
-                    placeholder={t("admin.menu.pricePlaceholder")}
-                    className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-xs font-bold text-white focus:border-orange-500 outline-none transition-all"
-                  />
+                  <select
+                    value={portionType}
+                    onChange={(e) => setPortionType(e.target.value as any)}
+                    className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-xs font-bold text-gray-300 focus:border-orange-500 outline-none cursor-pointer"
+                  >
+                    <option value="single">Single Price</option>
+                    <option value="half_full">Half & Full Price</option>
+                  </select>
                 </div>
+
+                {portionType === "single" ? (
+                  <div className="space-y-2 col-span-2">
+                    <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider block">
+                      {t("admin.menu.priceINR")}
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      step="0.01"
+                      value={formPrice}
+                      onChange={(e) => setFormPrice(e.target.value)}
+                      placeholder={t("admin.menu.pricePlaceholder")}
+                      className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-xs font-bold text-white focus:border-orange-500 outline-none transition-all"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2 col-span-1">
+                      <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider block">
+                        Half Price (₹)
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        step="0.01"
+                        value={formHalfPrice}
+                        onChange={(e) => setFormHalfPrice(e.target.value)}
+                        placeholder="Half portion price"
+                        className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-xs font-bold text-white focus:border-orange-500 outline-none transition-all"
+                      />
+                    </div>
+                    <div className="space-y-2 col-span-1">
+                      <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider block">
+                        Full Price (₹)
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        step="0.01"
+                        value={formFullPrice}
+                        onChange={(e) => setFormFullPrice(e.target.value)}
+                        placeholder="Full portion price"
+                        className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-xs font-bold text-white focus:border-orange-500 outline-none transition-all"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Description */}

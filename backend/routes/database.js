@@ -144,7 +144,17 @@ pool.connect(async (err, client, release) => {
                       ADD CONSTRAINT ratings_rating_value_check 
                       CHECK (rating_value BETWEEN 1 AND 5);
                   END IF;
-                END $$;`
+                END $$;`,
+                `CREATE TABLE IF NOT EXISTS public.menu_item_variants (
+                    id SERIAL PRIMARY KEY,
+                    menu_item_id INTEGER REFERENCES public.menu_items(item_id) ON DELETE CASCADE,
+                    variant_name VARCHAR(100) NOT NULL,
+                    price NUMERIC(10, 2) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );`,
+                `CREATE INDEX IF NOT EXISTS idx_menu_item_variants_item_id ON public.menu_item_variants(menu_item_id);`,
+                `ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS variant_id INTEGER REFERENCES public.menu_item_variants(id) ON DELETE SET NULL;`,
+                `ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS variant_name VARCHAR(100);`
             ];
             for (const sql of migrations) {
                 await client.query(sql);
