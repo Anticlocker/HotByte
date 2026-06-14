@@ -116,6 +116,7 @@ pool.connect(async (err, client, release) => {
                 "ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS require_customer_auth BOOLEAN DEFAULT FALSE;",
                 "ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS customer_auth_required BOOLEAN DEFAULT FALSE;",
                 "ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS suspicious_activity_mode BOOLEAN DEFAULT FALSE;",
+                "ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS location_ordering_enabled BOOLEAN DEFAULT TRUE;",
                 // Additional Payment & QR Configurations (Priority 7)
                 "ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS upi_id VARCHAR(100);",
                 "ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS merchant_name VARCHAR(200);",

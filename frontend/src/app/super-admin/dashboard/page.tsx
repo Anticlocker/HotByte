@@ -29,6 +29,7 @@ interface Hotel {
   orderRadius: number;
   hotelType: string;
   requireCustomerAuth: boolean;
+  locationOrderingEnabled: boolean;
 }
 
 interface AdminManager {
@@ -63,6 +64,7 @@ export default function SuperAdminDashboard() {
   const [hotelPlan, setHotelPlan] = useState<'trial' | 'basic' | 'pro'>('trial');
   const [hotelTableCount, setHotelTableCount] = useState("5");
   const [hotelAuthRequired, setHotelAuthRequired] = useState(false);
+  const [hotelLocationOrderingEnabled, setHotelLocationOrderingEnabled] = useState(true);
 
   // Hotel Admin fields inside Create Hotel
   const [adminName, setAdminName] = useState("");
@@ -99,6 +101,7 @@ export default function SuperAdminDashboard() {
     setHotelOrderRadius(String(hotel.orderRadius || 30));
     setHotelTypeVal((hotel.hotelType as "veg" | "nonveg" | "both") || "both");
     setHotelAuthRequired(hotel.requireCustomerAuth || false);
+    setHotelLocationOrderingEnabled(hotel.locationOrderingEnabled !== false);
     setMapReady(false); // will re-init map
   };
 
@@ -116,6 +119,7 @@ export default function SuperAdminDashboard() {
     setHotelOrderRadius("30");
     setHotelTypeVal("both");
     setHotelAuthRequired(false);
+    setHotelLocationOrderingEnabled(true);
     setMapReady(false);
     setAdminName("");
     setAdminUsername("");
@@ -240,6 +244,51 @@ export default function SuperAdminDashboard() {
           
           if (editingHotel?.id === hotel.id) {
             setHotelAuthRequired(!hotel.requireCustomerAuth);
+          }
+        } else {
+          Swal.fire("Override Failed", data.message || "An error occurred.", "error");
+        }
+      } catch (err) {
+        Swal.fire("Connection Error", "Could not reach override API.", "error");
+      }
+    }
+  };
+
+  const handleToggleLocationOrderingOverride = async (hotel: Hotel) => {
+    const actionText = hotel.locationOrderingEnabled !== false ? "disable" : "enable";
+    const confirm = await Swal.fire({
+      title: `${hotel.locationOrderingEnabled !== false ? "Disable" : "Enable"} Location-Based Ordering?`,
+      text: `Are you sure you want to ${actionText} location-based ordering for "${hotel.name}"?`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonColor: hotel.locationOrderingEnabled !== false ? "#EF4444" : "#10B981",
+      cancelButtonColor: "#1f1f1f",
+      confirmButtonText: `Yes, ${hotel.locationOrderingEnabled !== false ? "Disable" : "Enable"}`
+    });
+
+    if (confirm.isConfirmed) {
+      try {
+        const res = await fetch(`/api/superadmin/hotels/${hotel.id}/location-ordering`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            locationOrderingEnabled: !(hotel.locationOrderingEnabled !== false)
+          })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          Swal.fire({
+            title: hotel.locationOrderingEnabled !== false ? "Disabled!" : "Enabled!",
+            text: `Location-based ordering was overridden successfully for "${hotel.name}".`,
+            icon: "success",
+            timer: 1500,
+            showConfirmButton: false
+          });
+          checkSessionAndFetch();
+          
+          if (editingHotel?.id === hotel.id) {
+            setHotelLocationOrderingEnabled(!(hotel.locationOrderingEnabled !== false));
           }
         } else {
           Swal.fire("Override Failed", data.message || "An error occurred.", "error");
@@ -670,7 +719,8 @@ export default function SuperAdminDashboard() {
         orderRadius: parseInt(hotelOrderRadius) || 30,
         hotel_type: hotelTypeVal,
         hotelType: hotelTypeVal,
-        requireCustomerAuth: hotelAuthRequired
+        requireCustomerAuth: hotelAuthRequired,
+        locationOrderingEnabled: hotelLocationOrderingEnabled
       };
 
       if (!editingHotel) {
@@ -1228,6 +1278,24 @@ export default function SuperAdminDashboard() {
                     </div>
                   </div>
 
+                  <div className="flex items-start gap-2.5 bg-yellow-500/5 border border-yellow-500/10 rounded-xl p-3.5 mb-2">
+                    <input 
+                      type="checkbox"
+                      id="locationOrderingEnabled"
+                      checked={hotelLocationOrderingEnabled}
+                      onChange={(e) => setHotelLocationOrderingEnabled(e.target.checked)}
+                      className="w-4 h-4 rounded accent-yellow-500 bg-gray-900 border-gray-800 focus:ring-0 cursor-pointer mt-0.5"
+                    />
+                    <div className="flex flex-col">
+                      <label htmlFor="locationOrderingEnabled" className="text-xs text-yellow-500 font-extrabold uppercase tracking-wider cursor-pointer">
+                        Location-Based Ordering
+                      </label>
+                      <span className="text-[10px] text-gray-500 font-semibold leading-normal">
+                        Require customers to be within the hotel's configured radius before placing an order.
+                      </span>
+                    </div>
+                  </div>
+
                   {editingHotel && (
                     <div className="flex items-start gap-2.5 bg-red-950/20 border border-red-500/10 rounded-xl p-3.5 mb-2">
                       <input 
@@ -1441,6 +1509,14 @@ export default function SuperAdminDashboard() {
                               {h.requireCustomerAuth ? "Authentication Enabled" : "Authentication Disabled"}
                             </span>
 
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border mb-1.5 ml-1.5 ${
+                              h.locationOrderingEnabled !== false
+                                ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400" 
+                                : "bg-red-500/10 border-red-500/25 text-red-400"
+                            }`}>
+                              {h.locationOrderingEnabled !== false ? "Location Enabled" : "Location Disabled"}
+                            </span>
+
                             <div className="flex items-center gap-1 text-[11px] text-yellow-500">
                               <Globe size={10} />
                               <span>/{h.slug}</span>
@@ -1506,6 +1582,16 @@ export default function SuperAdminDashboard() {
                                 }`}
                               >
                                 {h.requireCustomerAuth ? "Disable Auth" : "Enable Auth"}
+                              </button>
+                              <button
+                                onClick={() => handleToggleLocationOrderingOverride(h)}
+                                className={`px-3 py-1 rounded-xl font-bold uppercase transition-all cursor-pointer text-[10px] ${
+                                  h.locationOrderingEnabled !== false
+                                    ? "bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white"
+                                    : "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-black"
+                                }`}
+                              >
+                                {h.locationOrderingEnabled !== false ? "Disable Loc" : "Enable Loc"}
                               </button>
                               <button
                                 onClick={() => handleDeleteHotel(h)}

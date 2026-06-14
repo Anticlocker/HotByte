@@ -139,4 +139,34 @@ describe("Superadmin APIs", () => {
       expect(res.body.hotels[0].totalRevenue).toBe(5500.0);
     });
   });
+
+  describe("PUT /api/superadmin/hotels/:id/location-ordering", () => {
+    it("should allow superadmin to override location ordering setting", async () => {
+      db.query.mockImplementation((queryText, params) => {
+        if (queryText.includes("SELECT s.admin_id")) {
+          return Promise.resolve({
+            rows: [{ admin_id: 1, username: "superadmin", hotel_id: null, role: "super_admin" }]
+          });
+        }
+        if (queryText.includes("SELECT hotel_id FROM public.hotels")) {
+          return Promise.resolve({
+            rows: [{ hotel_id: 10 }]
+          });
+        }
+        if (queryText.includes("UPDATE public.hotels")) {
+          return Promise.resolve({ rows: [] });
+        }
+        return Promise.resolve({ rows: [] });
+      });
+
+      const res = await request(app)
+        .put("/api/superadmin/hotels/10/location-ordering")
+        .set("x-session-id", "valid_session_id")
+        .send({ locationOrderingEnabled: false });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.message).toContain("setting overridden successfully");
+    });
+  });
 });

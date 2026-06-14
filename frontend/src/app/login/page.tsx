@@ -113,10 +113,13 @@ function LoginContent() {
         }
       );
 
-      // @ts-ignore
-      window.google?.accounts.id.prompt((_notification: any) => {
-        // One Tap prompt shown
-      });
+      // Only prompt One Tap in non-local environments to prevent FedCM origin mismatches
+      if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+        // @ts-ignore
+        window.google?.accounts.id.prompt((_notification: any) => {
+          // One Tap prompt shown
+        });
+      }
     } catch (err) {
       googleInitialized.current = false;
       console.error("Failed to render Google Login button:", err);

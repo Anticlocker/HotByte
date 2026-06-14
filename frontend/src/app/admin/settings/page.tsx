@@ -97,6 +97,7 @@ export default function AdminSettings() {
   const [locationRadius, setLocationRadius] = useState("30");
   const [locationAddress, setLocationAddress] = useState("");
   const [locationMapReady, setLocationMapReady] = useState(false);
+  const [locationOrderingEnabled, setLocationOrderingEnabled] = useState(true);
 
   // Forms
   // Hotel form
@@ -216,6 +217,7 @@ export default function AdminSettings() {
         setLocationLng(data.hotel.longitude ? parseFloat(data.hotel.longitude) : null);
         setLocationRadius(String(data.hotel.order_radius || 30));
         setLocationAddress(data.hotel.address || "");
+        setLocationOrderingEnabled(data.hotel.location_ordering_enabled !== false);
 
         // Bind admin security
         if (data.admin) {
@@ -682,6 +684,38 @@ export default function AdminSettings() {
       }
     } catch { Swal.fire("Error", "Network connection issue", "error"); }
     finally { setSaving(false); }
+  };
+
+  // Save location-based ordering settings
+  const saveLocationOrderingSetting = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/settings/location-ordering", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          locationOrderingEnabled
+        })
+      });
+      let data;
+      try { data = await res.json(); } catch { data = { success: false }; }
+      if (data.success) {
+        Swal.fire({
+          title: t("admin.settings.saved", "Settings Saved!"),
+          text: "Location-based ordering preferences updated successfully.",
+          icon: "success",
+          timer: 1500,
+          showConfirmButton: false
+        });
+        loadSettings();
+      } else {
+        Swal.fire(t("common.error", "Error"), getErrorMessage(data.message) || "Failed to save location ordering settings", "error");
+      }
+    } catch {
+      Swal.fire(t("common.error", "Error"), "Network connection issue", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ── Leaflet map for location tab ─────────────────────────────────────
@@ -1361,120 +1395,186 @@ export default function AdminSettings() {
 
             {/* TABS 4: GPS LOCATION */}
             {activeTab === "location" && (
-              <div className="glass-card-dark p-6 rounded-3xl border border-gray-850/80 bg-[#111] space-y-6 shadow-xl animate-fade-in-up">
-                <div className="flex items-center gap-3 pb-4 border-b border-gray-850">
-                  <div className="w-10 h-10 rounded-2xl bg-orange-500/10 flex items-center justify-center text-[var(--orange)]">
-                    <MapPin size={20} />
+              <div className="space-y-6 animate-fade-in-up">
+                <div className="glass-card-dark p-6 rounded-3xl border border-gray-850/80 bg-[#111] space-y-6 shadow-xl">
+                  <div className="flex items-center gap-3 pb-4 border-b border-gray-850">
+                    <div className="w-10 h-10 rounded-2xl bg-orange-500/10 flex items-center justify-center text-[var(--orange)]">
+                      <MapPin size={20} />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-black text-white">Hotel GPS Location & Geofence</h2>
+                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">Pin exact location on map — customers must be within the radius to order</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-base font-black text-white">Hotel GPS Location & Geofence</h2>
-                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">Pin exact location on map — customers must be within the radius to order</p>
-                  </div>
-                </div>
 
-                {/* Map */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-black text-gray-450 uppercase tracking-widest flex items-center gap-1.5">
-                      <MapPin size={12} className="text-orange-500" />
-                      <span>Click map to pin hotel location</span>
-                    </label>
-                    {locationLat && locationLng && (
-                      <button
-                        type="button"
-                        onClick={() => { setLocationLat(null); setLocationLng(null); }}
-                        className="text-[9px] font-black uppercase text-red-500 hover:text-red-400 transition-colors cursor-pointer"
-                      >
-                        ✕ Clear Pin
-                      </button>
+                  {/* Map */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-black text-gray-450 uppercase tracking-widest flex items-center gap-1.5">
+                        <MapPin size={12} className="text-orange-500" />
+                        <span>Click map to pin hotel location</span>
+                      </label>
+                      {locationLat && locationLng && (
+                        <button
+                          type="button"
+                          onClick={() => { setLocationLat(null); setLocationLng(null); }}
+                          className="text-[9px] font-black uppercase text-red-500 hover:text-red-400 transition-colors cursor-pointer"
+                        >
+                          ✕ Clear Pin
+                        </button>
+                      )}
+                    </div>
+                    <div
+                      id="admin-location-map"
+                      style={{ height: "280px", borderRadius: "16px", overflow: "hidden", border: "1px solid #1a1a1a", zIndex: 1 }}
+                      className="w-full bg-gray-900"
+                    />
+                    {locationLat && locationLng ? (
+                      <div className="flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-xl px-4 py-2.5">
+                        <MapPin size={12} className="text-orange-500 shrink-0" />
+                        <span className="text-[10px] font-mono font-bold text-orange-400">
+                          {locationLat.toFixed(6)}, {locationLng.toFixed(6)}
+                        </span>
+                        <span className="ml-auto text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">Pinned</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 bg-yellow-500/5 border border-yellow-500/10 rounded-xl px-4 py-2.5">
+                        <MapPin size={12} className="text-yellow-600 shrink-0" />
+                        <p className="text-[9px] text-gray-500 font-semibold">No location set — click on the map above to place a pin. Orders will be accepted from any location until a pin is set.</p>
+                      </div>
                     )}
                   </div>
-                  <div
-                    id="admin-location-map"
-                    style={{ height: "280px", borderRadius: "16px", overflow: "hidden", border: "1px solid #1a1a1a", zIndex: 1 }}
-                    className="w-full bg-gray-900"
-                  />
-                  {locationLat && locationLng ? (
-                    <div className="flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-xl px-4 py-2.5">
-                      <MapPin size={12} className="text-orange-500 shrink-0" />
-                      <span className="text-[10px] font-mono font-bold text-orange-400">
-                        {locationLat.toFixed(6)}, {locationLng.toFixed(6)}
-                      </span>
-                      <span className="ml-auto text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">Pinned</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 bg-yellow-500/5 border border-yellow-500/10 rounded-xl px-4 py-2.5">
-                      <MapPin size={12} className="text-yellow-600 shrink-0" />
-                      <p className="text-[9px] text-gray-500 font-semibold">No location set — click on the map above to place a pin. Orders will be accepted from any location until a pin is set.</p>
-                    </div>
-                  )}
-                </div>
 
-                {/* Address */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-black text-gray-450 uppercase tracking-widest">
-                      Store Address & Map Link <span className="text-orange-500 normal-case">(auto-fills on pin drop)</span>
+                  {/* Address */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[10px] font-black text-gray-450 uppercase tracking-widest">
+                        Store Address & Map Link <span className="text-orange-500 normal-case">(auto-fills on pin drop)</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => detectAndResolveLocation(locationAddress)}
+                        disabled={detectingLocation}
+                        className="text-[9px] font-black uppercase text-orange-500 hover:text-orange-400 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        {detectingLocation ? (
+                          <div className="w-2.5 h-2.5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mr-1"></div>
+                        ) : (
+                          "🔍 "
+                        )}
+                        <span>Detect Location</span>
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={locationAddress}
+                      onChange={(e) => setLocationAddress(e.target.value)}
+                      onBlur={() => {
+                        if (locationAddress.trim().startsWith("http") && !locationLat && !locationLng) {
+                          detectAndResolveLocation(locationAddress);
+                        }
+                      }}
+                      placeholder="Enter plain address OR paste Google Maps/OSM location link here..."
+                      className="w-full px-4 py-3.5 bg-gray-900 border border-gray-800 rounded-xl text-xs font-semibold text-gray-200 focus:border-orange-500 outline-none transition-all"
+                    />
+                  </div>
+
+                  {/* Radius */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-450 uppercase tracking-widest flex items-center justify-between">
+                      <span>Customer Ordering Radius</span>
+                      <span className="text-orange-500 font-mono text-base">{locationRadius}m</span>
                     </label>
+                    <div className="flex items-center gap-4">
+                      <span className="text-[10px] font-black text-gray-500">10m</span>
+                      <input
+                        type="range"
+                        min="10"
+                        max="500"
+                        value={locationRadius}
+                        onChange={(e) => setLocationRadius(e.target.value)}
+                        className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-orange-500"
+                      />
+                      <span className="text-[10px] font-black text-gray-500">500m</span>
+                    </div>
+                    <p className="text-[9px] text-gray-600 font-semibold">Customers must be within {locationRadius} meters of this hotel to place an order. Default is 30 meters.</p>
+                  </div>
+
+                  <div className="flex items-center justify-end pt-4 border-t border-gray-850">
                     <button
                       type="button"
-                      onClick={() => detectAndResolveLocation(locationAddress)}
-                      disabled={detectingLocation}
-                      className="text-[9px] font-black uppercase text-orange-500 hover:text-orange-400 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      onClick={saveLocationSettings}
+                      disabled={saving}
+                      className="btn-orange px-6 py-3 rounded-xl text-xs font-black text-white cursor-pointer shadow-lg shadow-orange-500/10 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
                     >
-                      {detectingLocation ? (
-                        <div className="w-2.5 h-2.5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mr-1"></div>
-                      ) : (
-                        "🔍 "
-                      )}
-                      <span>Detect Location</span>
+                      {saving && <RefreshCw size={14} className="animate-spin" />}
+                      <span>Save Location & Geofence</span>
                     </button>
                   </div>
-                  <input
-                    type="text"
-                    value={locationAddress}
-                    onChange={(e) => setLocationAddress(e.target.value)}
-                    onBlur={() => {
-                      if (locationAddress.trim().startsWith("http") && !locationLat && !locationLng) {
-                        detectAndResolveLocation(locationAddress);
-                      }
-                    }}
-                    placeholder="Enter plain address OR paste Google Maps/OSM location link here..."
-                    className="w-full px-4 py-3.5 bg-gray-900 border border-gray-800 rounded-xl text-xs font-semibold text-gray-200 focus:border-orange-500 outline-none transition-all"
-                  />
                 </div>
 
-                {/* Radius */}
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-450 uppercase tracking-widest flex items-center justify-between">
-                    <span>Customer Ordering Radius</span>
-                    <span className="text-orange-500 font-mono text-base">{locationRadius}m</span>
-                  </label>
-                  <div className="flex items-center gap-4">
-                    <span className="text-[10px] font-black text-gray-500">10m</span>
-                    <input
-                      type="range"
-                      min="10"
-                      max="500"
-                      value={locationRadius}
-                      onChange={(e) => setLocationRadius(e.target.value)}
-                      className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-orange-500"
-                    />
-                    <span className="text-[10px] font-black text-gray-500">500m</span>
+                {/* Location-Based Ordering Control Card */}
+                <div className="glass-card-dark p-6 rounded-3xl border border-gray-850/80 bg-[#111] space-y-6 shadow-xl">
+                  <div className="flex items-center gap-3 pb-4 border-b border-gray-850">
+                    <div className="w-10 h-10 rounded-2xl bg-orange-500/10 flex items-center justify-center text-[var(--orange)]">
+                      <Sliders size={20} />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-black text-white">Location-Based Ordering</h2>
+                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">Toggle location requirements for customer orders</p>
+                    </div>
                   </div>
-                  <p className="text-[9px] text-gray-600 font-semibold">Customers must be within {locationRadius} meters of this hotel to place an order. Default is 30 meters.</p>
-                </div>
 
-                <div className="flex items-center justify-end pt-4 border-t border-gray-850">
-                  <button
-                    type="button"
-                    onClick={saveLocationSettings}
-                    disabled={saving}
-                    className="btn-orange px-6 py-3 rounded-xl text-xs font-black text-white cursor-pointer shadow-lg shadow-orange-500/10 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
-                  >
-                    {saving && <RefreshCw size={14} className="animate-spin" />}
-                    <span>Save Location & Geofence</span>
-                  </button>
+                  <div className="space-y-4">
+                    <p className="text-xs text-gray-400 font-semibold leading-relaxed">
+                      Require customers to be within the hotel's configured radius before placing an order.
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-gray-900/40 border border-gray-850 rounded-2xl">
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black text-gray-450 uppercase tracking-widest">Status:</span>
+                          {locationOrderingEnabled ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                              🟢 Enabled (Recommended)
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-500/15 border border-red-500/30 text-red-400">
+                              🔴 Disabled
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-gray-505 font-semibold">
+                          {locationOrderingEnabled 
+                            ? "Customers must be near the hotel to place orders." 
+                            : "Customers can place orders from any location."}
+                        </p>
+                      </div>
+
+                      {/* Premium Toggle Switch */}
+                      <label className="relative inline-flex items-center cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={locationOrderingEnabled}
+                          onChange={(e) => setLocationOrderingEnabled(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end pt-4 border-t border-gray-850">
+                    <button
+                      type="button"
+                      onClick={saveLocationOrderingSetting}
+                      disabled={saving}
+                      className="btn-orange px-6 py-3 rounded-xl text-xs font-black text-white cursor-pointer shadow-lg shadow-orange-500/10 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
+                    >
+                      {saving && <RefreshCw size={14} className="animate-spin" />}
+                      <span>Save Changes</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

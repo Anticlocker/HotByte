@@ -49,6 +49,7 @@ router.get("/hotels", async (req, res) => {
         h.require_customer_auth,
         h.customer_auth_required,
         h.suspicious_activity_mode,
+        h.location_ordering_enabled,
         (SELECT COUNT(*) FROM admins a WHERE a.hotel_id = h.hotel_id) as manager_count,
         (SELECT COUNT(*) FROM menu_items m WHERE m.hotel_id = h.hotel_id) as item_count,
         (SELECT COUNT(*) FROM orders o WHERE o.hotel_id = h.hotel_id) as order_count,
@@ -77,6 +78,7 @@ router.get("/hotels", async (req, res) => {
         hotelType: row.hotel_type || 'both',
         requireCustomerAuth: row.customer_auth_required || row.require_customer_auth || false,
         suspiciousActivityMode: row.suspicious_activity_mode || false,
+        locationOrderingEnabled: row.location_ordering_enabled !== false,
         managerCount: parseInt(row.manager_count),
         itemCount: parseInt(row.item_count),
         orderCount: parseInt(row.order_count),
@@ -97,7 +99,7 @@ router.post("/hotels", async (req, res) => {
   const { 
     name, slug, phone, address, plan, tableCount,
     adminName, adminUsername, adminEmail, adminPassword,
-    latitude, longitude, orderRadius, hotelType
+    latitude, longitude, orderRadius, hotelType, locationOrderingEnabled
   } = req.body;
 
   if (!name || !slug) {
@@ -154,9 +156,10 @@ router.post("/hotels", async (req, res) => {
       const validHotelTypes = ['veg', 'nonveg', 'both'];
       const safeHotelType = validHotelTypes.includes(hotelType) ? hotelType : 'both';
       const authReq = req.body.requireCustomerAuth === true || req.body.requireCustomerAuth === 'true';
+      const locOrdering = locationOrderingEnabled !== false && locationOrderingEnabled !== 'false';
       const hotelResult = await client.query(
-        "INSERT INTO public.hotels (name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, require_customer_auth, customer_auth_required) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING hotel_id, name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, require_customer_auth, customer_auth_required, created_at",
-        [name.trim(), cleanSlug, phone ? phone.trim() : null, address ? address.trim() : null, hotelPlan, trialEndsAt, tables, lat, lng, radius, safeHotelType, authReq, authReq]
+        "INSERT INTO public.hotels (name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, require_customer_auth, customer_auth_required, location_ordering_enabled) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING hotel_id, name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, require_customer_auth, customer_auth_required, location_ordering_enabled, created_at",
+        [name.trim(), cleanSlug, phone ? phone.trim() : null, address ? address.trim() : null, hotelPlan, trialEndsAt, tables, lat, lng, radius, safeHotelType, authReq, authReq, locOrdering]
       );
       const newHotel = hotelResult.rows[0];
 
@@ -294,7 +297,7 @@ router.post("/admins", async (req, res) => {
 router.put("/hotels/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, slug, phone, address, isFrozen, plan, tableCount, latitude, longitude, orderRadius, hotel_type, requireCustomerAuth } = req.body;
+    const { name, slug, phone, address, isFrozen, plan, tableCount, latitude, longitude, orderRadius, hotel_type, requireCustomerAuth, locationOrderingEnabled } = req.body;
 
     if (!name || !slug) {
       return res.status(400).json({ success: false, message: "Hotel name and unique URL slug are required." });
@@ -339,9 +342,14 @@ router.put("/hotels/:id", async (req, res) => {
       params.splice(params.length - 1, 0, val);
       setClause.push(`customer_auth_required = $${params.length - 1}`);
     }
+    if (locationOrderingEnabled !== undefined) {
+      const val = locationOrderingEnabled === true || locationOrderingEnabled === 'true';
+      params.splice(params.length - 1, 0, val);
+      setClause.push(`location_ordering_enabled = $${params.length - 1}`);
+    }
 
     const result = await db.query(
-      `UPDATE public.hotels SET ${setClause.join(', ')} WHERE hotel_id = $${params.length} RETURNING hotel_id, name, slug, phone, address, is_frozen, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, require_customer_auth, customer_auth_required, created_at`,
+      `UPDATE public.hotels SET ${setClause.join(', ')} WHERE hotel_id = $${params.length} RETURNING hotel_id, name, slug, phone, address, is_frozen, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, require_customer_auth, customer_auth_required, location_ordering_enabled, created_at`,
       params
     );
 
@@ -383,6 +391,7 @@ router.put("/hotels/:id", async (req, res) => {
         orderRadius: row.order_radius || 30,
         hotelType: row.hotel_type || 'both',
         requireCustomerAuth: row.customer_auth_required || row.require_customer_auth || false,
+        locationOrderingEnabled: row.location_ordering_enabled !== false,
         createdAt: row.created_at
       }
     });
@@ -711,6 +720,32 @@ router.put("/hotels/:id/auth-settings", async (req, res) => {
   } catch (error) {
     logger.error("Superadmin override auth error:", error);
     return res.status(500).json({ success: false, message: "Failed to override auth settings." });
+  }
+});
+
+/**
+ * PUT /api/superadmin/hotels/:id/location-ordering
+ * Super Admin overrides location-based ordering for any hotel
+ */
+router.put("/hotels/:id/location-ordering", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { locationOrderingEnabled } = req.body;
+
+    const hotelCheck = await db.query("SELECT hotel_id FROM public.hotels WHERE hotel_id = $1", [id]);
+    if (hotelCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found." });
+    }
+
+    await db.query(
+      "UPDATE public.hotels SET location_ordering_enabled = $1 WHERE hotel_id = $2",
+      [locationOrderingEnabled === true, id]
+    );
+
+    return res.json({ success: true, message: "Location-based ordering setting overridden successfully." });
+  } catch (error) {
+    logger.error("Superadmin override location ordering error:", error);
+    return res.status(500).json({ success: false, message: "Failed to override location-based ordering settings." });
   }
 });
 

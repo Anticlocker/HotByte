@@ -81,12 +81,12 @@ app.use(cors({
     // Allow server-to-server requests (no origin header)
     if (!origin) return callback(null, true);
     
-    // Check against configured origins, production domains, and local loopbacks
+    // Check against configured origins, production domains, local loopbacks, and private network IPs
+    const isLocalIP = /^http:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
     const isAllowed = allowedOrigins.includes(origin) ||
       origin === 'https://www.rav1.in' ||
       origin === 'https://rav1.in' ||
-      origin.startsWith('http://localhost:') ||
-      origin.startsWith('http://127.0.0.1:');
+      isLocalIP;
       
     if (isAllowed) {
       callback(null, true);

@@ -92,11 +92,11 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
     // ---------------- HOTEL RESOLVING & TABLE AVAILABILITY CHECK ----------------
     
     const hotelSlug = req.body.hotel_slug || "hotbyte";
-    const hotelResult = await db.query("SELECT hotel_id, is_open, latitude, longitude, order_radius FROM public.hotels WHERE slug = $1", [hotelSlug]);
+    const hotelResult = await db.query("SELECT hotel_id, is_open, latitude, longitude, order_radius, location_ordering_enabled FROM public.hotels WHERE slug = $1", [hotelSlug]);
     if (hotelResult.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Hotel not found" });
     }
-    const { hotel_id: hotelId, is_open: isOpen, latitude: hotelLat, longitude: hotelLng, order_radius: orderRadius } = hotelResult.rows[0];
+    const { hotel_id: hotelId, is_open: isOpen, latitude: hotelLat, longitude: hotelLng, order_radius: orderRadius, location_ordering_enabled: locationOrderingEnabled } = hotelResult.rows[0];
 
     if (isOpen === false) {
       return res.status(400).json({
@@ -106,7 +106,7 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
     }
 
     // ── Server-side proximity check ───────────────────────────────────────
-    if (hotelLat !== null && hotelLng !== null) {
+    if (locationOrderingEnabled !== false && hotelLat !== null && hotelLng !== null) {
       const cLat = parseFloat(customerLat);
       const cLng = parseFloat(customerLng);
       if (isNaN(cLat) || isNaN(cLng)) {
@@ -296,11 +296,11 @@ router.post("/create", requireAuth, async (req, res) => {
     }
 
     const hotelSlug = req.body.hotel_slug || "hotbyte";
-    const hotelResult = await db.query("SELECT hotel_id, is_open, latitude, longitude, order_radius FROM public.hotels WHERE slug = $1", [hotelSlug]);
+    const hotelResult = await db.query("SELECT hotel_id, is_open, latitude, longitude, order_radius, location_ordering_enabled FROM public.hotels WHERE slug = $1", [hotelSlug]);
     if (hotelResult.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Hotel not found" });
     }
-    const { hotel_id: hotelId, is_open: isOpen, latitude: hotelLat, longitude: hotelLng, order_radius: orderRadius } = hotelResult.rows[0];
+    const { hotel_id: hotelId, is_open: isOpen, latitude: hotelLat, longitude: hotelLng, order_radius: orderRadius, location_ordering_enabled: locationOrderingEnabled } = hotelResult.rows[0];
 
     if (isOpen === false) {
       return res.status(400).json({
@@ -310,7 +310,7 @@ router.post("/create", requireAuth, async (req, res) => {
     }
 
     // ── Server-side proximity check ───────────────────────────────────────
-    if (hotelLat !== null && hotelLng !== null) {
+    if (locationOrderingEnabled !== false && hotelLat !== null && hotelLng !== null) {
       const cLat = parseFloat(customerLat);
       const cLng = parseFloat(customerLng);
       if (isNaN(cLat) || isNaN(cLng)) {

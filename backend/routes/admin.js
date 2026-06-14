@@ -1567,7 +1567,7 @@ router.get("/settings", requireAdmin, async (req, res) => {
     const hotelResult = await db.query(
       `SELECT hotel_id, name, slug, phone, address, email, logo_url, banner_url, description, tagline, 
               show_logo, show_banner, primary_color, secondary_color, enable_online_orders, enable_qr_ordering, 
-              settings_json, is_open, table_count, hotel_type 
+              settings_json, is_open, table_count, hotel_type, location_ordering_enabled 
        FROM public.hotels WHERE hotel_id = $1`,
       [hotelId]
     );
@@ -1951,6 +1951,28 @@ router.put("/settings/location", requireAdmin, async (req, res) => {
   } catch (error) {
     logger.error("Update location error:", error);
     return res.status(500).json({ success: false, message: "Failed to update hotel location." });
+  }
+});
+
+// ─── Settings: PUT /settings/location-ordering ────────────────────────
+router.put("/settings/location-ordering", requireAdmin, async (req, res) => {
+  try {
+    const { locationOrderingEnabled } = req.body;
+    const hotelId = req.admin.role === 'super_admin' ? (await resolveHotelSlug(req)) : req.admin.hotelId;
+
+    if (!hotelId || hotelId === -1) {
+      return res.status(403).json({ success: false, message: "Authorized hotel context required." });
+    }
+
+    await db.query(
+      "UPDATE public.hotels SET location_ordering_enabled = $1 WHERE hotel_id = $2",
+      [locationOrderingEnabled === true, hotelId]
+    );
+
+    return res.json({ success: true, message: "Location-based ordering preferences updated successfully." });
+  } catch (error) {
+    logger.error("Update location ordering error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update location-based ordering settings." });
   }
 });
 

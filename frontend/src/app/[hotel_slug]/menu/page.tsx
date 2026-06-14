@@ -208,6 +208,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
   }, [primaryColor]);
   
   // Cart state
+  const [locationOrderingEnabled, setLocationOrderingEnabled] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [tableNumber, setTableNumber] = useState("T-1");
@@ -248,6 +249,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
           if (data.hotelLatitude !== null && data.hotelLatitude !== undefined) setHotelLatitude(data.hotelLatitude);
           if (data.hotelLongitude !== null && data.hotelLongitude !== undefined) setHotelLongitude(data.hotelLongitude);
           if (data.orderRadius) setOrderRadius(data.orderRadius);
+          if (data.locationOrderingEnabled !== undefined) setLocationOrderingEnabled(data.locationOrderingEnabled);
           if (data.hotelType) setHotelType(data.hotelType);
           // Veg-only hotels: auto-enable veg filter
           if (data.hotelType === "veg") setIsVegOnly(true);
@@ -507,7 +509,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
     let customerLat: number | null = null;
     let customerLng: number | null = null;
 
-    if (hotelLatitude !== null && hotelLongitude !== null) {
+    if (locationOrderingEnabled && hotelLatitude !== null && hotelLongitude !== null) {
       try {
         const position = await new Promise<GeolocationPosition>((resolve, reject) =>
           navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })

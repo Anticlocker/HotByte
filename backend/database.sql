@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS public.hotels (
     merchant_name   varchar(200),
     qr_code_url     text,
     hotel_type      VARCHAR(10)  DEFAULT 'both',
+    location_ordering_enabled BOOLEAN DEFAULT TRUE,
     settings_json   jsonb        DEFAULT '{}',
     created_at      timestamp    DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT hotels_hotel_type_check CHECK (hotel_type IN ('veg', 'nonveg', 'both'))

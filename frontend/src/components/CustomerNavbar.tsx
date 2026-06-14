@@ -276,13 +276,15 @@ export default function CustomerNavbar() {
                   <span>{t('nav.login')}</span>
                 </Link>
                 
-                <Link
-                  href={adminHref}
-                  className="nav-cta-btn ml-1"
-                >
-                  <ShieldAlert size={14} className="opacity-95" />
-                  <span>{t('nav.admin')}</span>
-                </Link>
+                {!isHotelSlug && (
+                  <Link
+                    href={adminHref}
+                    className="nav-cta-btn ml-1"
+                  >
+                    <ShieldAlert size={14} className="opacity-95" />
+                    <span>{t('nav.admin')}</span>
+                  </Link>
+                )}
               </>
             )}
           </div>
@@ -358,14 +360,16 @@ export default function CustomerNavbar() {
                 <span>{t('nav.login')}</span>
               </Link>
               
-              <Link
-                href={adminHref}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="nav-cta-btn mt-1 text-center justify-center w-full"
-              >
-                <ShieldAlert size={14} className="opacity-95" />
-                <span>{t('nav.adminPortal')}</span>
-              </Link>
+              {!isHotelSlug && (
+                <Link
+                  href={adminHref}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="nav-cta-btn mt-1 text-center justify-center w-full"
+                >
+                  <ShieldAlert size={14} className="opacity-95" />
+                  <span>{t('nav.adminPortal')}</span>
+                </Link>
+              )}
             </>
           )}
         </div>

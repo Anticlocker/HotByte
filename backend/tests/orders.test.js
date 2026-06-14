@@ -219,6 +219,84 @@ describe("Orders APIs", () => {
       expect(res.body.order.order_id).toBe(100);
       expect(res.body.order.total_amount).toBe(300.0);
     });
+
+    it("should reject order if location_ordering_enabled is TRUE and customer is outside radius", async () => {
+      db.query.mockImplementation((queryText, params) => {
+        if (queryText.includes("SELECT s.customer_id")) {
+          return Promise.resolve({
+            rows: [{ customer_id: 1, name: "John Customer", phone: "9876543210", email: "john@example.com", dob: null, hotel_id: 10 }]
+          });
+        }
+        if (queryText.includes("is_frozen, plan, trial_ends_at")) {
+          return Promise.resolve({
+            rows: [{ hotel_id: 10, is_frozen: false, plan: "pro", trial_ends_at: null }]
+          });
+        }
+        if (queryText.includes("SELECT hotel_id, is_open")) {
+          return Promise.resolve({
+            rows: [{ hotel_id: 10, is_open: true, latitude: 18.5204, longitude: 73.8567, order_radius: 30, location_ordering_enabled: true }]
+          });
+        }
+        return Promise.resolve({ rows: [] });
+      });
+
+      const res = await request(app)
+        .post("/api/orders/create")
+        .set("x-session-id", "valid_session_id")
+        .send({
+          items: [{ item_id: 1, quantity: 2 }],
+          table_number: "T-1",
+          hotel_slug: "test-hotel",
+          customerLat: 19.5204,
+          customerLng: 74.8567,
+        });
+
+      expect(res.status).toBe(403);
+      expect(res.body.locationError).toBe(true);
+    });
+
+    it("should allow order if location_ordering_enabled is FALSE even if customer is outside radius", async () => {
+      db.query.mockImplementation((queryText, params) => {
+        if (queryText.includes("SELECT s.customer_id")) {
+          return Promise.resolve({
+            rows: [{ customer_id: 1, name: "John Customer", phone: "9876543210", email: "john@example.com", dob: null, hotel_id: 10 }]
+          });
+        }
+        if (queryText.includes("is_frozen, plan, trial_ends_at")) {
+          return Promise.resolve({
+            rows: [{ hotel_id: 10, is_frozen: false, plan: "pro", trial_ends_at: null }]
+          });
+        }
+        if (queryText.includes("SELECT hotel_id, is_open")) {
+          return Promise.resolve({
+            rows: [{ hotel_id: 10, is_open: true, latitude: 18.5204, longitude: 73.8567, order_radius: 30, location_ordering_enabled: false }]
+          });
+        }
+        if (queryText.includes("SELECT order_id FROM orders")) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (queryText.includes("SELECT item_id, price FROM public.menu_items")) {
+          return Promise.resolve({
+            rows: [{ item_id: 1, price: 150.0 }]
+          });
+        }
+        return Promise.resolve({ rows: [] });
+      });
+
+      const res = await request(app)
+        .post("/api/orders/create")
+        .set("x-session-id", "valid_session_id")
+        .send({
+          items: [{ item_id: 1, quantity: 2 }],
+          table_number: "T-1",
+          hotel_slug: "test-hotel",
+          customerLat: 19.5204,
+          customerLng: 74.8567,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
   });
 
   describe("GET /api/orders/table-availability", () => {

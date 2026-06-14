@@ -12,7 +12,8 @@ router.get("/categories", async (req, res) => {
       `SELECT hotel_id, name, logo_url, banner_url, is_frozen, is_open, table_count,
               tagline, description, show_logo, show_banner, primary_color, secondary_color,
               enable_online_orders, enable_qr_ordering, settings_json, phone, email,
-              latitude, longitude, order_radius, hotel_type, customer_auth_required, suspicious_activity_mode
+              latitude, longitude, order_radius, hotel_type, customer_auth_required, suspicious_activity_mode,
+              location_ordering_enabled
        FROM public.hotels WHERE slug = $1`,
       [hotelSlug]
     );
@@ -44,7 +45,8 @@ router.get("/categories", async (req, res) => {
       order_radius: orderRadius,
       hotel_type: hotelType,
       customer_auth_required: customerAuthRequired,
-      suspicious_activity_mode: suspiciousActivityMode
+      suspicious_activity_mode: suspiciousActivityMode,
+      location_ordering_enabled: locationOrderingEnabled
     } = hotelResult.rows[0];
 
     if (isFrozen) {
@@ -79,7 +81,8 @@ router.get("/categories", async (req, res) => {
       orderRadius: orderRadius || 30,
       hotelType: hotelType || "both",
       requireCustomerAuth: customerAuthRequired || false,
-      suspiciousActivityMode: suspiciousActivityMode || false
+      suspiciousActivityMode: suspiciousActivityMode || false,
+      locationOrderingEnabled: locationOrderingEnabled !== false
     });
   } catch (error) {
     logger.error("Get categories error:", error);
