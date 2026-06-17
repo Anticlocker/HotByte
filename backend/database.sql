@@ -168,23 +168,23 @@ CREATE TABLE IF NOT EXISTS public.payments
 
 -- Payment Sessions Table for Onboarding Flow
 CREATE TABLE IF NOT EXISTS public.payment_sessions (
-  id serial PRIMARY KEY,
-  session_token varchar(64) UNIQUE NOT NULL,
-  razorpay_order_id varchar(100),
-  razorpay_payment_id varchar(100),
-  plan varchar(20) NOT NULL,
-  billing_cycle varchar(10) DEFAULT 'monthly',
-  status varchar(30) DEFAULT 'pending_payment',
-  username varchar(50),
-  email varchar(100),
-  password varchar(200),
-  hotel_name varchar(200),
-  hotel_slug varchar(100),
-  hotel_phone varchar(20),
-  hotel_address text,
-  admin_name varchar(100),
-  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
-  expires_at timestamp DEFAULT (CURRENT_TIMESTAMP + INTERVAL '2 hours')
+  session_token VARCHAR(255) PRIMARY KEY,
+  razorpay_order_id VARCHAR(200) UNIQUE,
+  razorpay_payment_id VARCHAR(200) UNIQUE,
+  plan VARCHAR(50) NOT NULL,
+  billing_cycle VARCHAR(50) NOT NULL,
+  status VARCHAR(20) DEFAULT 'pending',
+  username VARCHAR(50),
+  email VARCHAR(100),
+  password VARCHAR(200),
+  name VARCHAR(100),
+  hotel_name VARCHAR(200),
+  hotel_slug VARCHAR(100),
+  hotel_phone VARCHAR(20),
+  hotel_address TEXT,
+  admin_name VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '2 hours')
 );
 
 CREATE INDEX IF NOT EXISTS idx_payment_sessions_token ON public.payment_sessions(session_token);
@@ -359,7 +359,7 @@ INSERT INTO public.subscription_plans (name, price_monthly, price_yearly, featur
 
 -- Data Seeding
 INSERT INTO public.admins (username, password, name, email) 
-VALUES ('ravi', '8ff9538e65e6781d654b811f88161d12455935ffb8f470815063b6ab6cb7fdff', 'Ravi Admin', 'ravi@HotByte.in')
+VALUES ('ravi', '$2b$12$YgdTOQYGthrOrPqYwFX.W.f/xzVfJK7nHopcr9VNMCKDG./3pX28K', 'Ravi Admin', 'ravi@HotByte.in')
 ON CONFLICT (username) DO UPDATE SET password = EXCLUDED.password;
 
 INSERT INTO public.menu_category (category_id, category_name) VALUES

@@ -64,9 +64,14 @@ export const LocaleProvider = ({ children }: { children: ReactNode }) => {
       localStorage.setItem('hotbyte_locale', l);
     }
     // Persist to database (fire-and-forget)
+    const getCsrfToken = () => {
+      if (typeof document === "undefined") return "";
+      const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+      return match ? decodeURIComponent(match[1]) : "";
+    };
     fetch('/api/user/preferences', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': getCsrfToken() || '' },
       body: JSON.stringify({ locale: l }),
     }).catch(() => {});
   };

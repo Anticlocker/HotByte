@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, User, ShieldCheck, ArrowRight } from "lucide-react";
-import Swal from "sweetalert2";
+import { useNotification } from "@/context/NotificationContext";
 
 export default function SuperAdminLogin() {
+  const notif = useNotification();
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -35,7 +36,7 @@ export default function SuperAdminLogin() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) {
-      Swal.fire("Inputs Required", "Please enter both username and password.", "warning");
+      notif.warning("Inputs Required", "Please enter both username and password.");
       return;
     }
 
@@ -52,24 +53,18 @@ export default function SuperAdminLogin() {
         if (data.admin.role !== "super_admin") {
           // Log out immediately if not super admin
           await fetch("/api/auth/admin/logout", { method: "POST" });
-          Swal.fire("Access Denied", "Unauthorized. You are not a global Super Admin.", "error");
+          notif.error("Access Denied", "Unauthorized. You are not a global Super Admin.");
           setLoading(false);
           return;
         }
 
-        Swal.fire({
-          title: "Super Access Granted!",
-          text: "Global SaaS Control session established.",
-          icon: "success",
-          timer: 1200,
-          showConfirmButton: false,
-        });
+        notif.success("Super Access Granted!", "Global SaaS Control session established.");
         router.push("/super-admin/dashboard");
       } else {
-        Swal.fire("Access Denied", data.message || "Invalid administrative credentials.", "error");
+        notif.error("Access Denied", data.message || "Invalid administrative credentials.");
       }
     } catch (err) {
-      Swal.fire("Connection Error", "Failed to communicate with authorization server.", "error");
+      notif.error("Connection Error", "Failed to communicate with authorization server.");
     } finally {
       setLoading(false);
     }
@@ -87,20 +82,14 @@ export default function SuperAdminLogin() {
       });
       const data = await res.json();
       if (data.success) {
-        Swal.fire({
-          title: "OTP Dispatched!",
-          text: "Verification code sent to 9356918260.",
-          icon: "success",
-          timer: 1500,
-          showConfirmButton: false,
-        });
+        notif.success("OTP Dispatched!", "Verification code sent to 9356918260.");
         setForgotStep(2);
       } else {
-        Swal.fire("Request Failed", data.message || "Failed to send OTP.", "error");
+        notif.error("Request Failed", data.message || "Failed to send OTP.");
         setIsForgotOpen(false);
       }
     } catch (err) {
-      Swal.fire("Connection Error", "Could not reach the authorization server.", "error");
+      notif.error("Connection Error", "Could not reach the authorization server.");
       setIsForgotOpen(false);
     } finally {
       setForgotLoading(false);
@@ -238,11 +227,11 @@ export default function SuperAdminLogin() {
                 onSubmit={async (e) => {
                   e.preventDefault();
                   if (!forgotOtp.trim() || !forgotNewPassword.trim()) {
-                    Swal.fire("Required Fields", "Please enter OTP and your new passkey.", "warning");
+                    notif.warning("Required Fields", "Please enter OTP and your new passkey.");
                     return;
                   }
                   if (forgotNewPassword.length < 6) {
-                    Swal.fire("Weak Passkey", "New passkey must be at least 6 characters.", "warning");
+                    notif.warning("Weak Passkey", "New passkey must be at least 6 characters.");
                     return;
                   }
                   setForgotLoading(true);
@@ -259,16 +248,16 @@ export default function SuperAdminLogin() {
                     });
                     const data = await res.json();
                     if (data.success) {
-                      Swal.fire("Passkey Reset!", data.message || "Your passkey has been reset successfully.", "success");
+                      notif.success("Passkey Reset!", data.message || "Your passkey has been reset successfully.");
                       setIsForgotOpen(false);
                       setForgotStep(1);
                       setForgotOtp("");
                       setForgotNewPassword("");
                     } else {
-                      Swal.fire("Reset Failed", data.message || "Failed to reset passkey.", "error");
+                      notif.error("Reset Failed", data.message || "Failed to reset passkey.");
                     }
                   } catch (err) {
-                    Swal.fire("Connection Error", "Could not reach the authentication server.", "error");
+                    notif.error("Connection Error", "Could not reach the authentication server.");
                   } finally {
                     setForgotLoading(false);
                   }

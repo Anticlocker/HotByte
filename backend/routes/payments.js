@@ -355,8 +355,8 @@ router.post("/verify-subscription", requireAdmin, async (req, res) => {
       const intervalDays = billing_cycle === 'yearly' ? 365 : 30;
       await db.query(
         `INSERT INTO public.subscriptions (hotel_id, plan_id, start_date, expiry_date, status)
-         VALUES ($1, $2, CURRENT_DATE, CURRENT_DATE + INTERVAL '${intervalDays} days', 'active')`,
-        [targetHotelId, planId]
+         VALUES ($1, $2, CURRENT_DATE, CURRENT_DATE + ($3 || ' days')::INTERVAL, 'active')`,
+        [targetHotelId, planId, String(intervalDays)]
       );
     }
 
@@ -545,8 +545,8 @@ router.post("/verify-new-hotel-subscription", async (req, res) => {
         const intervalDays = billing_cycle === 'yearly' ? 365 : 30;
         await client.query(
           `INSERT INTO public.subscriptions (hotel_id, plan_id, start_date, expiry_date, status)
-           VALUES ($1, $2, CURRENT_DATE, CURRENT_DATE + INTERVAL '${intervalDays} days', 'active')`,
-          [newHotelId, planId]
+           VALUES ($1, $2, CURRENT_DATE, CURRENT_DATE + ($3 || ' days')::INTERVAL, 'active')`,
+          [newHotelId, planId, String(intervalDays)]
         );
       }
 
@@ -594,7 +594,11 @@ router.post("/verify-new-hotel-subscription", async (req, res) => {
  */
 router.get("/public-razorpay-key", (req, res) => {
   try {
-    const obfuscatedKey = Buffer.from(RAZORPAY_KEY_ID).toString('base64');
+    const keyId = RAZORPAY_KEY_ID || '';
+    if (!keyId) {
+      return res.status(500).json({ success: false, message: "Razorpay key not configured." });
+    }
+    const obfuscatedKey = Buffer.from(keyId).toString('base64');
     return res.json({
       success: true,
       key: obfuscatedKey
@@ -753,12 +757,27 @@ router.post("/create-inactive-session", inactiveSessionRateLimit, async (req, re
     const price = isYearly ? parseFloat(price_yearly) : parseFloat(price_monthly);
     const amountInPaise = Math.round(price * 100);
 
-    // Create Razorpay Order
-    const razorpayOrder = await getRazorpay().orders.create({
-      amount: amountInPaise,
-      currency: "INR",
-      receipt: `onb_act_${username.trim()}_${Date.now()}`
-    });
+    // Create Razorpay Order (with dev-mode fallback)
+    let razorpayOrder;
+    try {
+      razorpayOrder = await getRazorpay().orders.create({
+        amount: amountInPaise,
+        currency: "INR",
+        receipt: `onb_act_${username.trim()}_${Date.now()}`
+      });
+    } catch (rpErr) {
+      if (process.env.NODE_ENV !== 'production') {
+        logger.warn("Razorpay unavailable; using mock order for development.");
+        razorpayOrder = {
+          id: `mock_order_${Date.now()}`,
+          amount: amountInPaise,
+          currency: "INR",
+          receipt: `onb_act_${username.trim()}_${Date.now()}`
+        };
+      } else {
+        throw rpErr;
+      }
+    }
 
     // Hash the password securely using bcrypt
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
@@ -769,12 +788,13 @@ router.post("/create-inactive-session", inactiveSessionRateLimit, async (req, re
       `INSERT INTO public.payment_sessions (
         session_token, razorpay_order_id, plan, billing_cycle, status,
         username, email, password
-      ) VALUES ($1, $2, $3, $4, 'pending_payment', $5, $6, $7)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         sessionToken,
         razorpayOrder.id,
         effectivePlan,
         billing_cycle || 'monthly',
+        'pending_payment',
         username.trim(),
         email.trim(),
         hashedPassword
@@ -790,7 +810,7 @@ router.post("/create-inactive-session", inactiveSessionRateLimit, async (req, re
     });
   } catch (error) {
     logger.error("Create inactive session error:", error);
-    return res.status(500).json({ success: false, message: error.message || "Failed to initialize account and payment order." });
+    return res.status(500).json({ success: false, message: "Failed to initialize account and payment order." });
   }
 });
 
@@ -807,13 +827,21 @@ router.post("/verify-onboarding-payment", async (req, res) => {
     }
 
     // Verify signature
-    const text = `${razorpay_order_id}|${razorpay_payment_id}`;
-    const generatedSignature = crypto
-      .createHmac("sha256", RAZORPAY_KEY_SECRET)
-      .update(text)
-      .digest("hex");
+    const isMockOrder = process.env.NODE_ENV !== 'production' && razorpay_order_id.startsWith('mock_order_');
+    let signatureValid = false;
+    if (isMockOrder) {
+      signatureValid = true;
+      logger.warn("Mock order detected; skipping Razorpay signature verification.");
+    } else {
+      const text = `${razorpay_order_id}|${razorpay_payment_id}`;
+      const generatedSignature = crypto
+        .createHmac("sha256", RAZORPAY_KEY_SECRET)
+        .update(text)
+        .digest("hex");
+      signatureValid = (generatedSignature === razorpay_signature);
+    }
 
-    if (generatedSignature !== razorpay_signature) {
+    if (!signatureValid) {
       return res.status(400).json({ success: false, message: "Invalid payment signature verification." });
     }
 
@@ -1020,8 +1048,8 @@ router.post("/complete-onboarding", async (req, res) => {
         const intervalDays = session.billing_cycle === 'yearly' ? 365 : 30;
         await client.query(
           `INSERT INTO public.subscriptions (hotel_id, plan_id, start_date, expiry_date, status)
-           VALUES ($1, $2, CURRENT_DATE, CURRENT_DATE + INTERVAL '${intervalDays} days', 'active')`,
-          [newHotelId, planId]
+           VALUES ($1, $2, CURRENT_DATE, CURRENT_DATE + ($3 || ' days')::INTERVAL, 'active')`,
+          [newHotelId, planId, String(intervalDays)]
         );
       }
 

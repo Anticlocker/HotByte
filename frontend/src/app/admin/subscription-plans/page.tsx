@@ -1,15 +1,17 @@
-// src/app/admin/subscription-plans/page.tsx
 "use client"
 import React, { useState } from "react"
-import { Loader2 } from "lucide-react"
-import Swal from "sweetalert2"
+import { motion } from "framer-motion"
+import { Loader2, CreditCard, ArrowUpRight, Layers } from "lucide-react"
+import { useNotification } from "@/context/NotificationContext"
 import SubscriptionCard from "@/components/SubscriptionCard"
 import CurrentSubscriptionCard from "@/components/CurrentSubscriptionCard"
 import RecommendedUpgradeCard from "@/components/RecommendedUpgradeCard"
 import PlanComparisonModal from "@/components/PlanComparisonModal"
 import { useSubscription } from "@/lib/hooks/useSubscription"
+import { logger } from "@/lib/utils/logger"
 
 export default function SubscriptionPlans() {
+  const notif = useNotification();
   const { plans, currentSubscription, loading, error, mutate } = useSubscription();
   const planOrder: Record<string, number> = { trial: 0, basic: 1, pro: 2 };
   const [isModalOpen, setModalOpen] = useState(false);
@@ -28,10 +30,8 @@ export default function SubscriptionPlans() {
     try {
       let targetPlan = plans.find(p => p.plan_id === Number(planId));
       if (!targetPlan) {
-        // Fallback: try matching by name (case-insensitive) for cases where planId is a string identifier
         const nameStr = String(planId).toLowerCase();
         targetPlan = plans.find(p => p.name.toLowerCase().includes(nameStr));
-        // Additional fallback: map numeric order IDs (0,1,2) to plan names using the planOrder mapping defined later
         if (!targetPlan) {
           const orderName = Object.entries(planOrder).find(([, id]) => id === Number(planId))?.[0];
           if (orderName) {
@@ -39,33 +39,20 @@ export default function SubscriptionPlans() {
           }
         }
         if (!targetPlan) {
-          Swal.fire("Billing Error", "Invalid subscription plan selected.", "error");
+          notif.error("Billing Error", "Invalid subscription plan selected.");
           return;
         }
       }
-      // Ensure a valid plan is selected; this should never happen with correct UI
 
-      // Determine the plan identifier to send to the backend
-      // For the trial plan, the displayed name may include spaces or hyphens (e.g., "14-Day Trial").
-      // We map any plan containing the word "trial" to the backend identifier "trial".
       let planIdentifier: string;
       if (targetPlan.name.toLowerCase().includes('trial')) {
         planIdentifier = 'trial';
       } else {
         planIdentifier = targetPlan.name.toLowerCase();
       }
-      // No longer block trial purchases; allow the flow to continue.
 
-      Swal.fire({
-        title: "Initializing Checkout...",
-        text: "Connecting to Razorpay secure payment gateway.",
-        allowOutsideClick: false,
-        didOpen: () => {
-          Swal.showLoading();
-        }
-      });
+      notif.loading("Initializing Checkout...");
 
-      // Resolve hotel slug from URL search params or fallback to session
       let activeSlug = "";
       if (typeof window !== "undefined") {
         activeSlug = new URLSearchParams(window.location.search).get("hotel") || "";
@@ -79,57 +66,45 @@ export default function SubscriptionPlans() {
       }
 
       if (!activeSlug) {
-        Swal.fire({
-          title: "Session Expired",
-          text: "Authorized hotel administrator session is required.",
-          icon: "error",
-          confirmButtonColor: "#FF5A1F"
-        });
+        await notif.alert("Session Expired", "Authorized hotel administrator session is required.", "error");
         return;
       }
 
-      // 1. Create Razorpay order
+      const getCsrfToken = () => {
+        if (typeof document === "undefined") return "";
+        const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+        return match ? decodeURIComponent(match[1]) : "";
+      };
       const orderRes = await fetch("/api/payments/create-subscription-order", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          plan: planIdentifier,
-          hotel_slug: activeSlug
-        })
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
+        body: JSON.stringify({ plan: planIdentifier, hotel_slug: activeSlug })
       });
       const orderData = await orderRes.json();
 
       if (!orderData.success) {
-        Swal.fire({
-          title: "Order Failed",
-          text: orderData.message || "Failed to initialize checkout. Verify that your administrative session is active.",
-          icon: "error",
-          confirmButtonColor: "#FF5A1F"
-        });
+        await notif.alert("Order Failed", orderData.message || "Failed to initialize checkout. Verify that your administrative session is active.", "error");
         return;
       }
 
-      // 2. Fetch obfuscated Razorpay Key ID
       const keyRes = await fetch("/api/payments/admin-razorpay-key");
       const keyData = await keyRes.json();
 
       if (!keyData.success) {
-        Swal.fire("Billing Error", "Could not fetch platform payment credentials.", "error");
+        notif.error("Billing Error", "Could not fetch platform payment credentials.");
         return;
       }
 
       const razorpayKey = window.atob(keyData.key);
 
-      // 3. Load Razorpay script
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded) {
-        Swal.fire("Connection Error", "Failed to load Razorpay billing engine.", "error");
+        notif.error("Connection Error", "Failed to load Razorpay billing engine.");
         return;
       }
 
-      Swal.close();
+      notif.close();
 
-      // 4. Open Razorpay widget
       const options = {
         key: razorpayKey,
         amount: orderData.razorpay_order.amount,
@@ -138,19 +113,16 @@ export default function SubscriptionPlans() {
         description: `${type === "renew" ? "Renew" : "Upgrade to"} ${targetPlan.name.toUpperCase()} Plan`,
         order_id: orderData.razorpay_order.id,
         handler: async function (response: any) {
-          Swal.fire({
-            title: "Confirming Transaction...",
-            text: "Updating your SaaS network privileges.",
-            allowOutsideClick: false,
-            didOpen: () => {
-              Swal.showLoading();
-            }
-          });
+          notif.loading("Confirming Transaction...");
 
-          // Verify signature on backend
+          const getCsrfToken = () => {
+            if (typeof document === "undefined") return "";
+            const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+            return match ? decodeURIComponent(match[1]) : "";
+          };
           const verifyRes = await fetch("/api/payments/verify-subscription", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
             body: JSON.stringify({
               plan: planIdentifier,
               hotel_slug: activeSlug,
@@ -162,41 +134,30 @@ export default function SubscriptionPlans() {
           const verifyData = await verifyRes.json();
 
           if (verifyData.success) {
-            Swal.fire({
-              title: "Upgrade Successful! 🎉",
-              text: `Your hotel is now successfully active on the ${planIdentifier.toUpperCase()} plan!`,
-              icon: "success",
-              confirmButtonColor: "#FF5A1F"
-            }).then(() => {
-              mutate();
-            });
+            await notif.alert("Upgrade Successful! 🎉", `Your hotel is now successfully active on the ${planIdentifier.toUpperCase()} plan!`, "success");
+            mutate();
           } else {
-            Swal.fire("Billing Verification Failed", verifyData.message || "Could not confirm signature.", "error");
+            notif.error("Billing Verification Failed", verifyData.message || "Could not confirm signature.");
           }
         },
-        prefill: {
-          name: "Hotel Admin",
-          email: "billing@hotbyte.in"
-        },
-        theme: {
-          color: "#FF5A1F"
-        }
+        prefill: { name: "Hotel Admin", email: "billing@hotbyte.in" },
+        theme: { color: "#FF5A1F" }
       };
 
       const rzp = new (window as any).Razorpay(options);
       rzp.open();
-
     } catch (err) {
-      console.error("Subscription payment error:", err);
-      Swal.fire("Billing Error", "A network error occurred while compiling your payment session.", "error");
+      logger.error("Subscription payment error:", err);
+      notif.error("Billing Error", "A network error occurred while compiling your payment session.");
     }
   };
 
-  // Recommendation logic
   const currentName = currentSubscription?.name?.toLowerCase() ?? "trial";
   const highestPlan = "pro";
   const showRecommendation = !!(currentName && planOrder[currentName] < planOrder[highestPlan]);
   const recommendedPlan = plans.find(p => p.name.toLowerCase() === highestPlan);
+
+  const sortedPlans = [...plans].sort((a, b) => (planOrder[a.name.toLowerCase()] ?? 99) - (planOrder[b.name.toLowerCase()] ?? 99));
 
   if (loading) {
     return (
@@ -208,38 +169,76 @@ export default function SubscriptionPlans() {
 
   if (error) {
     return (
-      <div className="text-center text-red-500 p-8">
-        Failed to load plans. Please try again later.
-      </div>
+      <div className="text-center text-red-500 p-8">Failed to load plans. Please try again later.</div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-r from-gray-900 via-gray-800 to-gray-700 p-8 text-gray-200">
-      <h1 className="text-4xl font-extrabold mb-6 flex items-center gap-3 animate-fade-in-up">
-        <span className="text-[var(--orange)]">💎</span> Subscription Plans
-      </h1>
+    <div className="min-h-screen bg-[#0c0c0c] p-6 lg:p-10 space-y-8">
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      >
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center shadow-lg shadow-orange-500/20">
+              <CreditCard size={18} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-black text-white tracking-tight">Subscription Plans</h1>
+              <p className="text-[10px] text-gray-500 font-semibold">Manage your hotel&apos;s subscription and billing</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setModalOpen(true)}
+            className="hidden sm:flex items-center gap-1.5 px-4 py-2 bg-white/5 border border-gray-800 hover:bg-white/10 text-gray-300 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all duration-300 cursor-pointer"
+          >
+            <Layers size={12} />
+            Compare Plans
+          </button>
+        </div>
+      </motion.div>
 
-      {/* Current subscription summary */}
-      <CurrentSubscriptionCard
-        subscription={currentSubscription ? { ...currentSubscription, name: currentSubscription.name ?? "" } : null}
-        onUpgrade={(id) => handlePayment(id, "upgrade")}
-      />
+      {/* Current subscription */}
+      {currentSubscription && (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <CurrentSubscriptionCard
+            subscription={currentSubscription ? { ...currentSubscription, name: currentSubscription.name ?? "" } : null}
+            onUpgrade={(id) => handlePayment(id, "upgrade")}
+          />
+        </motion.div>
+      )}
 
-      {/* Recommendation card */}
+      {/* Recommendation */}
       {showRecommendation && recommendedPlan && (
-        <RecommendedUpgradeCard
-          currentPlan={currentName}
-          recommendedPlanId={recommendedPlan.plan_id}
-          recommendedPlanName={recommendedPlan.name}
-          onUpgrade={(id) => handlePayment(id, "upgrade")}
-        />
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <RecommendedUpgradeCard
+            currentPlan={currentName}
+            recommendedPlanId={recommendedPlan.plan_id}
+            recommendedPlanName={recommendedPlan.name}
+            onUpgrade={(id) => handlePayment(id, "upgrade")}
+          />
+        </motion.div>
       )}
 
       {/* Plans grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 animate-fade-in-up mt-8">
-        {plans.map(plan => {
-          return (
+      <div>
+        <div className="flex items-center gap-2 mb-5">
+          <div className="w-1 h-4 bg-gradient-to-b from-orange-500 to-amber-500 rounded-full" />
+          <h2 className="text-sm font-black text-white uppercase tracking-wider">Available Plans</h2>
+        </div>
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+          {sortedPlans.map((plan, idx) => (
             <SubscriptionCard
               key={plan.plan_id}
               plan={plan}
@@ -248,14 +247,18 @@ export default function SubscriptionPlans() {
               onUpgrade={(id) => handlePayment(id, "upgrade")}
               isRecommended={showRecommendation && plan.name.toLowerCase() === highestPlan}
             />
-          )
-        })}
+          ))}
+        </div>
       </div>
 
-      {/* Modal trigger */}
-      <div className="flex justify-center mt-8">
-        <button className="btn-orange px-6 py-2 rounded" onClick={() => setModalOpen(true)}>
-          View Plan Comparison
+      {/* Mobile compare button */}
+      <div className="sm:hidden flex justify-center">
+        <button
+          onClick={() => setModalOpen(true)}
+          className="flex items-center gap-1.5 px-4 py-2 bg-white/5 border border-gray-800 hover:bg-white/10 text-gray-300 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all duration-300 cursor-pointer"
+        >
+          <Layers size={12} />
+          Compare Plans
         </button>
       </div>
 

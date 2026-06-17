@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Footer from "@/components/Footer";
 import {
   QrCode, Utensils, Play, ChevronDown, Check, ArrowRight, ShieldCheck,
   Sparkles, Star, Smartphone, ChefHat, BarChart3, Clock, Flame,
@@ -419,10 +420,14 @@ export default function Home() {
           {[1, 2].map((loop) => (
             <div key={loop} className="flex gap-16 items-center">
               <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><Utensils size={14} className="text-orange-500" /> Grand Palace Resort</span>
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><QrCode size={14} className="text-yellow-500" /> Joshi Wadewale</span>
               <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><Star size={14} className="text-amber-500 fill-amber-500" /> Spicy Grill Restaurant</span>
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><Utensils size={14} className="text-orange-500" /> Conrad Pune</span>
               <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><QrCode size={14} className="text-yellow-500" /> Royal Feast Banquet</span>
               <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><Utensils size={14} className="text-orange-500" /> The Golden Crust Cafe</span>
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><Star size={14} className="text-amber-500 fill-amber-500" /> Hotel Radha</span>
               <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><Star size={14} className="text-amber-500 fill-amber-500" /> Midnight Food Hub</span>
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><QrCode size={14} className="text-yellow-500" /> O Hotel Pune</span>
               <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><QrCode size={14} className="text-yellow-500" /> Imperial Delicacies</span>
             </div>
           ))}
@@ -891,66 +896,68 @@ export default function Home() {
       </section>
 
       {/* ── CONVERTING STRIP (CTA BLOCK) ── */}
-      <section className="relative z-10 py-24 bg-gradient-to-t from-[#040406] to-transparent text-center space-y-8">
-        <AnimateOnScroll variant="scaleIn" className="max-w-3xl mx-auto px-6 space-y-8">
-          <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center mx-auto shadow-2xl shadow-orange-500/20">
-            <Flame size={28} className="text-white fill-white animate-pulse" />
-          </div>
-          <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-none">
-            Ready to Digitalize Your Dining?
-          </h2>
-          <p className="text-gray-400 text-xs md:text-sm max-w-lg mx-auto font-semibold leading-relaxed">
-            Onboard your hotel and start serving immediately. Cancel or change plans at any time. Direct developer assistance included.
-          </p>
+      <section className="relative z-10 py-24 bg-gradient-to-t from-[#040406] to-transparent">
+        <AnimateOnScroll variant="scaleIn" className="max-w-4xl mx-auto px-6">
+          <div className="group relative bg-white/[0.03] border border-white/[0.06] rounded-3xl p-8 md:p-12 backdrop-blur-sm hover:bg-white/[0.05] hover:border-orange-500/20 transition-all duration-500">
+            {/* Hover glow orbs */}
+            <div className="absolute -inset-px rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none">
+              <div className="absolute top-0 right-0 w-72 h-72 bg-orange-500/10 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/2" />
+              <div className="absolute bottom-0 left-0 w-72 h-72 bg-amber-500/10 rounded-full blur-[120px] translate-y-1/2 -translate-x-1/2" />
+            </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center pt-2">
-            <a
-              href="mailto:admin@hotbyte.in?subject=I%20want%20to%20join%20HotByte"
-              className="cta-glow bg-gradient-to-r from-orange-500 to-orange-600 hover:opacity-95 text-white px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-2xl shadow-orange-500/20 hover:scale-[1.01] active:scale-95 transition-all"
-            >
-              <Mail size={14} />
-              Onboard My Hotel
-            </a>
-            <a
-              href="https://instagram.com/hotbyte.in"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:brightness-110 text-white px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-95 shadow-xl shadow-pink-500/10 transition-all border-0"
-              style={{ background: "radial-gradient(circle at 30% 107%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285AEB 90%)" }}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white">
-                <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
-                <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-                <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
-              </svg>
-              Follow Us
-            </a>
+            <div className="relative text-center space-y-6">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[11px] font-bold uppercase tracking-wider group-hover:bg-orange-500/15 group-hover:border-orange-500/30 transition-all duration-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+                Start your free trial today — no credit card required
+              </div>
+
+              <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-none text-white">
+                Ready to Transform Your<br className="hidden sm:block" /> Restaurant Operations?
+              </h2>
+
+              <p className="text-gray-400 text-sm md:text-base max-w-2xl mx-auto font-medium leading-relaxed group-hover:text-gray-300 transition-colors duration-300">
+                From QR menus to real-time kitchen display and sales analytics — HotByte gives you everything you need to run a modern, contactless dining experience.
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
+                <a
+                  href="mailto:admin@hotbyte.in?subject=Onboard%20my%20hotel%20to%20HotByte"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.open(e.currentTarget.href, '_blank');
+                  }}
+                  className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-8 py-4 rounded-2xl font-bold text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40 hover:-translate-y-0.5 transition-all duration-300 active:scale-[0.97]"
+                >
+                  <Mail size={15} className="group-hover:scale-110 transition-transform duration-300" />
+                  <span className="relative">
+                    Get Started
+                    <span className="absolute inset-x-0 -bottom-0.5 h-[1.5px] bg-white/60 scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left" />
+                  </span>
+                  <ArrowRight size={14} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300" />
+                </a>
+                <a
+                  href="https://instagram.com/hotbyte.in"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group bg-white/[0.04] hover:bg-white/[0.09] text-white/80 hover:text-white px-8 py-4 rounded-2xl font-bold text-sm uppercase tracking-wider flex items-center justify-center gap-3 border border-white/[0.06] hover:border-white/20 hover:-translate-y-0.5 transition-all duration-300 active:scale-[0.97]"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 transition-transform duration-300"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+                  <span>Follow on Instagram</span>
+                </a>
+              </div>
+
+              <p className="text-[11px] text-gray-600 font-medium group-hover:text-gray-500 transition-colors duration-300">
+                Prefer email?{" "}
+                <a href="mailto:admin@hotbyte.in" className="text-orange-400 hover:text-orange-300 hover:underline font-bold transition-colors duration-200">admin@hotbyte.in</a>
+                {" "}— We respond within 2 hours
+              </p>
+            </div>
           </div>
         </AnimateOnScroll>
       </section>
 
       {/* ── FOOTER ── */}
-      <footer className="relative z-10 border-t border-gray-900 bg-[#040406] py-12">
-        <AnimateOnScroll variant="fadeIn" className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center">
-              <Flame size={14} className="text-white fill-white" />
-            </div>
-            <span className="text-sm font-black">Hot<span className="text-orange-500">Byte</span></span>
-          </div>
-
-          <nav className="flex items-center gap-6 text-[10px] text-gray-500 font-extrabold uppercase tracking-widest">
-            <a href="#features" className="hover:text-white transition-colors">Features</a>
-            <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
-            <a href="mailto:admin@hotbyte.in" className="hover:text-white transition-colors">Developer Contact</a>
-            <Link href="/admin/login" className="hover:text-white transition-colors">Partner Dashboard</Link>
-          </nav>
-
-          <p className="text-[9px] text-gray-600 font-bold uppercase tracking-widest">
-            &copy; 2026 HotByte Systems. All rights reserved.
-          </p>
-        </AnimateOnScroll>
-      </footer>
+      <Footer />
 
     </div>
   );

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { useTranslation } from "react-i18next";
+import { logger } from "@/lib/utils/logger";
 import "@/i18n";
 
 interface ProfileStats {
@@ -81,7 +82,7 @@ export default function Profile() {
         setOrders(ordersData.orders);
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     } finally {
       setLoading(false);
     }
@@ -91,6 +92,12 @@ export default function Profile() {
     fetchProfileAndOrders();
   }, [router]);
 
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return "";
+    const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : "";
+  };
+
   const handleDobSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!dobInput) return;
@@ -98,7 +105,7 @@ export default function Profile() {
     try {
       const res = await fetch("/api/profile/dob", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({ dob: dobInput }),
       });
       const data = await res.json();
@@ -133,7 +140,10 @@ export default function Profile() {
 
     if (result.isConfirmed) {
       try {
-        const res = await fetch(`/api/orders/cancel/${orderId}`, { method: "DELETE" });
+        const res = await fetch(`/api/orders/cancel/${orderId}`, {
+          method: "DELETE",
+          headers: { "x-csrf-token": getCsrfToken() || "" },
+        });
         const data = await res.json();
 
         if (data.success) {
@@ -183,7 +193,7 @@ export default function Profile() {
       try {
         const res = await fetch("/api/ratings/submit-order", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
           body: JSON.stringify({
             order_id: orderId,
             rating: formValues.rating,
@@ -225,7 +235,7 @@ export default function Profile() {
   };
 
   return (
-    <div className="mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700">
+    <div className="mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700 pt-14">
       <CustomerNavbar />
 
       <main className="flex-grow max-w-[1080px] mx-auto w-full px-6 py-8 flex flex-col gap-8">

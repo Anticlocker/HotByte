@@ -2,12 +2,14 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { logger } from "@/lib/utils/logger";
 
 export interface AdminUser {
   username: string;
   role: string;
   hotelId: number | null;
   hotelSlug: string | null;
+  hotelName?: string | null;
 }
 
 interface AdminSessionContextType {
@@ -15,6 +17,11 @@ interface AdminSessionContextType {
   authenticated: boolean;
   isFrozen: boolean;
   loading: boolean;
+  plan: string;
+  trialEndsAt: string | null;
+  subscriptionExpiryDate: string | null;
+  daysSinceExpiry: number;
+  gracePeriodRemaining: number | null;
   mutate: () => Promise<void>;
 }
 
@@ -25,6 +32,11 @@ export const AdminSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [authenticated, setAuthenticated] = useState(false);
   const [isFrozen, setIsFrozen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [plan, setPlan] = useState("trial");
+  const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
+  const [subscriptionExpiryDate, setSubscriptionExpiryDate] = useState<string | null>(null);
+  const [daysSinceExpiry, setDaysSinceExpiry] = useState(0);
+  const [gracePeriodRemaining, setGracePeriodRemaining] = useState<number | null>(null);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -52,6 +64,11 @@ export const AdminSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       if (data.isFrozen) {
         setIsFrozen(true);
       }
+      setPlan(data.plan || "trial");
+      setTrialEndsAt(data.trialEndsAt || null);
+      setSubscriptionExpiryDate(data.subscriptionExpiryDate || null);
+      setDaysSinceExpiry(data.daysSinceExpiry || 0);
+      setGracePeriodRemaining(data.gracePeriodRemaining !== undefined ? data.gracePeriodRemaining : null);
 
       // Contextual URL preservation: automatically append ?hotel=slug if missing
       const currentParams = new URLSearchParams(window.location.search);
@@ -60,7 +77,7 @@ export const AdminSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         router.replace(`${pathname}?${currentParams.toString()}`);
       }
     } catch (err) {
-      console.error("Session verification error:", err);
+      logger.error("Session verification error:", err);
       router.push("/admin/login");
     } finally {
       setLoading(false);
@@ -78,6 +95,11 @@ export const AdminSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         authenticated,
         isFrozen,
         loading,
+        plan,
+        trialEndsAt,
+        subscriptionExpiryDate,
+        daysSinceExpiry,
+        gracePeriodRemaining,
         mutate: fetchSession,
       }}
     >

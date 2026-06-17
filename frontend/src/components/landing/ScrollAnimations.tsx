@@ -4,7 +4,6 @@ import { useRef } from "react";
 import {
   motion,
   useInView,
-  useReducedMotion,
   type Variants,
 } from "framer-motion";
 

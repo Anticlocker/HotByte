@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { 
   Building, Users, DollarSign, LogOut, 
   ShieldCheck, Globe, Phone, MapPin, RefreshCw, BarChart2,
   Snowflake, TrendingUp, ExternalLink, Crown, AlertTriangle, Clock
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { logger } from "@/lib/utils/logger";
 
 interface Hotel {
   id: number;
@@ -80,12 +83,71 @@ export default function SuperAdminDashboard() {
   const [mapReady, setMapReady] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
 
+  const mapRef = useRef<L.Map | null>(null);
+
   // Manager creation form state
   const [managerName, setManagerName] = useState("");
   const [managerUsername, setManagerUsername] = useState("");
   const [managerEmail, setManagerEmail] = useState("");
   const [managerPassword, setManagerPassword] = useState("");
   const [selectedHotelId, setSelectedHotelId] = useState("");
+
+  // Expiry notifications & grace period
+  const [expiryNotifications, setExpiryNotifications] = useState<any[]>([]);
+  const [gracePeriodDays, setGracePeriodDays] = useState(0);
+
+  const fetchExpiryNotifications = async () => {
+    try {
+      const res = await fetch("/api/superadmin/expiry-notifications");
+      const data = await res.json();
+      if (data.success) {
+        setExpiryNotifications(data.notifications || []);
+      }
+    } catch (err) {
+      // Silently fail
+    }
+  };
+
+  const fetchGracePeriod = async () => {
+    try {
+      const res = await fetch("/api/superadmin/settings/grace-period");
+      const data = await res.json();
+      if (data.success) {
+        setGracePeriodDays(data.gracePeriodDays || 0);
+      }
+    } catch (err) {
+      // Silently fail
+    }
+  };
+
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return "";
+    const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : "";
+  };
+
+  const handleSetGracePeriod = async (days: number) => {
+    try {
+      const res = await fetch("/api/superadmin/settings/grace-period", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
+        body: JSON.stringify({ days })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGracePeriodDays(data.gracePeriodDays);
+        Swal.fire({
+          title: "Grace Period Updated",
+          text: data.message,
+          icon: "success",
+          timer: 1500,
+          showConfirmButton: false
+        });
+      }
+    } catch (err) {
+      Swal.fire("Connection Error", "Could not update grace period settings.", "error");
+    }
+  };
 
   const startEditHotel = (hotel: Hotel) => {
     setEditingHotel(hotel);
@@ -160,45 +222,153 @@ export default function SuperAdminDashboard() {
   };
 
   const handleToggleFreeze = async (hotel: Hotel) => {
-    const actionText = hotel.isFrozen ? "unfreeze" : "freeze";
-    const confirm = await Swal.fire({
-      title: `${hotel.isFrozen ? "Unfreeze" : "Freeze"} Hotel Account?`,
-      text: `Are you sure you want to ${actionText} "${hotel.name}"? This will immediately ${hotel.isFrozen ? "reactivate" : "suspend"} access for customers and managers.`,
-      icon: "question",
-      showCancelButton: true,
-      confirmButtonColor: hotel.isFrozen ? "#10B981" : "#EF4444",
-      cancelButtonColor: "#1f1f1f",
-      confirmButtonText: `Yes, ${hotel.isFrozen ? "Unfreeze" : "Freeze"}`
-    });
+    if (hotel.isFrozen) {
+      // Unfreeze via reactivate endpoint — extends trial so middleware won't re-freeze
+      const { value: days } = await Swal.fire({
+        title: "Reactivate Hotel",
+        text: `Extend trial period for "${hotel.name}" by how many days?`,
+        icon: "question",
+        input: "select",
+        inputOptions: { "7": "7 Days", "14": "14 Days", "30": "30 Days", "60": "60 Days", "90": "90 Days" },
+        inputValue: "14",
+        showCancelButton: true,
+        confirmButtonColor: "#10B981",
+        cancelButtonColor: "#1f1f1f",
+        confirmButtonText: "Reactivate"
+      });
+      if (!days) return;
 
-    if (confirm.isConfirmed) {
       try {
-        const res = await fetch(`/api/superadmin/hotels/${hotel.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: hotel.name,
-            slug: hotel.slug,
-            phone: hotel.phone,
-            address: hotel.address,
-            isFrozen: !hotel.isFrozen
-          })
+        const res = await fetch(`/api/superadmin/hotels/${hotel.id}/reactivate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
+          body: JSON.stringify({ plan: 'trial', extendDays: parseInt(days) })
         });
         const data = await res.json();
 
         if (data.success) {
+          Swal.fire({ title: "Reactivated!", text: `"${hotel.name}" is now active for ${days} more days.`, icon: "success", timer: 1500, showConfirmButton: false });
+          checkSessionAndFetch();
+        } else {
+          Swal.fire("Reactivate Failed", data.message || "An error occurred.", "error");
+        }
+      } catch (err) {
+        Swal.fire("Connection Error", "Could not reach platform API.", "error");
+      }
+    } else {
+      // Freeze
+      const confirm = await Swal.fire({
+        title: "Freeze Hotel Account?",
+        text: `Are you sure you want to suspend "${hotel.name}"? Customers and managers will lose access immediately.`,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonColor: "#EF4444",
+        cancelButtonColor: "#1f1f1f",
+        confirmButtonText: "Yes, Freeze"
+      });
+      if (!confirm.isConfirmed) return;
+
+      try {
+        const res = await fetch(`/api/superadmin/hotels/${hotel.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
+          body: JSON.stringify({ name: hotel.name, slug: hotel.slug, phone: hotel.phone, address: hotel.address, isFrozen: true })
+        });
+        const data = await res.json();
+        if (data.success) {
+          Swal.fire({ title: "Frozen!", text: `"${hotel.name}" has been suspended.`, icon: "success", timer: 1500, showConfirmButton: false });
+          checkSessionAndFetch();
+        } else {
+          Swal.fire("Freeze Failed", data.message || "An error occurred.", "error");
+        }
+      } catch (err) {
+        Swal.fire("Connection Error", "Could not reach platform API.", "error");
+      }
+    }
+  };
+
+  const handleExtendTrial = async (hotel: Hotel) => {
+    const { value: days } = await Swal.fire({
+      title: "Extend Trial Period",
+      text: `How many days would you like to extend the trial for "${hotel.name}"?`,
+      icon: "question",
+      input: "select",
+      inputOptions: {
+        "7": "7 Days",
+        "14": "14 Days",
+        "30": "30 Days",
+        "60": "60 Days",
+        "90": "90 Days"
+      },
+      inputValue: "14",
+      showCancelButton: true,
+      confirmButtonColor: "#F97316",
+      cancelButtonColor: "#1f1f1f",
+      confirmButtonText: "Extend Trial"
+    });
+
+    if (days) {
+      try {
+        const res = await fetch(`/api/superadmin/hotels/${hotel.id}/extend-trial`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
+          body: JSON.stringify({ days: parseInt(days as string) })
+        });
+        const data = await res.json();
+        if (data.success) {
           Swal.fire({
-            title: hotel.isFrozen ? "Unfrozen!" : "Frozen!",
-            text: `Hotel "${hotel.name}" account status was updated successfully.`,
+            title: "Trial Extended!",
+            text: `Trial for "${hotel.name}" extended by ${days} days.`,
             icon: "success",
             timer: 1500,
             showConfirmButton: false
           });
           checkSessionAndFetch();
-          
-          if (editingHotel?.id === hotel.id) {
-            setHotelFrozen(!hotel.isFrozen);
-          }
+        } else {
+          Swal.fire("Update Failed", data.message || "An error occurred.", "error");
+        }
+      } catch (err) {
+        Swal.fire("Connection Error", "Could not reach platform API.", "error");
+      }
+    }
+  };
+
+  const handleReactivate = async (hotel: Hotel) => {
+    const confirm = await Swal.fire({
+      title: "Reactivate Hotel?",
+      html: `Reactivate "<b>${hotel.name}</b>" on which plan?`,
+      icon: "question",
+      input: "select",
+      inputOptions: {
+        "trial": "Trial (14 days)",
+        "basic": "Basic Plan",
+        "pro": "Pro Plan"
+      },
+      inputValue: hotel.plan || "trial",
+      showCancelButton: true,
+      confirmButtonColor: "#10B981",
+      cancelButtonColor: "#1f1f1f",
+      confirmButtonText: "Reactivate"
+    });
+
+    if (confirm.isConfirmed) {
+      const plan = confirm.value as string;
+      try {
+        const res = await fetch(`/api/superadmin/hotels/${hotel.id}/reactivate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
+          body: JSON.stringify({ plan, extendDays: 14 })
+        });
+        const data = await res.json();
+        if (data.success) {
+          Swal.fire({
+            title: "Reactivated!",
+            text: `"${hotel.name}" is now active on ${plan} plan.`,
+            icon: "success",
+            timer: 1500,
+            showConfirmButton: false
+          });
+          checkSessionAndFetch();
         } else {
           Swal.fire("Update Failed", data.message || "An error occurred.", "error");
         }
@@ -224,7 +394,7 @@ export default function SuperAdminDashboard() {
       try {
         const res = await fetch(`/api/superadmin/hotels/${hotel.id}/auth-settings`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
           body: JSON.stringify({
             requireCustomerAuth: !hotel.requireCustomerAuth,
             note: "Super Admin quick override toggle"
@@ -270,7 +440,7 @@ export default function SuperAdminDashboard() {
       try {
         const res = await fetch(`/api/superadmin/hotels/${hotel.id}/location-ordering`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
           body: JSON.stringify({
             locationOrderingEnabled: !(hotel.locationOrderingEnabled !== false)
           })
@@ -314,6 +484,7 @@ export default function SuperAdminDashboard() {
       try {
         const res = await fetch(`/api/superadmin/hotels/${hotel.id}`, {
           method: "DELETE",
+          headers: { "x-csrf-token": getCsrfToken() || "" },
         });
         const data = await res.json();
 
@@ -345,6 +516,7 @@ export default function SuperAdminDashboard() {
       try {
         const res = await fetch(`/api/superadmin/admins/${manager.id}`, {
           method: "DELETE",
+          headers: { "x-csrf-token": getCsrfToken() || "" },
         });
         const data = await res.json();
 
@@ -381,8 +553,12 @@ export default function SuperAdminDashboard() {
       
       if (hotelsData.success) setHotels(hotelsData.hotels);
       if (adminsData.success) setManagers(adminsData.admins);
+
+      // Fetch expiry notifications and grace period in parallel
+      fetchExpiryNotifications();
+      fetchGracePeriod();
     } catch (err) {
-      console.error("Fetch stats error:", err);
+      logger.error("Fetch stats error:", err);
       Swal.fire("Fetch Error", "Failed to retrieve network analytics.", "error");
     } finally {
       setLoading(false);
@@ -396,17 +572,19 @@ export default function SuperAdminDashboard() {
   // ── Leaflet map for hotel location selection ──────────────────────────
   useEffect(() => {
     // Only load when the hotel form panel is visible
-    if (activeTab !== "hotels") return;
+    if (activeTab !== "hotels") {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+        setMapReady(false);
+      }
+      return;
+    }
 
     const mapContainerId = "hotel-location-map";
-    // Avoid re-initializing if already done
-    const existingMap = (window as any)._hotelLeafletMap;
 
     let retryCount = 0;
     const initMap = () => {
-      const L = (window as any).L;
-      if (!L) return;
-
       const container = document.getElementById(mapContainerId);
       if (!container) {
         if (retryCount < 10) {
@@ -417,11 +595,9 @@ export default function SuperAdminDashboard() {
       }
 
       // Destroy previous map instance if exists
-      if ((window as any)._hotelLeafletMap) {
-        try {
-          (window as any)._hotelLeafletMap.remove();
-        } catch (_) {}
-        (window as any)._hotelLeafletMap = null;
+      if (mapRef.current) {
+        try { mapRef.current.remove(); } catch (_) {}
+        mapRef.current = null;
       }
 
       const defaultLat = hotelLat || 20.5937;
@@ -429,7 +605,7 @@ export default function SuperAdminDashboard() {
       const zoom = hotelLat ? 17 : 5;
 
       const map = L.map(mapContainerId, { zoomControl: true }).setView([defaultLat, defaultLng], zoom);
-      (window as any)._hotelLeafletMap = map;
+      mapRef.current = map;
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
@@ -446,14 +622,14 @@ export default function SuperAdminDashboard() {
         className: ""
       });
 
-      let marker: any = null;
+      let marker: L.Marker | null = null;
       if (hotelLat && hotelLng) {
         marker = L.marker([hotelLat, hotelLng], { draggable: true, icon }).addTo(map);
-        marker.on("dragend", async (e: any) => {
-          const { lat, lng } = e.target.getLatLng();
+        marker.on("dragend", (e: any) => {
+          const { lat, lng } = (e.target as L.Marker).getLatLng();
           setHotelLat(lat);
           setHotelLng(lng);
-          await reverseGeocode(lat, lng);
+          reverseGeocode(lat, lng);
         });
       }
 
@@ -464,11 +640,11 @@ export default function SuperAdminDashboard() {
         if (marker) marker.setLatLng([lat, lng]);
         else {
           marker = L.marker([lat, lng], { draggable: true, icon }).addTo(map);
-          marker.on("dragend", async (ev: any) => {
-            const { lat: la, lng: lo } = ev.target.getLatLng();
+          marker.on("dragend", (ev: any) => {
+            const { lat: la, lng: lo } = (ev.target as L.Marker).getLatLng();
             setHotelLat(la);
             setHotelLng(lo);
-            await reverseGeocode(la, lo);
+            reverseGeocode(la, lo);
           });
         }
         await reverseGeocode(lat, lng);
@@ -493,31 +669,16 @@ export default function SuperAdminDashboard() {
       } catch {}
     };
 
-    // Load Leaflet CSS + JS if not already loaded
-    if (!(window as any).L) {
-      if (!document.getElementById("leaflet-css")) {
-        const link = document.createElement("link");
-        link.id = "leaflet-css";
-        link.rel = "stylesheet";
-        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-        document.head.appendChild(link);
-      }
-      const script = document.createElement("script");
-      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-      script.onload = initMap;
-      document.head.appendChild(script);
-    } else {
-      initMap();
-    }
+    initMap();
 
     return () => {
-      if ((window as any)._hotelLeafletMap) {
-        (window as any)._hotelLeafletMap.remove();
-        (window as any)._hotelLeafletMap = null;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
         setMapReady(false);
       }
     };
-  }, [activeTab, editingHotel]);
+  }, [activeTab, editingHotel, hotelLat, hotelLng]);
 
   const handleLogout = async () => {
     const confirm = await Swal.fire({
@@ -560,7 +721,7 @@ export default function SuperAdminDashboard() {
             text = data.resolvedUrl;
           }
         } catch (err) {
-          console.error("Failed to resolve short URL:", err);
+          logger.error("Failed to resolve short URL:", err);
         }
       }
 
@@ -612,7 +773,7 @@ export default function SuperAdminDashboard() {
           }
         }
       } catch (err) {
-        console.error("Geocoding failed:", err);
+        logger.error("Geocoding failed:", err);
       }
 
       if (!coords) {
@@ -628,9 +789,8 @@ export default function SuperAdminDashboard() {
     setDetectingLocation(false);
 
     // 4. Update the Leaflet map marker
-    const map = (window as any)._hotelLeafletMap;
-    const L = (window as any).L;
-    if (map && L) {
+    const map = mapRef.current;
+    if (map) {
       map.setView([coords.lat, coords.lng], 17);
       
       // Clear previous markers
@@ -732,7 +892,7 @@ export default function SuperAdminDashboard() {
 
       const res = await fetch(url, {
         method: method,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify(bodyPayload)
       });
       const data = await res.json();
@@ -768,7 +928,7 @@ export default function SuperAdminDashboard() {
 
       const res = await fetch(url, {
         method: method,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({
           name: managerName,
           username: managerUsername,
@@ -952,6 +1112,101 @@ export default function SuperAdminDashboard() {
             <div>
               <h3 className={`text-xl font-black ${expiringTrials > 0 ? 'text-orange-400' : 'text-gray-600'}`}>{expiringTrials}</h3>
               <p className="text-[9px] font-bold uppercase tracking-widest text-gray-600 mt-0.5">Expiring in 3 days</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Expiry Notifications & Grace Period Controls */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Expiry Notifications Panel */}
+          <div className="lg:col-span-2">
+            <div className="glass-card-dark p-5 rounded-3xl border border-gray-900/60">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-orange-400" />
+                  <h3 className="text-sm font-black uppercase tracking-wider text-gray-300">Expiry Notifications</h3>
+                </div>
+                <span className="text-[9px] font-bold text-gray-500">{expiryNotifications.length} pending</span>
+              </div>
+              {expiryNotifications.length === 0 ? (
+                <p className="text-xs text-gray-600 font-semibold py-3 text-center">No pending expiry notifications.</p>
+              ) : (
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {expiryNotifications.slice(0, 10).map((notif, idx) => (
+                    <div key={idx} className={`flex items-center justify-between p-2.5 rounded-xl border text-[11px] ${
+                      notif.severity === 'critical'
+                        ? 'bg-red-500/5 border-red-500/20'
+                        : notif.severity === 'warning'
+                        ? 'bg-orange-500/5 border-orange-500/20'
+                        : 'bg-blue-500/5 border-blue-500/20'
+                    }`}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          notif.severity === 'critical' ? 'bg-red-500' : notif.severity === 'warning' ? 'bg-orange-400' : 'bg-blue-400'
+                        }`}></div>
+                        <span className="font-bold text-gray-300 truncate">{notif.name}</span>
+                        <span className="text-gray-500">/</span>
+                        <span className="text-gray-500 font-mono text-[10px]">{notif.slug}</span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                        <span className={`font-bold text-[10px] ${
+                          notif.type === 'expired' ? 'text-red-400' : 'text-orange-400'
+                        }`}>
+                          {notif.type === 'expired'
+                            ? `${notif.daysSince}d expired`
+                            : `${notif.daysUntil}d left`}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-lg text-[8px] font-bold uppercase tracking-wider ${
+                          notif.severity === 'critical'
+                            ? 'bg-red-500/10 text-red-400'
+                            : notif.severity === 'warning'
+                            ? 'bg-orange-500/10 text-orange-400'
+                            : 'bg-blue-500/10 text-blue-400'
+                        }`}>
+                          {notif.type}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Grace Period Settings */}
+          <div className="lg:col-span-1">
+            <div className="glass-card-dark p-5 rounded-3xl border border-gray-900/60">
+              <div className="flex items-center gap-2 mb-4">
+                <Clock size={14} className="text-yellow-500" />
+                <h3 className="text-sm font-black uppercase tracking-wider text-gray-300">Grace Period</h3>
+              </div>
+              <p className="text-[10px] text-gray-500 font-semibold mb-4">
+                Days of continued access after expiry before auto-freeze.
+              </p>
+              <div className="flex gap-2 mb-4">
+                {[0, 3, 5, 7].map((days) => (
+                  <button
+                    key={days}
+                    onClick={() => handleSetGracePeriod(days)}
+                    className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                      gracePeriodDays === days
+                        ? 'bg-yellow-500 text-black'
+                        : 'bg-gray-900 border border-gray-800 text-gray-400 hover:border-gray-600'
+                    }`}
+                  >
+                    {days === 0 ? 'Off' : `${days}d`}
+                  </button>
+                ))}
+              </div>
+              <div className="bg-gray-900/40 border border-gray-800/60 rounded-xl p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase">Current Setting</span>
+                  <span className="text-xs font-black text-yellow-500">
+                    {gracePeriodDays === 0 ? 'No Grace Period' : `${gracePeriodDays} Days`}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1291,7 +1546,7 @@ export default function SuperAdminDashboard() {
                         Location-Based Ordering
                       </label>
                       <span className="text-[10px] text-gray-500 font-semibold leading-normal">
-                        Require customers to be within the hotel's configured radius before placing an order.
+                        Require customers to be within the hotel&apos;s configured radius before placing an order.
                       </span>
                     </div>
                   </div>
@@ -1599,6 +1854,27 @@ export default function SuperAdminDashboard() {
                               >
                                 Delete
                               </button>
+                            </div>
+                            {/* Subscription management row */}
+                            <div className="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-gray-800/40">
+                              <button
+                                onClick={() => handleExtendTrial(h)}
+                                className="bg-blue-500/10 border border-blue-500/20 px-2 py-1 rounded-lg text-blue-400 hover:bg-blue-500 hover:text-white font-bold uppercase transition-all cursor-pointer text-[8px]"
+                                title="Extend trial period"
+                              >
+                                <Clock size={9} className="inline mr-1" />
+                                Extend Trial
+                              </button>
+                              {h.isFrozen && (
+                                <button
+                                  onClick={() => handleReactivate(h)}
+                                  className="bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-lg text-emerald-400 hover:bg-emerald-500 hover:text-white font-bold uppercase transition-all cursor-pointer text-[8px]"
+                                  title="Reactivate hotel"
+                                >
+                                  <TrendingUp size={9} className="inline mr-1" />
+                                  Reactivate
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>

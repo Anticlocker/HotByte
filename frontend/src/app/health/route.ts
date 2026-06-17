@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { logger } from "@/lib/utils/logger";
 
 export async function GET() {
   try {
@@ -7,7 +8,7 @@ export async function GET() {
     const data = await res.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Frontend health check error:', error);
+    logger.error('Frontend health check error:', error);
     return NextResponse.json({ status: 'error', message: 'Unable to reach backend health endpoint' }, { status: 500 });
   }
 }

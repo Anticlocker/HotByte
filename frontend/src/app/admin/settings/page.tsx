@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import "@/i18n";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import {
   Building,
   Palette,
@@ -21,12 +23,15 @@ import {
   Trash2,
   Eye,
   EyeOff,
+  Key,
+  QrCode,
+  Globe,
   Laptop,
   Smartphone,
-  Globe,
-  Key,
 } from "lucide-react";
+import PaymentSettings from "@/components/PaymentSettings";
 import Swal from "sweetalert2";
+import { logger } from "@/lib/utils/logger";
 
 interface HotelSettings {
   hotel_id: number;
@@ -84,7 +89,7 @@ export default function AdminSettings() {
   const { t } = useTranslation();
 
 
-  const [activeTab, setActiveTab] = useState<"profile" | "branding" | "operations" | "location" | "security">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "branding" | "operations" | "location" | "security" | "payment">("profile");
   const [hotel, setHotel] = useState<HotelSettings | null>(null);
   const [admin, setAdmin] = useState<AdminInfo | null>(null);
   const [sessions, setSessions] = useState<SessionLog[]>([]);
@@ -98,6 +103,8 @@ export default function AdminSettings() {
   const [locationAddress, setLocationAddress] = useState("");
   const [locationMapReady, setLocationMapReady] = useState(false);
   const [locationOrderingEnabled, setLocationOrderingEnabled] = useState(true);
+
+  const mapRef = useRef<L.Map | null>(null);
 
   // Forms
   // Hotel form
@@ -229,7 +236,7 @@ export default function AdminSettings() {
         Swal.fire(t("common.error"), getErrorMessage(data.message) || t("admin.settings.general"), "error");
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       Swal.fire(t("common.error"), "Could not connect to the settings endpoints", "error");
     } finally {
       setLoading(false);
@@ -248,9 +255,9 @@ export default function AdminSettings() {
       const file = e.target.files[0];
       
       // Validation constraints check
-      const maxSize = type === "logo" ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
+      const maxSize = type === "logo" ? 200 * 1024 : 300 * 1024;
       if (file.size > maxSize) {
-        Swal.fire(t("common.warning"), `${type === "logo" ? "Logo" : "Banner cover"} must be smaller than ${type === "logo" ? "2MB" : "5MB"}.`, "warning");
+        Swal.fire(t("common.warning"), `${type === "logo" ? "Logo" : "Banner cover"} must be smaller than ${type === "logo" ? "200KB" : "300KB"}.`, "warning");
         return;
       }
 
@@ -284,6 +291,7 @@ export default function AdminSettings() {
     try {
       const res = await fetch("/api/admin/settings/upload", {
         method: "POST",
+        headers: { "x-csrf-token": getCsrfToken() || "" },
         body: formData
       });
       let data;
@@ -312,7 +320,7 @@ export default function AdminSettings() {
         Swal.fire(t("common.error"), getErrorMessage(data.message) || "Failed to deliver asset to storage CDN", "error");
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       Swal.fire(t("common.error"), "Unable to complete asset upload connection.", "error");
     } finally {
       if (type === "logo") setLogoUploading(false);
@@ -331,6 +339,12 @@ export default function AdminSettings() {
   };
 
   // Submit profile details
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return "";
+    const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : "";
+  };
+
   const saveHotelProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!hotelName.trim()) {
@@ -342,7 +356,7 @@ export default function AdminSettings() {
     try {
       const res = await fetch("/api/admin/settings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({
           name: hotelName.trim(),
           description: hotelDesc.trim() || null,
@@ -380,7 +394,7 @@ export default function AdminSettings() {
         Swal.fire(t("common.error"), getErrorMessage(data.message) || "Failed to commit modifications", "error");
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       Swal.fire(t("common.error"), "Network connection issues", "error");
     } finally {
       setSaving(false);
@@ -414,7 +428,7 @@ export default function AdminSettings() {
     try {
       const res = await fetch("/api/admin/settings/account", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({
           name: adminName.trim(),
           email: adminEmail.trim(),
@@ -445,7 +459,7 @@ export default function AdminSettings() {
         Swal.fire(t("common.error"), getErrorMessage(data.message) || "Email/phone unique constraint conflicts", "error");
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       Swal.fire(t("common.error"), "Verification connection failure", "error");
     } finally {
       setSaving(false);
@@ -466,7 +480,8 @@ export default function AdminSettings() {
     if (result.isConfirmed) {
       try {
         const res = await fetch("/api/admin/settings/logout-devices", {
-          method: "POST"
+          method: "POST",
+          headers: { "x-csrf-token": getCsrfToken() || "" },
         });
         let data;
         try {
@@ -481,7 +496,7 @@ export default function AdminSettings() {
           Swal.fire(t("common.error"), getErrorMessage(data.message) || "Failed to disconnect devices", "error");
         }
       } catch (err) {
-        console.error(err);
+        logger.error(err);
         Swal.fire(t("common.error"), "Unable to disconnect devices", "error");
       }
     }
@@ -493,7 +508,7 @@ export default function AdminSettings() {
     try {
       const res = await fetch("/api/admin/auth-settings", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({
           requireCustomerAuth,
           suspiciousActivityMode,
@@ -538,7 +553,7 @@ export default function AdminSettings() {
             text = data.resolvedUrl;
           }
         } catch (err) {
-          console.error("Failed to resolve short URL:", err);
+          logger.error("Failed to resolve short URL:", err);
         }
       }
 
@@ -590,7 +605,7 @@ export default function AdminSettings() {
           }
         }
       } catch (err) {
-        console.error("Geocoding failed:", err);
+        logger.error("Geocoding failed:", err);
       }
 
       if (!coords) {
@@ -606,9 +621,8 @@ export default function AdminSettings() {
     setDetectingLocation(false);
 
     // 4. Update Leaflet map marker
-    const map = (window as any)._adminLocMap;
-    const L = (window as any).L;
-    if (map && L) {
+    const map = mapRef.current;
+    if (map) {
       map.setView([coords.lat, coords.lng], 17);
       
       map.eachLayer((layer: any) => {
@@ -666,7 +680,7 @@ export default function AdminSettings() {
     try {
       const res = await fetch("/api/admin/settings/location", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({
           latitude: locationLat,
           longitude: locationLng,
@@ -692,7 +706,7 @@ export default function AdminSettings() {
     try {
       const res = await fetch("/api/admin/settings/location-ordering", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({
           locationOrderingEnabled
         })
@@ -720,7 +734,14 @@ export default function AdminSettings() {
 
   // ── Leaflet map for location tab ─────────────────────────────────────
   useEffect(() => {
-    if (activeTab !== "location") return;
+    if (activeTab !== "location") {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+        setLocationMapReady(false);
+      }
+      return;
+    }
 
     const mapContainerId = "admin-location-map";
 
@@ -736,9 +757,6 @@ export default function AdminSettings() {
 
     let retryCount = 0;
     const initMap = () => {
-      const L = (window as any).L;
-      if (!L) return;
-
       const container = document.getElementById(mapContainerId);
       if (!container) {
         if (retryCount < 10) {
@@ -748,11 +766,9 @@ export default function AdminSettings() {
         return;
       }
 
-      if ((window as any)._adminLocMap) {
-        try {
-          (window as any)._adminLocMap.remove();
-        } catch (_) {}
-        (window as any)._adminLocMap = null;
+      if (mapRef.current) {
+        try { mapRef.current.remove(); } catch (_) {}
+        mapRef.current = null;
       }
 
       const defaultLat = locationLat || 20.5937;
@@ -760,7 +776,7 @@ export default function AdminSettings() {
       const zoom = locationLat ? 17 : 5;
 
       const map = L.map(mapContainerId).setView([defaultLat, defaultLng], zoom);
-      (window as any)._adminLocMap = map;
+      mapRef.current = map;
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>',
@@ -774,13 +790,13 @@ export default function AdminSettings() {
         iconSize: [28, 28], iconAnchor: [14, 14], className: ""
       });
 
-      let marker: any = null;
+      let marker: L.Marker | null = null;
       if (locationLat && locationLng) {
         marker = L.marker([locationLat, locationLng], { draggable: true, icon }).addTo(map);
-        marker.on("dragend", async (e: any) => {
-          const { lat, lng } = e.target.getLatLng();
+        marker.on("dragend", (e: any) => {
+          const { lat, lng } = (e.target as L.Marker).getLatLng();
           setLocationLat(lat); setLocationLng(lng);
-          await reverseGeocode(lat, lng);
+          reverseGeocode(lat, lng);
         });
       }
 
@@ -790,10 +806,10 @@ export default function AdminSettings() {
         if (marker) marker.setLatLng([lat, lng]);
         else {
           marker = L.marker([lat, lng], { draggable: true, icon }).addTo(map);
-          marker.on("dragend", async (ev: any) => {
-            const { lat: la, lng: lo } = ev.target.getLatLng();
+          marker.on("dragend", (ev: any) => {
+            const { lat: la, lng: lo } = (ev.target as L.Marker).getLatLng();
             setLocationLat(la); setLocationLng(lo);
-            await reverseGeocode(la, lo);
+            reverseGeocode(la, lo);
           });
         }
         await reverseGeocode(lat, lng);
@@ -807,30 +823,16 @@ export default function AdminSettings() {
       setTimeout(() => map.invalidateSize(), 1000);
     };
 
-    if (!(window as any).L) {
-      if (!document.getElementById("leaflet-css")) {
-        const link = document.createElement("link");
-        link.id = "leaflet-css";
-        link.rel = "stylesheet";
-        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-        document.head.appendChild(link);
-      }
-      const script = document.createElement("script");
-      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-      script.onload = initMap;
-      document.head.appendChild(script);
-    } else {
-      initMap();
-    }
+    initMap();
 
     return () => {
-      if ((window as any)._adminLocMap) {
-        (window as any)._adminLocMap.remove();
-        (window as any)._adminLocMap = null;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
         setLocationMapReady(false);
       }
     };
-  }, [activeTab]);
+  }, [activeTab, locationLat, locationLng]);
 
   return (
     <div className="p-6 lg:p-10 space-y-8 animate-fade-in">
@@ -853,6 +855,7 @@ export default function AdminSettings() {
             { id: "branding", label: t("admin.settings.tabs.branding"), icon: Palette },
             { id: "operations", label: t("admin.settings.tabs.operations"), icon: Sliders },
             { id: "location", label: t("admin.settings.tabs.location"), icon: MapPin },
+            { id: "payment", label: "Payment", icon: QrCode },
             { id: "security", label: t("admin.settings.tabs.security"), icon: Lock },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -1097,7 +1100,7 @@ export default function AdminSettings() {
                     <div className="p-5 border border-gray-850 bg-gray-900/10 rounded-2xl space-y-4">
                       <div className="flex justify-between items-center">
                         <span className="text-xs font-black text-white tracking-tight uppercase">Circular Brand Logo</span>
-                        <label className="text-[9px] font-black uppercase text-gray-500 bg-gray-800 px-2 py-0.5 rounded">Max size 2MB</label>
+                        <label className="text-[9px] font-black uppercase text-gray-500 bg-gray-800 px-2 py-0.5 rounded">Max size 200KB</label>
                       </div>
 
                       <div className="flex items-center gap-4">
@@ -1145,7 +1148,7 @@ export default function AdminSettings() {
                     <div className="p-5 border border-gray-850 bg-gray-900/10 rounded-2xl space-y-4">
                       <div className="flex justify-between items-center">
                         <span className="text-xs font-black text-white tracking-tight uppercase">Hero Cover Banner</span>
-                        <label className="text-[9px] font-black uppercase text-gray-500 bg-gray-800 px-2 py-0.5 rounded">Max size 5MB</label>
+                        <label className="text-[9px] font-black uppercase text-gray-500 bg-gray-800 px-2 py-0.5 rounded">Max size 300KB</label>
                       </div>
 
                       <div className="flex items-center gap-4">
@@ -1527,7 +1530,7 @@ export default function AdminSettings() {
 
                   <div className="space-y-4">
                     <p className="text-xs text-gray-400 font-semibold leading-relaxed">
-                      Require customers to be within the hotel's configured radius before placing an order.
+                      Require customers to be within the hotel&apos;s configured radius before placing an order.
                     </p>
 
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-gray-900/40 border border-gray-850 rounded-2xl">
@@ -1579,7 +1582,14 @@ export default function AdminSettings() {
               </div>
             )}
 
-            {/* TABS 5: ACCOUNT SECURITY & LOGIN AUDIT LOGS */}
+            {/* TABS 5: PAYMENT SETTINGS */}
+            {activeTab === "payment" && (
+              <div className="glass-card-dark p-6 rounded-3xl border border-gray-850/80 bg-[#111] space-y-6 shadow-xl">
+                <PaymentSettings />
+              </div>
+            )}
+
+            {/* TABS 6: ACCOUNT SECURITY & LOGIN AUDIT LOGS */}
             {activeTab === "security" && (
               <div className="space-y-8 animate-fade-in-up">
 

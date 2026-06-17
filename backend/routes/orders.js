@@ -91,7 +91,10 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
 
     // ---------------- HOTEL RESOLVING & TABLE AVAILABILITY CHECK ----------------
     
-    const hotelSlug = req.body.hotel_slug || "hotbyte";
+    const hotelSlug = req.body.hotel_slug;
+    if (!hotelSlug) {
+      return res.status(400).json({ success: false, message: "hotel_slug is required." });
+    }
     const hotelResult = await db.query("SELECT hotel_id, is_open, latitude, longitude, order_radius, location_ordering_enabled FROM public.hotels WHERE slug = $1", [hotelSlug]);
     if (hotelResult.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Hotel not found" });
@@ -133,19 +136,18 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
       });
     }
 
-    const tableCheck = await db.query(
-      `SELECT order_id FROM orders
-       WHERE table_number = $1 AND hotel_id = $2
-       AND status IN ('pending','preparing','ready')
-       AND DATE(created_at) = CURRENT_DATE`,
-      [table_number.trim(), hotelId]
-    );
-
-    if (tableCheck.rows.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Table ${table_number} is occupied`
-      });
+    // Validate table exists in restaurant_tables (unless legacy T-N format)
+    if (!table_number.startsWith("T-")) {
+      const tableExists = await db.query(
+        "SELECT id, is_active FROM public.restaurant_tables WHERE table_number = $1 AND hotel_id = $2",
+        [table_number.trim(), hotelId]
+      );
+      if (tableExists.rows.length === 0) {
+        return res.status(400).json({ success: false, message: "Table not found for this hotel." });
+      }
+      if (!tableExists.rows[0].is_active) {
+        return res.status(400).json({ success: false, message: "This table is currently inactive." });
+      }
     }
 
     // ---------------- CALCULATE TOTAL ----------------
@@ -266,7 +268,10 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
 
 router.get("/table-availability", requireAuth, async (req, res) => {
   try {
-    const hotelSlug = req.query.hotel_slug || "hotbyte";
+    const hotelSlug = req.query.hotel_slug;
+    if (!hotelSlug) {
+      return res.status(400).json({ success: false, message: "hotel_slug is required." });
+    }
     const hotelResult = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [hotelSlug]);
     if (hotelResult.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Hotel not found" });
@@ -288,13 +293,25 @@ router.get("/table-availability", requireAuth, async (req, res) => {
       [hotelId]
     );
 
-    // Fetch hotel's configurable table count (default 5)
-    const hotelData = await db.query(
-      'SELECT table_count FROM public.hotels WHERE hotel_id = $1',
+    // Get tables from restaurant_tables or fallback to hotel's table_count
+    const tablesResult = await db.query(
+      'SELECT table_number, table_name, is_active FROM public.restaurant_tables WHERE hotel_id = $1 ORDER BY table_number ASC',
       [hotelId]
     );
-    const tableCount = hotelData.rows.length > 0 ? (hotelData.rows[0].table_count || 5) : 5;
-    const allTables = Array.from({ length: tableCount }, (_, i) => `T-${i + 1}`);
+    let allTables;
+    let tableNamesMap = {};
+    if (tablesResult.rows.length > 0) {
+      allTables = tablesResult.rows.map(t => t.table_number);
+      tablesResult.rows.forEach(t => { tableNamesMap[t.table_number] = t.table_name; });
+    } else {
+      // Fallback to legacy table_count
+      const hotelData = await db.query(
+        'SELECT table_count FROM public.hotels WHERE hotel_id = $1',
+        [hotelId]
+      );
+      const tableCount = hotelData.rows.length > 0 ? (hotelData.rows[0].table_count || 5) : 5;
+      allTables = Array.from({ length: tableCount }, (_, i) => `T-${i + 1}`);
+    }
 
     const occupiedTables = result.rows.map(row => row.table_number);
     const availableTables = allTables.filter(table => !occupiedTables.includes(table));
@@ -303,6 +320,7 @@ router.get("/table-availability", requireAuth, async (req, res) => {
       success: true,
       occupied: occupiedTables,
       available: availableTables,
+      tableNames: tableNamesMap,
       tableStatus: allTables.reduce((acc, table) => {
         acc[table] = !occupiedTables.includes(table);
         return acc;
@@ -316,8 +334,9 @@ router.get("/table-availability", requireAuth, async (req, res) => {
 
 router.post("/create", requireAuth, async (req, res) => {
   try {
-    const { items, table_number, customerLat, customerLng } = req.body;
+    const { items, table_number, customerLat, customerLng, customer_name } = req.body;
     const customerId = req.customer.customerId;
+    const customerName = (customer_name || "").trim();
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: "Cart is empty. Please add items to cart." });
@@ -327,12 +346,32 @@ router.post("/create", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: "Table number is required." });
     }
 
-    const hotelSlug = req.body.hotel_slug || "hotbyte";
-    const hotelResult = await db.query("SELECT hotel_id, is_open, latitude, longitude, order_radius, location_ordering_enabled FROM public.hotels WHERE slug = $1", [hotelSlug]);
+    const hotelSlug = req.body.hotel_slug;
+    if (!hotelSlug) {
+      return res.status(400).json({ success: false, message: "hotel_slug is required." });
+    }
+    const hotelResult = await db.query(
+      "SELECT hotel_id, is_open, latitude, longitude, order_radius, location_ordering_enabled, merchant_name, upi_id, payment_qr_url, payment_instructions FROM public.hotels WHERE slug = $1",
+      [hotelSlug]
+    );
     if (hotelResult.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Hotel not found" });
     }
-    const { hotel_id: hotelId, is_open: isOpen, latitude: hotelLat, longitude: hotelLng, order_radius: orderRadius, location_ordering_enabled: locationOrderingEnabled } = hotelResult.rows[0];
+    const { hotel_id: hotelId, is_open: isOpen, latitude: hotelLat, longitude: hotelLng, order_radius: orderRadius, location_ordering_enabled: locationOrderingEnabled, merchant_name: merchantName, upi_id: upiId, payment_qr_url: qrUrl, payment_instructions: paymentInstructions } = hotelResult.rows[0];
+
+    // Validate table exists in restaurant_tables (unless it's the legacy T-N format)
+    if (!table_number.startsWith("T-")) {
+      const tableExists = await db.query(
+        "SELECT id, is_active FROM public.restaurant_tables WHERE table_number = $1 AND hotel_id = $2",
+        [table_number.trim(), hotelId]
+      );
+      if (tableExists.rows.length === 0) {
+        return res.status(400).json({ success: false, message: "Table not found for this hotel." });
+      }
+      if (!tableExists.rows[0].is_active) {
+        return res.status(400).json({ success: false, message: "This table is currently inactive." });
+      }
+    }
 
     if (isOpen === false) {
       return res.status(400).json({
@@ -366,22 +405,6 @@ router.post("/create", requireAuth, async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "You are not registered with this hotel."
-      });
-    }
-
-    const tableCheck = await db.query(
-      `SELECT order_id FROM orders 
-       WHERE table_number = $1 AND hotel_id = $2
-       AND status IN ('pending', 'preparing', 'ready')
-       AND DATE(created_at) = CURRENT_DATE
-       LIMIT 1`,
-      [table_number.trim(), hotelId]
-    );
-
-    if (tableCheck.rows.length > 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Table ${table_number} is currently occupied. Please select another table.` 
       });
     }
 
@@ -438,13 +461,19 @@ router.post("/create", requireAuth, async (req, res) => {
       await client.query("BEGIN");
 
       const orderResult = await client.query(
-        `INSERT INTO orders (customer_id, table_number, total_amount, status, hotel_id) 
-         VALUES ($1, $2, $3, 'pending', $4) 
+        `INSERT INTO orders (customer_id, table_number, total_amount, status, hotel_id, customer_name) 
+         VALUES ($1, $2, $3, 'pending', $4, $5) 
          RETURNING order_id, customer_id, table_number, total_amount, status, created_at`,
-        [customerId, table_number.trim(), totalAmount, hotelId]
+        [customerId, table_number.trim(), totalAmount, hotelId, customerName || null]
       );
 
       const order = orderResult.rows[0];
+
+      const orderDisplayId = `HB${order.order_id}`;
+      await client.query(
+        `UPDATE orders SET order_display_id = $1 WHERE order_id = $2`,
+        [orderDisplayId, order.order_id]
+      );
 
       for (const item of items) {
         await client.query(
@@ -461,10 +490,13 @@ router.post("/create", requireAuth, async (req, res) => {
         );
       }
 
+      const paymentRefName = (customerName || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const paymentReference = `T${table_number.trim()}-${orderDisplayId}-${paymentRefName || "GUEST"}`;
+
       await client.query(
-        `INSERT INTO payments (order_id, amount, payment_status, payment_method) 
-         VALUES ($1, $2, 'pending', 'cash')`,
-        [order.order_id, totalAmount]
+        `INSERT INTO payments (order_id, amount, payment_status, payment_method, payment_reference) 
+         VALUES ($1, $2, 'pending', 'cash', $3)`,
+        [order.order_id, totalAmount, paymentReference]
       );
 
       await client.query("COMMIT");
@@ -474,11 +506,15 @@ router.post("/create", requireAuth, async (req, res) => {
         message: "Order placed successfully!",
         order: {
           order_id: order.order_id,
+          order_display_id: orderDisplayId,
+          customer_name: customerName,
           table_number: order.table_number,
           total_amount: parseFloat(order.total_amount),
           status: order.status,
           created_at: order.created_at,
         },
+        payment_reference: paymentReference,
+        qrInfo: qrUrl ? { qrUrl, merchantName, upiId, paymentInstructions } : undefined,
       });
     } catch (error) {
       await client.query("ROLLBACK");
@@ -545,8 +581,229 @@ router.delete("/cancel/:id", requireAuth, async (req, res) => {
       client.release();
     }
   } catch (error) {
-    logger.error("Cancel order error:", error);
+      logger.error("Cancel order error:", error);
     return res.status(500).json({ success: false, message: "Failed to cancel order" });
+  }
+});
+
+// ─── QR Payment: Create order ───────────────────────────────────────
+router.post("/create-qr-order", requireAuth, async (req, res) => {
+  try {
+    const { items, table_number, customerLat, customerLng, customer_name } = req.body;
+    const customerId = req.customer.customerId;
+    const customerName = (customer_name || "").trim();
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: "Cart is empty." });
+    }
+    if (!table_number || !table_number.trim()) {
+      return res.status(400).json({ success: false, message: "Table number is required." });
+    }
+
+    const hotelSlug = req.body.hotel_slug;
+    if (!hotelSlug) {
+      return res.status(400).json({ success: false, message: "hotel_slug is required." });
+    }
+    const hotelResult = await db.query(
+      `SELECT hotel_id, is_open, latitude, longitude, order_radius, location_ordering_enabled,
+              merchant_name, upi_id, payment_qr_url, payment_instructions
+       FROM public.hotels WHERE slug = $1`,
+      [hotelSlug]
+    );
+    if (hotelResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found" });
+    }
+
+    const { hotel_id: hotelId, is_open: isOpen, latitude: hotelLat, longitude: hotelLng, order_radius: orderRadius, location_ordering_enabled: locationOrderingEnabled, merchant_name: merchantName, upi_id: upiId, payment_qr_url: qrUrl, payment_instructions: paymentInstructions } = hotelResult.rows[0];
+    if (!qrUrl) {
+      return res.status(400).json({ success: false, message: "Hotel has not configured QR payment." });
+    }
+
+    if (!table_number.startsWith("T-")) {
+      const tableExists = await db.query(
+        "SELECT id, is_active FROM public.restaurant_tables WHERE table_number = $1 AND hotel_id = $2",
+        [table_number.trim(), hotelId]
+      );
+      if (tableExists.rows.length === 0) {
+        return res.status(400).json({ success: false, message: "Table not found." });
+      }
+      if (!tableExists.rows[0].is_active) {
+        return res.status(400).json({ success: false, message: "Table is inactive." });
+      }
+    }
+
+    if (isOpen === false) {
+      return res.status(400).json({ success: false, message: "Hotel is currently closed." });
+    }
+
+    if (locationOrderingEnabled !== false && hotelLat !== null && hotelLng !== null) {
+      const cLat = parseFloat(customerLat);
+      const cLng = parseFloat(customerLng);
+      if (isNaN(cLat) || isNaN(cLng)) {
+        return res.status(400).json({ success: false, message: "Location is required." });
+      }
+      const dist = haversineDistance(cLat, cLng, parseFloat(hotelLat), parseFloat(hotelLng));
+      const radius = orderRadius || 30;
+      if (dist > radius) {
+        return res.status(403).json({ success: false, locationError: true, message: `You must be within ${radius}m.` });
+      }
+    }
+
+    if (req.customer.hotelId !== hotelId) {
+      return res.status(403).json({ success: false, message: "Not registered with this hotel." });
+    }
+
+    let totalAmount = 0;
+    const itemIds = items.map(i => i.item_id);
+    const dbItemsResult = await db.query(
+      "SELECT item_id, price FROM public.menu_items WHERE item_id = ANY($1) AND hotel_id = $2",
+      [itemIds, hotelId]
+    );
+    const dbItemsMap = new Map(dbItemsResult.rows.map(r => [r.item_id, parseFloat(r.price)]));
+
+    const variantIds = items.filter(i => i.selectedVariant?.id).map(i => i.selectedVariant.id);
+    let dbVariantsMap = new Map();
+    if (variantIds.length > 0) {
+      const dbVariantsResult = await db.query(
+        "SELECT id, menu_item_id, variant_name, price FROM public.menu_item_variants WHERE id = ANY($1)",
+        [variantIds]
+      );
+      dbVariantsMap = new Map(dbVariantsResult.rows.map(r => [r.id, { price: parseFloat(r.price), variant_name: r.variant_name, menu_item_id: r.menu_item_id }]));
+    }
+
+    for (const item of items) {
+      if (!item.item_id || !item.quantity) {
+        return res.status(400).json({ success: false, message: "Invalid item data." });
+      }
+      let itemPrice = 0;
+      if (item.selectedVariant?.id) {
+        const verifiedVariant = dbVariantsMap.get(item.selectedVariant.id);
+        if (!verifiedVariant || verifiedVariant.menu_item_id !== item.item_id) {
+          return res.status(400).json({ success: false, message: "Portion variant mismatch." });
+        }
+        itemPrice = verifiedVariant.price;
+        item.variantName = verifiedVariant.variant_name;
+      } else {
+        const verifiedPrice = dbItemsMap.get(item.item_id);
+        if (verifiedPrice === undefined) {
+          return res.status(400).json({ success: false, message: "Item not found." });
+        }
+        itemPrice = verifiedPrice;
+        item.variantName = null;
+      }
+      item.price = itemPrice;
+      totalAmount += itemPrice * parseInt(item.quantity);
+    }
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      const orderResult = await client.query(
+        `INSERT INTO orders (customer_id, table_number, total_amount, status, hotel_id, customer_name)
+         VALUES ($1, $2, $3, 'pending', $4, $5) RETURNING order_id, customer_id, table_number, total_amount, status, created_at`,
+        [customerId, table_number.trim(), totalAmount, hotelId, customerName || null]
+      );
+      const order = orderResult.rows[0];
+
+      const orderDisplayId = `HB${order.order_id}`;
+      await client.query(
+        `UPDATE orders SET order_display_id = $1 WHERE order_id = $2`,
+        [orderDisplayId, order.order_id]
+      );
+
+      for (const item of items) {
+        await client.query(
+          `INSERT INTO order_items (order_id, item_id, quantity, price, variant_id, variant_name) VALUES ($1, $2, $3, $4, $5, $6)`,
+          [order.order_id, item.item_id, item.quantity, item.price, item.selectedVariant?.id || null, item.variantName || null]
+        );
+      }
+
+      const paymentRefName = (customerName || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const paymentReference = `T${table_number.trim()}-${orderDisplayId}-${paymentRefName || "GUEST"}`;
+
+      await client.query(
+        `INSERT INTO payments (order_id, amount, payment_status, payment_method, payment_reference) VALUES ($1, $2, 'pending', 'qr', $3)`,
+        [order.order_id, totalAmount, paymentReference]
+      );
+
+      await client.query("COMMIT");
+
+      const upiDeepLink = upiId ? `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(merchantName || "")}&am=${totalAmount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(paymentReference)}` : "";
+
+      return res.json({
+        success: true,
+        order: {
+          ...order,
+          order_display_id: orderDisplayId,
+          customer_name: customerName,
+        },
+        payment_reference: paymentReference,
+        upi_deep_link: upiDeepLink,
+        qrInfo: {
+          qrUrl,
+          merchantName: merchantName || "",
+          upiId: upiId || "",
+          paymentInstructions: paymentInstructions || ""
+        }
+      });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    logger.error("Create QR order error:", error);
+    return res.status(500).json({ success: false, message: "Failed to create order." });
+  }
+});
+
+// ─── QR Payment: Customer confirms payment submitted ────────────────
+router.post("/qr-payment-submitted", requireAuth, async (req, res) => {
+  try {
+    const { order_id } = req.body;
+    const customerId = req.customer.customerId;
+
+    if (!order_id) {
+      return res.status(400).json({ success: false, message: "Order ID is required." });
+    }
+
+    const orderCheck = await db.query(
+      `SELECT o.order_id, o.customer_id, o.hotel_id, o.status, p.payment_status, p.payment_method
+       FROM public.orders o
+       LEFT JOIN public.payments p ON p.order_id = o.order_id
+       WHERE o.order_id = $1`,
+      [order_id]
+    );
+
+    if (orderCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Order not found." });
+    }
+
+    const order = orderCheck.rows[0];
+    if (order.customer_id !== customerId) {
+      return res.status(403).json({ success: false, message: "This order does not belong to you." });
+    }
+    if (order.hotel_id !== req.customer.hotelId) {
+      return res.status(403).json({ success: false, message: "This order belongs to a different hotel." });
+    }
+    if (order.payment_method !== 'qr') {
+      return res.status(400).json({ success: false, message: "This order is not a QR payment order." });
+    }
+    if (order.payment_status !== 'pending') {
+      return res.status(400).json({ success: false, message: "Payment already submitted." });
+    }
+
+    await db.query(
+      "UPDATE public.payments SET payment_status = 'submitted' WHERE order_id = $1",
+      [order_id]
+    );
+
+    return res.json({ success: true, message: "Payment submitted for verification." });
+  } catch (error) {
+    logger.error("QR payment submitted error:", error);
+    return res.status(500).json({ success: false, message: "Failed to submit payment." });
   }
 });
 

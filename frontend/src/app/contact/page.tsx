@@ -10,8 +10,8 @@ export const metadata: Metadata = {
 
 export default function Contact() {
   return (
-    <div className="mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700 bg-white dark:bg-[#0b0d11] transition-colors duration-300">
-      <CustomerNavbar />
+    <div className="mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700 bg-white dark:bg-[#0b0d11] transition-colors duration-300 pt-14">
+      <CustomerNavbar hideActions />
 
       <main className="flex-grow max-w-[900px] mx-auto w-full px-6 py-12 relative overflow-hidden">
         {/* Glow elements */}
@@ -60,7 +60,7 @@ export default function Contact() {
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Business Contact</p>
-                  <p className="text-sm font-bold text-gray-700 dark:text-gray-300">+91 98765 43210</p>
+                  <p className="text-sm font-bold text-gray-700 dark:text-gray-300">+91 93569 18260</p>
                 </div>
               </div>
 
@@ -72,8 +72,8 @@ export default function Contact() {
                   <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Registered Address</p>
                   <p className="text-sm font-bold text-gray-700 dark:text-gray-300">
                     HotByte Technologies<br />
-                    Sector-5, Salt Lake, Kolkata<br />
-                    West Bengal – 700091, India
+                    Mental Corner, Vishrantwadi, Pune<br />
+                    Maharashtra – 411015, India
                   </p>
                 </div>
               </div>

@@ -3,9 +3,10 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, User, ShieldAlert, ArrowRight } from "lucide-react";
-import Swal from "sweetalert2";
+import { useNotification } from "@/context/NotificationContext";
 
 function AdminLoginContent() {
+  const notif = useNotification();
   const router = useRouter();
   const searchParams = useSearchParams();
   const hotelSlug = searchParams?.get("hotel") ?? null;
@@ -29,7 +30,7 @@ function AdminLoginContent() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) {
-      Swal.fire("Inputs Required", "Please enter both username and password.", "warning");
+      notif.warning("Inputs Required", "Please enter both username and password.");
       return;
     }
 
@@ -43,20 +44,14 @@ function AdminLoginContent() {
       const data = await res.json();
 
       if (data.success) {
-        Swal.fire({
-          title: "Access Granted!",
-          text: "Authorized session established.",
-          icon: "success",
-          timer: 1200,
-          showConfirmButton: false,
-        });
+        notif.success("Access Granted!", "Authorized session established.");
         const target = data.admin.hotelSlug ? `/admin?hotel=${data.admin.hotelSlug}` : "/admin";
         router.push(target);
       } else {
-        Swal.fire("Access Denied", data.message || "Invalid administrative credentials.", "error");
+        notif.error("Access Denied", data.message || "Invalid administrative credentials.");
       }
     } catch (err) {
-      Swal.fire("Connection Error", "Failed to communicate with authorization server.", "error");
+      notif.error("Connection Error", "Failed to communicate with authorization server.");
     } finally {
       setLoading(false);
     }

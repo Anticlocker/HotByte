@@ -8,6 +8,7 @@ import {
   Building, Phone, Mail, ChevronLeft, ShieldCheck, Globe, Star
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { logger } from "@/lib/utils/logger";
 
 interface PageProps {
   params: Promise<{ hotel_slug: string }>;
@@ -63,10 +64,16 @@ export default function UpgradePage({ params }: PageProps) {
         }
       });
 
+      const getCsrfToken = () => {
+        if (typeof document === "undefined") return "";
+        const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+        return match ? decodeURIComponent(match[1]) : "";
+      };
+
       // 1. Create subscription Razorpay order
       const orderRes = await fetch("/api/payments/create-subscription-order", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({
           plan: planKey,
           hotel_slug: hotelSlug
@@ -122,10 +129,16 @@ export default function UpgradePage({ params }: PageProps) {
             }
           });
 
+          const getCsrfToken = () => {
+            if (typeof document === "undefined") return "";
+            const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+            return match ? decodeURIComponent(match[1]) : "";
+          };
+
           // Verify signature on backend
           const verifyRes = await fetch("/api/payments/verify-subscription", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
             body: JSON.stringify({
               plan: planKey,
               hotel_slug: hotelSlug,
@@ -161,7 +174,7 @@ export default function UpgradePage({ params }: PageProps) {
       const rzp = new (window as any).Razorpay(options);
       rzp.open();
     } catch (error) {
-      console.error("Upgrade checkout exception:", error);
+      logger.error("Upgrade checkout exception:", error);
       Swal.fire("Connection Error", "Could not reach platform billing APIs.", "error");
     }
   };

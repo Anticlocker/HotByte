@@ -22,13 +22,13 @@ router.get("/", requireAuth, async (req, res) => {
     const customer = customerResult.rows[0];
 
     const ordersCountResult = await db.query(
-      "SELECT COUNT(*) as total FROM orders WHERE customer_id = $1",
-      [customerId]
+      "SELECT COUNT(*) as total FROM orders WHERE customer_id = $1 AND hotel_id = $2",
+      [customerId, req.customer.hotelId]
     );
 
     const totalSpentResult = await db.query(
-      "SELECT COALESCE(SUM(total_amount), 0) as total FROM orders WHERE customer_id = $1 AND status = 'completed'",
-      [customerId]
+      "SELECT COALESCE(SUM(total_amount), 0) as total FROM orders WHERE customer_id = $1 AND status = 'completed' AND hotel_id = $2",
+      [customerId, req.customer.hotelId]
     );
 
     return res.json({

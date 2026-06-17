@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState } from "react";
-import { useInView, useReducedMotion } from "framer-motion";
+import { useInView } from "framer-motion";
 
 // ─── CountUp ───────────────────────────────────────────────────────────────
 // Animates a number from 0 to target when scrolled into view.

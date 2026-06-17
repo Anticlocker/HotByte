@@ -1,4 +1,5 @@
 // backend/middleware/validateHotelHeader.js
+const logger = require('../utils/logger');
 module.exports = async (req, res, next) => {
   const hotelSlug = req.headers['x-hotel-slug'];
   if (!hotelSlug) {
@@ -16,7 +17,7 @@ module.exports = async (req, res, next) => {
     req.hotel = { slug: hotelSlug, id: rows[0].hotel_id };
     next();
   } catch (err) {
-    console.error('Hotel header validation error:', err);
+    logger.error('Hotel header validation error:', { message: err.message });
     return res.status(500).json({ success: false, message: 'Server error during hotel validation.' });
   }
 };

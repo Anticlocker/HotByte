@@ -18,9 +18,11 @@ import {
   RefreshCw,
   CreditCard,
   Banknote,
+  QrCode,
   ExternalLink,
 } from "lucide-react";
-import Swal from "sweetalert2";
+import { useNotification } from "@/context/NotificationContext";
+import { logger } from "@/lib/utils/logger";
 
 interface OrderItem {
   order_item_id: number;
@@ -33,15 +35,17 @@ interface OrderItem {
 interface Order {
   order_id: number;
   customer_id: number;
+  order_display_id?: string;
   customer_name: string;
   customer_phone: string;
   table_number: string;
   total_amount: number;
   status: "pending" | "preparing" | "ready" | "completed" | "cancelled";
   created_at: string;
-  payment_status: "pending" | "completed";
-  payment_method: "cash" | "razorpay";
+  payment_status: "pending" | "completed" | "submitted" | "rejected";
+  payment_method: "cash" | "razorpay" | "qr";
   razorpay_payment_id?: string;
+  payment_reference?: string;
   items: OrderItem[];
 }
 
@@ -58,6 +62,7 @@ export default function AdminDashboard() {
   const router = useRouter();
   const { t } = useTranslation();
   const { admin } = useAdminSession();
+  const notif = useNotification();
   const hotelName = (admin as any)?.hotelName || "";
   const hotelSlug = admin?.hotelSlug || "";
 
@@ -104,7 +109,7 @@ export default function AdminDashboard() {
       }
     } catch (err: any) {
       if (err.name !== "AbortError") {
-        console.error("Dashboard load failed:", err);
+        logger.error("Dashboard load failed:", err);
       }
     } finally {
       setLoading(false);
@@ -129,88 +134,131 @@ export default function AdminDashboard() {
     }
   }, [admin]);
 
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return "";
+    const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : "";
+  };
+
   const handleUpdateStatus = async (orderId: number, nextStatus: string) => {
     try {
       const res = await fetch(`/api/admin/orders/${orderId}/status`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({ status: nextStatus }),
       });
       const data = await res.json();
 
       if (data.success) {
-        Swal.fire({
-          title: t('admin.statusUpdated', 'Status Updated'),
-          text: t('admin.statusChangedMsg', 'Order #{{id}} changed to {{status}}.').replace('{{id}}', String(orderId)).replace('{{status}}', nextStatus),
-          icon: "success",
-          timer: 1000,
-          showConfirmButton: false,
-        });
+        notif.success(t('admin.statusUpdated', 'Status Updated'), t('admin.statusChangedMsg', 'Order #{{id}} changed to {{status}}.').replace('{{id}}', String(orderId)).replace('{{status}}', nextStatus));
         fetchDashboardData();
       } else {
-        Swal.fire(t('common.failure', 'Failure'), data.message || t('admin.statusUpdateFailed', 'Failed to update status.'), "error");
+        notif.error(t('common.failure', 'Failure'), data.message || t('admin.statusUpdateFailed', 'Failed to update status.'));
       }
     } catch (err) {
-      Swal.fire(t('common.error', 'Error'), t('errors.networkError', 'Network connection failure.'), "error");
+      notif.error(t('common.error', 'Error'), t('errors.networkError', 'Network connection failure.'));
     }
   };
 
   const handleMarkPaid = async (orderId: number) => {
-    const result = await Swal.fire({
-      title: t('admin.approvePaymentTitle', 'Approve Payment?'),
-      text: t('admin.approvePaymentText', 'Mark order #{{id}} cash payment as Completed?').replace('{{id}}', String(orderId)),
-      icon: "question",
-      showCancelButton: true,
-      confirmButtonColor: "#10B981",
-      cancelButtonColor: "#aaa",
-      confirmButtonText: t('admin.confirmPaymentBtn', 'Yes, Confirm Payment'),
-    });
+    const { isConfirmed } = await notif.confirm(
+      t('admin.approvePaymentTitle', 'Approve Payment?'),
+      t('admin.approvePaymentText', 'Mark order #{{id}} cash payment as Completed?').replace('{{id}}', String(orderId)),
+      t('admin.confirmPaymentBtn', 'Yes, Confirm Payment')
+    );
 
-    if (result.isConfirmed) {
+    if (isConfirmed) {
       try {
         const res = await fetch(`/api/admin/orders/${orderId}/mark-paid`, {
           method: "PUT",
+          headers: { "x-csrf-token": getCsrfToken() || "" },
         });
         const data = await res.json();
 
         if (data.success) {
-          Swal.fire(t('orders.paid', 'Paid'), t('admin.paymentCompletedMsg', 'Order payment status marked completed.'), "success");
+          notif.success(t('orders.paid', 'Paid'), t('admin.paymentCompletedMsg', 'Order payment status marked completed.'));
           fetchDashboardData();
         } else {
-          Swal.fire(t('common.failure', 'Failure'), data.message || t('admin.paymentFailedMsg', 'Failed to mark paid.'), "error");
+          notif.error(t('common.failure', 'Failure'), data.message || t('admin.paymentFailedMsg', 'Failed to mark paid.'));
         }
       } catch (err) {
-        Swal.fire(t('common.error', 'Error'), t('admin.serverContactFailed', 'Failed to contact API server.'), "error");
+        notif.error(t('common.error', 'Error'), t('admin.serverContactFailed', 'Failed to contact API server.'));
+      }
+    }
+  };
+
+  const handleVerifyQRPayment = async (orderId: number) => {
+    const { isConfirmed } = await notif.confirm(
+      t('admin.verifyQrPaymentTitle', 'Verify QR Payment?'),
+      t('admin.verifyQrPaymentText', 'Confirm that the customer has completed the QR payment for order #{{id}}?').replace('{{id}}', String(orderId)),
+      t('admin.confirmPaymentBtn', 'Yes, Confirm Payment')
+    );
+
+    if (isConfirmed) {
+      try {
+        const res = await fetch(`/api/admin/orders/${orderId}/verify-qr-payment`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
+          body: JSON.stringify({ status: "completed" }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          notif.success(t('orders.paid', 'Paid'), t('admin.paymentCompletedMsg', 'Order payment status marked completed.'));
+          fetchDashboardData();
+        } else {
+          notif.error(t('common.failure', 'Failure'), data.message || t('admin.paymentFailedMsg', 'Failed to verify payment.'));
+        }
+      } catch (err) {
+        notif.error(t('common.error', 'Error'), t('admin.serverContactFailed', 'Failed to contact API server.'));
+      }
+    } else {
+      const { isConfirmed: isReject } = await notif.confirm(
+        t('admin.rejectPayment', 'Reject Payment'),
+        t('admin.qrPaymentRejectConfirm', 'Reject this QR payment?'),
+        t('admin.rejectPayment', 'Reject')
+      );
+      if (isReject) {
+        try {
+          const res = await fetch(`/api/admin/orders/${orderId}/verify-qr-payment`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
+            body: JSON.stringify({ status: "rejected" }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            notif.info(t('admin.rejected', 'Rejected'), t('admin.qrPaymentRejectedMsg', 'QR payment has been rejected.'));
+            fetchDashboardData();
+          }
+        } catch (err) {
+          notif.error(t('common.error', 'Error'), t('admin.serverContactFailed', 'Failed to contact API server.'));
+        }
       }
     }
   };
 
   const handleDeleteOrder = async (orderId: number) => {
-    const result = await Swal.fire({
-      title: t('orders.cancelTitle', 'Cancel Order?'),
-      text: t('admin.deleteWarningText', 'Warning: This cancels and completely deletes this order transaction!'),
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonColor: "#EF4444",
-      cancelButtonColor: "#aaa",
-      confirmButtonText: t('common.delete', 'Delete Order'),
-    });
+    const { isConfirmed } = await notif.confirm(
+      t('orders.cancelTitle', 'Cancel Order?'),
+      t('admin.deleteWarningText', 'Warning: This cancels and completely deletes this order transaction!'),
+      t('common.delete', 'Delete Order')
+    );
 
-    if (result.isConfirmed) {
+    if (isConfirmed) {
       try {
         const res = await fetch(`/api/admin/orders/${orderId}`, {
           method: "DELETE",
+          headers: { "x-csrf-token": getCsrfToken() || "" },
         });
         const data = await res.json();
 
         if (data.success) {
-          Swal.fire(t('orders.cancelled', 'Cancelled'), t('orders.cancelSuccess', 'Order was deleted successfully.'), "success");
+          notif.success(t('orders.cancelled', 'Cancelled'), t('orders.cancelSuccess', 'Order was deleted successfully.'));
           fetchDashboardData();
         } else {
-          Swal.fire(t('common.failure', 'Failure'), data.message || t('admin.deleteFailedMsg', 'Could not delete order.'), "error");
+          notif.error(t('common.failure', 'Failure'), data.message || t('admin.deleteFailedMsg', 'Could not delete order.'));
         }
       } catch (err) {
-        Swal.fire(t('common.error', 'Error'), t('errors.networkError', 'Network error encountered.'), "error");
+        notif.error(t('common.error', 'Error'), t('errors.networkError', 'Network error encountered.'));
       }
     }
   };
@@ -389,6 +437,7 @@ export default function AdminDashboard() {
                     nextIcon={<Play size={14} />}
                     onCancel={() => handleDeleteOrder(order.order_id)}
                     onPayConfirm={() => handleMarkPaid(order.order_id)}
+                    onVerifyQr={() => handleVerifyQRPayment(order.order_id)}
                   />
                 ))
               )}
@@ -422,6 +471,7 @@ export default function AdminDashboard() {
                     nextIcon={<Truck size={14} />}
                     onCancel={() => handleDeleteOrder(order.order_id)}
                     onPayConfirm={() => handleMarkPaid(order.order_id)}
+                    onVerifyQr={() => handleVerifyQRPayment(order.order_id)}
                   />
                 ))
               )}
@@ -455,6 +505,7 @@ export default function AdminDashboard() {
                     nextIcon={<CheckCircle size={14} />}
                     onCancel={() => handleDeleteOrder(order.order_id)}
                     onPayConfirm={() => handleMarkPaid(order.order_id)}
+                    onVerifyQr={() => handleVerifyQRPayment(order.order_id)}
                   />
                 ))
               )}
@@ -475,6 +526,7 @@ function OrderKanbanCard({
   nextIcon,
   onCancel,
   onPayConfirm,
+  onVerifyQr,
 }: {
   order: Order;
   onNext: () => void;
@@ -482,6 +534,7 @@ function OrderKanbanCard({
   nextIcon: React.ReactNode;
   onCancel: () => void;
   onPayConfirm: () => void;
+  onVerifyQr?: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -491,9 +544,9 @@ function OrderKanbanCard({
       <div className="flex justify-between items-start gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="font-extrabold text-sm text-white">#{order.order_id}</span>
-            <span className="px-2 py-0.5 bg-orange-500/10 text-[var(--orange)] border border-orange-500/20 rounded text-[9px] font-black uppercase tracking-wide">
-              {t('checkout.tableNumber', 'Table')} {order.table_number.replace("T-", "")}
+            <span className="font-extrabold text-sm text-white">{order.order_display_id || `#${order.order_id}`}</span>
+            <span className="px-2 py-0.5 bg-orange-500/10 text-[var(--orange)] border border-orange-500/20 rounded text-[9px] font-black uppercase tracking-wide flex items-center gap-1">
+              🪑 {order.table_number.replace("T-", "")}
             </span>
           </div>
           <p className="text-[10px] text-gray-500 font-semibold mt-1">
@@ -514,6 +567,11 @@ function OrderKanbanCard({
       <div className="p-3 bg-gray-900/60 rounded-xl border border-gray-800/40 text-[11px] space-y-0.5">
         <p className="font-extrabold text-gray-300">{order.customer_name}</p>
         <p className="font-semibold text-gray-500">+91 {order.customer_phone}</p>
+        {order.payment_reference && (
+          <p className="text-[9px] font-mono font-bold text-orange-500 pt-1 border-t border-gray-800/40 mt-1">
+            Ref: {order.payment_reference}
+          </p>
+        )}
       </div>
 
       {/* Items list */}
@@ -534,6 +592,8 @@ function OrderKanbanCard({
         <span className="text-gray-500 font-semibold flex items-center gap-1.5">
           {order.payment_method === "razorpay" ? (
             <CreditCard size={12} className="text-orange-500" />
+          ) : order.payment_method === "qr" ? (
+            <QrCode size={12} className="text-purple-500" />
           ) : (
             <Banknote size={12} className="text-yellow-500" />
           )}
@@ -542,6 +602,15 @@ function OrderKanbanCard({
 
         {order.payment_status === "completed" ? (
           <span className="font-black text-emerald-500 uppercase tracking-wider">{t('admin.paidVerified', 'Paid Verified')}</span>
+        ) : order.payment_method === "qr" && order.payment_status === "submitted" ? (
+          <button
+            onClick={onVerifyQr}
+            className="px-2 py-0.5 bg-purple-500/10 border border-purple-500/20 text-purple-500 rounded font-black uppercase tracking-wider cursor-pointer hover:bg-purple-500/25"
+          >
+            {t('admin.verifyPayment', 'Verify Payment')}
+          </button>
+        ) : order.payment_status === "rejected" ? (
+          <span className="font-black text-red-500 uppercase tracking-wider">{t('admin.rejected', 'Rejected')}</span>
         ) : (
           <button
             onClick={onPayConfirm}

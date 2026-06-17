@@ -1,20 +1,22 @@
-"use client";
-
+import type { Metadata } from "next";
 import CustomerNavbar from "@/components/CustomerNavbar";
-import { useTranslation } from "react-i18next";
-import "@/i18n";
+import Footer from "@/components/Footer";
 import { Shield } from "lucide-react";
 
-export default function PrivacyPolicy() {
-  const { t } = useTranslation();
+export const metadata: Metadata = {
+  title: "Privacy Policy | HotByte",
+  description:
+    "HotByte privacy policy detailing how we collect, use, and protect your data on our digital menu and ordering platform.",
+};
 
+export default function PrivacyPolicy() {
   return (
-    <div className="mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700 bg-white dark:bg-[#0b0d11] transition-colors duration-300">
-      <CustomerNavbar />
+    <div className="mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700 bg-white dark:bg-[#0b0d11] transition-colors duration-300 pt-14">
+      <CustomerNavbar hideActions />
 
       <main className="flex-grow max-w-[800px] mx-auto w-full px-6 py-12 relative overflow-hidden">
-        {/* Glow elements */}
-        <div className="absolute top-1/4 left-1/4 w-80 h-80 bg-orange-500/5 rounded-full blur-[100px] pointer-events-none"></div>
+        {/* Glow */}
+        <div className="absolute top-1/4 right-1/4 w-80 h-80 bg-orange-500/5 rounded-full blur-[100px] pointer-events-none" />
 
         <div className="bg-white/70 dark:bg-zinc-900/60 border border-gray-150/40 dark:border-zinc-800/40 shadow-2xl backdrop-blur-xl p-8 md:p-12 rounded-[32px] animate-fade-in-up">
           <div className="flex items-center gap-4 mb-6">
@@ -23,10 +25,10 @@ export default function PrivacyPolicy() {
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white tracking-tight">
-                {t('privacy.title', 'Privacy Policy')}
+                Privacy Policy
               </h1>
-              <p className="text-xs font-bold text-gray-400 dark:text-gray-550 uppercase tracking-widest mt-1">
-                {t('privacy.lastUpdated', 'Last Updated')}: June 2026
+              <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mt-1">
+                Last Updated: June 2026
               </p>
             </div>
           </div>
@@ -39,25 +41,58 @@ export default function PrivacyPolicy() {
                 1. Information We Collect
               </h2>
               <p>
-                We collect information when you register on our platform, place an order, or authenticate using Google Single Sign-On (SSO). This may include your name, email address, phone number, and dining table details.
+                We collect information necessary to provide and improve the HotByte
+                platform. This includes:
               </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <strong className="text-gray-800 dark:text-gray-200">Account data:</strong>{" "}
+                  Name, email address, phone number, and Google SSO profile information
+                  when you register or authenticate.
+                </li>
+                <li>
+                  <strong className="text-gray-800 dark:text-gray-200">Order data:</strong>{" "}
+                  Menu items ordered, table number, order timestamps, and payment
+                  transaction IDs (processed via Razorpay).
+                </li>
+                <li>
+                  <strong className="text-gray-800 dark:text-gray-200">Hotel data:</strong>{" "}
+                  Restaurant name, address, branding assets, menu items, pricing, and
+                  admin account credentials (hashed).
+                </li>
+                <li>
+                  <strong className="text-gray-800 dark:text-gray-200">Device data:</strong>{" "}
+                  IP address, browser user-agent, and language preference for session
+                  management and localisation.
+                </li>
+              </ul>
             </section>
 
             <section className="space-y-2">
               <h2 className="text-base font-black text-gray-900 dark:text-white tracking-tight">
                 2. How We Use Your Information
               </h2>
-              <p>
-                Your data is processed exclusively to manage table orders, verify session authenticity, process payment transactions via Razorpay, and notify the restaurant kitchen display systems.
-              </p>
+              <p>Your data is used exclusively for the following purposes:</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Processing and delivering food orders to the restaurant kitchen.</li>
+                <li>Authenticating your identity via OTP or Google SSO.</li>
+                <li>Managing hotel subscriptions, billing, and account access.</li>
+                <li>Sending transactional notifications related to orders and account status.</li>
+                <li>Generating anonymised sales analytics for restaurant partners.</li>
+              </ul>
             </section>
 
             <section className="space-y-2">
               <h2 className="text-base font-black text-gray-900 dark:text-white tracking-tight">
-                3. Security & Persistent Storage
+                3. Data Storage &amp; Security
               </h2>
               <p>
-                All session tokens are cryptographically secured. Selected localization preferences and dark mode states are synced and stored securely in localized databases or browser localStorage.
+                All data is stored securely on Neon PostgreSQL databases with encrypted
+                connections (SSL/TLS). Session tokens are cryptographically signed and
+                stored as HttpOnly cookies. Passwords are hashed using bcrypt with a
+                cost factor of 12. We implement industry-standard security headers
+                (Helmet CSP), rate limiting, and CORS policies to protect against
+                common web vulnerabilities.
               </p>
             </section>
 
@@ -66,18 +101,99 @@ export default function PrivacyPolicy() {
                 4. Third-Party Integrations
               </h2>
               <p>
-                Payments are handled securely by Razorpay APIs. SSO authentication is processed by Google Identity Services. We do not sell or lease customer information to third-party marketing brokers.
+                HotByte integrates with the following third-party services:
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <strong className="text-gray-800 dark:text-gray-200">Razorpay:</strong>{" "}
+                  Payment processing for subscription billing and customer orders.
+                  We do not store full card details; all payment data is handled by
+                  Razorpay&apos;s PCI-compliant infrastructure.
+                </li>
+                <li>
+                  <strong className="text-gray-800 dark:text-gray-200">Google Identity Services:</strong>{" "}
+                  SSO authentication. We receive only the profile information you
+                  authorise (name, email, avatar).
+                </li>
+                <li>
+                  <strong className="text-gray-800 dark:text-gray-200">MessageCentral:</strong>{" "}
+                  SMS-based OTP verification. Phone numbers are used solely for
+                  authentication and are not shared with third parties.
+                </li>
+                <li>
+                  <strong className="text-gray-800 dark:text-gray-200">Bunny CDN:</strong>{" "}
+                  Image storage and delivery for menu item photos and branding assets.
+                </li>
+              </ul>
+            </section>
+
+            <section className="space-y-2">
+              <h2 className="text-base font-black text-gray-900 dark:text-white tracking-tight">
+                5. Data Retention
+              </h2>
+              <p>
+                We retain your data for as long as your account is active or as needed
+                to provide the service. After account deletion or subscription
+                termination, we retain limited data for up to 90 days for legal and
+                audit purposes, after which it is permanently anonymised or deleted.
+              </p>
+            </section>
+
+            <section className="space-y-2">
+              <h2 className="text-base font-black text-gray-900 dark:text-white tracking-tight">
+                6. Your Rights
+              </h2>
+              <p>
+                You have the right to access, correct, or delete your personal data at
+                any time. Hotel partners can update their information from the admin
+                dashboard. Customers may contact us to request data deletion. To
+                exercise these rights, email{" "}
+                <a
+                  href="mailto:support@hotbyte.in"
+                  className="text-orange-500 hover:underline font-bold"
+                >
+                  support@hotbyte.in
+                </a>.
+              </p>
+            </section>
+
+            <section className="space-y-2">
+              <h2 className="text-base font-black text-gray-900 dark:text-white tracking-tight">
+                7. Cookies &amp; Local Storage
+              </h2>
+              <p>
+                We use HttpOnly cookies for session management and localStorage for
+                user preferences (language and theme). No third-party tracking cookies
+                are used. You can clear this data at any time from your browser settings.
+              </p>
+            </section>
+
+            <section className="space-y-2">
+              <h2 className="text-base font-black text-gray-900 dark:text-white tracking-tight">
+                8. Contact
+              </h2>
+              <p>
+                For privacy-related inquiries, contact us at{" "}
+                <a
+                  href="mailto:support@hotbyte.in"
+                  className="text-orange-500 hover:underline font-bold"
+                >
+                  support@hotbyte.in
+                </a>{" "}
+                or visit our{" "}
+                <a
+                  href="/contact"
+                  className="text-orange-500 hover:underline font-bold"
+                >
+                  Contact page
+                </a>.
               </p>
             </section>
           </div>
         </div>
       </main>
 
-      <footer className="w-full py-6 border-t border-gray-150/40 dark:border-zinc-800/40 bg-white/60 dark:bg-zinc-950/20 text-center transition-colors">
-        <p className="text-[10px] font-bold text-gray-455 dark:text-gray-500 uppercase tracking-[0.2em]">
-          {t('common.copyright', '© 2026 HotByte. Encrypted SSO Authentication.')}
-        </p>
-      </footer>
+      <Footer />
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   ShoppingBag,
   DollarSign,
 } from "lucide-react";
+import { logger } from "@/lib/utils/logger";
 
 interface OrderItem {
   order_item_id: number;
@@ -22,6 +23,7 @@ interface OrderItem {
 
 interface HistoricOrder {
   order_id: number;
+  order_display_id?: string;
   customer_name: string;
   customer_phone: string;
   table_number: string;
@@ -29,7 +31,8 @@ interface HistoricOrder {
   status: "pending" | "preparing" | "ready" | "completed" | "cancelled";
   created_at: string;
   payment_status: "pending" | "completed";
-  payment_method: "cash" | "razorpay";
+  payment_method: "cash" | "razorpay" | "qr";
+  payment_reference?: string;
   items: OrderItem[];
 }
 
@@ -67,7 +70,7 @@ export default function OrderHistoryArchive() {
         setOrders(data.orders);
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     } finally {
       setLoading(false);
     }
@@ -239,7 +242,7 @@ export default function OrderHistoryArchive() {
                         <tr key={order.order_id} className="hover:bg-gray-900/20">
                           {/* ID */}
                           <td className="p-4 pl-6 font-extrabold text-white">
-                            #{order.order_id}
+                            {order.order_display_id || `#${order.order_id}`}
                           </td>
 
                           {/* Diner */}
@@ -250,11 +253,16 @@ export default function OrderHistoryArchive() {
                             <span className="text-[10px] text-gray-550 block mt-0.5">
                               +91 {order.customer_phone}
                             </span>
+                            {order.payment_reference && (
+                              <span className="text-[9px] font-mono font-bold text-orange-500 block mt-0.5">
+                                Ref: {order.payment_reference}
+                              </span>
+                            )}
                           </td>
 
                           {/* Table */}
                           <td className="p-4 text-xs font-bold text-gray-400">
-                            Table {order.table_number.replace("T-", "")}
+                            🪑 {order.table_number.replace("T-", "")}
                           </td>
 
                           {/* Items Summary */}

@@ -1,24 +1,23 @@
-// backend/middleware/checkSubscription.js
-// Checks if a hotel's trial has expired and auto-freezes it if so.
-// Applied to customer-facing routes (/api/menu, /api/orders) that use hotel_slug.
-
 const db = require('../routes/database');
 const logger = require('../utils/logger');
 
 module.exports = async (req, res, next) => {
-  // Determine hotel slug from query, body, or header
   const hotelSlug =
     req.query.hotel_slug ||
     req.body?.hotel_slug ||
     req.headers['x-hotel-slug'];
 
   if (!hotelSlug) {
-    return next(); // No hotel context — skip (global routes)
+    return next();
   }
 
   try {
     const { rows } = await db.query(
-      'SELECT hotel_id, is_frozen, plan, trial_ends_at FROM public.hotels WHERE slug = $1',
+      `SELECT h.hotel_id, h.is_frozen, h.plan, h.trial_ends_at,
+              s.expiry_date AS subscription_expiry_date, s.status AS subscription_status
+       FROM public.hotels h
+       LEFT JOIN public.subscriptions s ON s.hotel_id = h.hotel_id AND s.status = 'active'
+       WHERE h.slug = $1`,
       [hotelSlug]
     );
 
@@ -27,15 +26,53 @@ module.exports = async (req, res, next) => {
     }
 
     const hotel = rows[0];
+    const now = new Date();
+    let expired = false;
+    let expiryReason = null;
+    let expiryDate = null;
 
-    // Auto-freeze expired trials
-    if (hotel.plan === 'trial' && hotel.trial_ends_at && new Date() > new Date(hotel.trial_ends_at) && !hotel.is_frozen) {
+    // Check trial expiry
+    if (hotel.plan === 'trial' && hotel.trial_ends_at) {
+      const trialEnd = new Date(hotel.trial_ends_at);
+      if (now > trialEnd) {
+        expired = true;
+        expiryReason = 'trial';
+        expiryDate = trialEnd;
+      }
+    }
+
+    // Check subscription expiry (for non-trial plans)
+    if (!expired && hotel.plan !== 'trial' && hotel.subscription_expiry_date) {
+      const subEnd = new Date(hotel.subscription_expiry_date);
+      if (now > subEnd) {
+        expired = true;
+        expiryReason = 'subscription';
+        expiryDate = subEnd;
+      }
+    }
+
+    // Auto-freeze if expired and not already frozen
+    if (expired && !hotel.is_frozen) {
       await db.query(
         'UPDATE public.hotels SET is_frozen = TRUE WHERE hotel_id = $1',
         [hotel.hotel_id]
       );
       hotel.is_frozen = true;
-      logger.warn(`Auto-froze hotel "${hotelSlug}" — trial expired at ${hotel.trial_ends_at}`);
+      logger.warn(`Auto-froze hotel "${hotelSlug}" — ${expiryReason} expired at ${expiryDate}`);
+    }
+
+    // Check grace period
+    let daysSinceExpiry = 0;
+    let gracePeriodRemaining = null;
+    if (expired && expiryDate) {
+      daysSinceExpiry = Math.floor((now.getTime() - expiryDate.getTime()) / (1000 * 60 * 60 * 24));
+      const settingsRows = await db.query(
+        "SELECT value FROM public.super_admin_settings WHERE key = 'grace_period_days'"
+      );
+      const graceDays = settingsRows.rows.length > 0 ? parseInt(settingsRows.rows[0].value) : 0;
+      if (graceDays > 0) {
+        gracePeriodRemaining = Math.max(0, graceDays - daysSinceExpiry);
+      }
     }
 
     if (hotel.is_frozen) {
@@ -44,14 +81,31 @@ module.exports = async (req, res, next) => {
         isFrozen: true,
         plan: hotel.plan,
         trialEndsAt: hotel.trial_ends_at,
+        subscriptionExpiryDate: hotel.subscription_expiry_date,
+        expired: true,
+        expiryReason: expiryReason || (hotel.plan === 'trial' ? 'trial' : 'subscription'),
+        daysSinceExpiry,
+        gracePeriodRemaining,
         message: hotel.plan === 'trial'
           ? 'Your free trial has expired. Please upgrade to continue using HotByte.'
-          : 'This hotel account is frozen. Please contact HotByte support.'
+          : 'Your subscription has expired. Please renew to continue using HotByte.'
       });
     }
 
-    // Attach hotel context to request for downstream use
-    req.hotel = { slug: hotelSlug, id: hotel.hotel_id, plan: hotel.plan };
+    // Days until expiry for notification
+    let daysUntilExpiry = null;
+    if (hotel.plan === 'trial' && hotel.trial_ends_at) {
+      daysUntilExpiry = Math.ceil((new Date(hotel.trial_ends_at).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    } else if (hotel.plan !== 'trial' && hotel.subscription_expiry_date) {
+      daysUntilExpiry = Math.ceil((new Date(hotel.subscription_expiry_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    }
+
+    req.hotel = {
+      slug: hotelSlug,
+      id: hotel.hotel_id,
+      plan: hotel.plan,
+      daysUntilExpiry: daysUntilExpiry !== null && daysUntilExpiry > 0 ? daysUntilExpiry : null
+    };
     next();
   } catch (err) {
     logger.error('Subscription check middleware error:', err);

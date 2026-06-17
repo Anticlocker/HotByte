@@ -64,12 +64,12 @@ describe("Multi-Tenancy Isolation", () => {
           ],
         });
       }
-      if (queryText.includes("is_frozen, plan, trial_ends_at")) {
+      if (queryText.includes("public.hotels h") && queryText.includes("LEFT JOIN public.subscriptions")) {
         // Return hotel details for whatever slug was queried
         const slug = params[0];
         const hotelId = slug === "hotel-20-slug" ? 20 : 10;
         return Promise.resolve({
-          rows: [{ hotel_id: hotelId, is_frozen: false, plan: "pro", trial_ends_at: null }]
+          rows: [{ hotel_id: hotelId, is_frozen: false, plan: "pro", trial_ends_at: null, subscription_expiry_date: null, subscription_status: null }]
         });
       }
       if (queryText.includes("SELECT hotel_id, is_open")) {
@@ -118,11 +118,11 @@ describe("Multi-Tenancy Isolation", () => {
           ],
         });
       }
-      if (queryText.includes("is_frozen, plan, trial_ends_at")) {
+      if (queryText.includes("public.hotels h") && queryText.includes("LEFT JOIN public.subscriptions")) {
         const slug = params[0];
         const hotelId = slug === "hotel-20-slug" ? 20 : 10;
         return Promise.resolve({
-          rows: [{ hotel_id: hotelId, is_frozen: false, plan: "pro", trial_ends_at: null }]
+          rows: [{ hotel_id: hotelId, is_frozen: false, plan: "pro", trial_ends_at: null, subscription_expiry_date: null, subscription_status: null }]
         });
       }
       if (queryText.includes("SELECT hotel_id FROM public.hotels")) {

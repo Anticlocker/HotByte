@@ -13,6 +13,7 @@ import {
   Calendar,
   PieChart,
 } from "lucide-react";
+import { logger } from "@/lib/utils/logger";
 
 interface SalesOverview {
   total_orders: number;
@@ -83,7 +84,7 @@ export default function SalesReport() {
       if (peakData.success) setPeakHours(peakData.peak_hours);
       
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     } finally {
       setLoading(false);
     }

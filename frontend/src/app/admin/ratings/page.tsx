@@ -12,9 +12,9 @@ import {
   User,
   Utensils,
 } from "lucide-react";
-import Swal from "sweetalert2";
-
+import { useNotification } from "@/context/NotificationContext";
 import { useAdminSession } from "@/context/AdminSessionContext";
+import { logger } from "@/lib/utils/logger";
 
 interface Rating {
   rating_id: number;
@@ -41,6 +41,7 @@ interface RatingStats {
 export default function RatingsModeration() {
   const router = useRouter();
   const { admin } = useAdminSession();
+  const notif = useNotification();
 
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [stats, setStats] = useState<RatingStats | null>(null);
@@ -58,7 +59,7 @@ export default function RatingsModeration() {
         setStats(data.stats);
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     } finally {
       setLoading(false);
     }
@@ -71,31 +72,29 @@ export default function RatingsModeration() {
   }, [admin]);
 
   const handleDeleteRating = async (ratingId: number) => {
-    const result = await Swal.fire({
-      title: "Moderate Review?",
-      text: "Warning: Deleting this customer rating deletes it permanently from the public and analytics panels!",
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonColor: "#EF4444",
-      cancelButtonColor: "#aaa",
-      confirmButtonText: "Confirm Delete",
-    });
+    const { isConfirmed } = await notif.confirm("Moderate Review?", "Warning: Deleting this customer rating deletes it permanently from the public and analytics panels!");
 
-    if (result.isConfirmed) {
+    if (isConfirmed) {
       try {
+        const getCsrfToken = () => {
+          if (typeof document === "undefined") return "";
+          const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+          return match ? decodeURIComponent(match[1]) : "";
+        };
         const res = await fetch(`/api/admin/ratings/${ratingId}`, {
           method: "DELETE",
+          headers: { "x-csrf-token": getCsrfToken() || "" },
         });
         const data = await res.json();
 
         if (data.success) {
-          Swal.fire("Deleted", "Customer review has been moderated and deleted.", "success");
+          notif.success("Deleted", "Customer review has been moderated and deleted.");
           fetchRatingsData();
         } else {
-          Swal.fire("Failure", data.message || "Failed to moderate review.", "error");
+          notif.error("Failure", data.message || "Failed to moderate review.");
         }
       } catch (err) {
-        Swal.fire("Error", "Server offline.", "error");
+        notif.error("Error", "Server offline.");
       }
     }
   };

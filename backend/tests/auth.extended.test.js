@@ -152,9 +152,16 @@ describe("Auth Extended APIs", () => {
     });
 
     it("should send OTP successfully for valid Super Admin matching phone number", async () => {
+      // Admin query
       db.query.mockResolvedValueOnce({
         rows: [{ admin_id: 1, username: "superadmin", role: "super_admin", phone: "9876543210" }],
       });
+      // otpStoreGet — no existing OTP
+      db.query.mockResolvedValueOnce({ rows: [] });
+      // otpStoreDelete
+      db.query.mockResolvedValueOnce({ rows: [] });
+      // otpStoreSet (INSERT)
+      db.query.mockResolvedValueOnce({ rows: [] });
       messageCentral.sendOTP.mockResolvedValueOnce({
         success: true,
         verificationId: "test-v-id",

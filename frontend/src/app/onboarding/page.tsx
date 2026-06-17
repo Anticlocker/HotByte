@@ -8,6 +8,7 @@ import {
   CreditCard, UploadCloud, Globe, Landmark
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { logger } from "@/lib/utils/logger";
 
 function OnboardingContent() {
   const router = useRouter();
@@ -17,6 +18,28 @@ function OnboardingContent() {
   const urlPlan = searchParams.get("plan") || "basic";
   const urlBilling = searchParams.get("billing") || "monthly";
   const urlToken = searchParams.get("token");
+
+  // CSRF token for API requests
+  const [csrfToken, setCsrfToken] = useState("");
+
+  // Helper to make state-changing API calls with CSRF protection
+  const apiPost = async (url: string, body: any) => {
+    let token = csrfToken;
+    if (!token) {
+      const res = await fetch("/api/auth/csrf-token");
+      const data = await res.json();
+      token = data.csrfToken;
+      if (token) setCsrfToken(token);
+    }
+    return fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-csrf-token": token,
+      },
+      body: JSON.stringify(body),
+    });
+  };
 
   // Onboarding wizard steps: 1 = Account, 2 = Payment, 3 = Hotel Details, 4 = Ready
   const [step, setStep] = useState(1);
@@ -52,6 +75,11 @@ function OnboardingContent() {
 
   // Pre-load session if returning with a token
   useEffect(() => {
+    // Fetch CSRF token on mount for all state-changing API calls
+    fetch("/api/auth/csrf-token")
+      .then((r) => r.json())
+      .then((d) => { if (d.csrfToken) setCsrfToken(d.csrfToken); })
+      .catch(() => {});
     if (urlToken) {
       const fetchSession = async () => {
         try {
@@ -68,7 +96,7 @@ function OnboardingContent() {
             }
           }
         } catch (err) {
-          console.error("Error pre-loading onboarding session:", err);
+          logger.error("Error pre-loading onboarding session:", err);
         } finally {
           setLoading(false);
         }
@@ -126,7 +154,7 @@ function OnboardingContent() {
         });
       },
       (error) => {
-        console.error("Geolocation error:", error);
+        logger.error("Geolocation error:", error);
         setDetectingLocation(false);
         // Fallback to randomized coordinates in major region
         setLatitude(22.5726 + (Math.random() - 0.5) * 0.1);
@@ -173,17 +201,13 @@ function OnboardingContent() {
       setValidatingAccount(true);
       
       // Pre-validate account uniqueness and create inactive session
-      const res = await fetch("/api/payments/create-inactive-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await apiPost("/api/payments/create-inactive-session", {
           plan: urlPlan,
           billing_cycle: urlBilling,
           username,
           email,
           password
-        })
-      });
+        });
 
       const data = await res.json();
       
@@ -191,14 +215,12 @@ function OnboardingContent() {
         setSessionToken(data.token);
         setPlanPrice(data.amount);
         setRazorpayOrderId(data.razorpay_order.id);
-        
-        // Advance to Step 2 checkout directly!
         setStep(2);
       } else {
         Swal.fire("Setup Blocked", data.message || "Username or email is already registered.", "error");
       }
     } catch (err) {
-      console.error("Account creation validation error:", err);
+      logger.error("Account creation validation error:", err);
       Swal.fire("Network Error", "Failed to connect to billing validator.", "error");
     } finally {
       setValidatingAccount(false);
@@ -249,16 +271,12 @@ function OnboardingContent() {
             }
           });
 
-          const verifyRes = await fetch("/api/payments/verify-onboarding-payment", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          const verifyRes = await apiPost("/api/payments/verify-onboarding-payment", {
               token: sessionToken,
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature
-            })
-          });
+            });
 
           const verifyData = await verifyRes.json();
 
@@ -296,7 +314,7 @@ function OnboardingContent() {
       rzp.open();
 
     } catch (err) {
-      console.error("Razorpay widget error:", err);
+      logger.error("Razorpay widget error:", err);
       Swal.fire("Payment Window Failed", "Unable to open billing gateway.", "error");
       setProcessingPayment(false);
     }
@@ -323,10 +341,7 @@ function OnboardingContent() {
         }
       });
 
-      const res = await fetch("/api/payments/complete-onboarding", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await apiPost("/api/payments/complete-onboarding", {
           token: sessionToken,
           hotelName,
           hotelSlug,
@@ -336,8 +351,7 @@ function OnboardingContent() {
           longitude,
           logoUrl,
           hotelType
-        })
-      });
+        });
 
       const data = await res.json();
 
@@ -356,7 +370,7 @@ function OnboardingContent() {
         Swal.fire("Onboarding Failed", data.message || "Failed to configure tenant. Check slug constraints.", "error");
       }
     } catch (err) {
-      console.error("Hotel onboarding submission error:", err);
+      logger.error("Hotel onboarding submission error:", err);
       Swal.fire("Network Error", "Failed to complete SaaS configurations.", "error");
     } finally {
       setProvisioning(false);

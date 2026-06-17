@@ -22,7 +22,7 @@ describe("Menu APIs", () => {
       const slug = params && params[0];
 
       // 1. Subscription check query
-      if (queryText.includes("is_frozen, plan, trial_ends_at")) {
+      if (queryText.includes("public.hotels h") && queryText.includes("LEFT JOIN public.subscriptions")) {
         if (slug === "nonexistent") {
           return Promise.resolve({ rows: [] });
         }
@@ -33,13 +33,15 @@ describe("Menu APIs", () => {
               is_frozen: slug === "frozen-hotel",
               plan: "pro",
               trial_ends_at: null,
+              subscription_expiry_date: null,
+              subscription_status: null,
             },
           ],
         });
       }
 
       // 2. Hotel categories/status query
-      if (queryText.includes("SELECT hotel_id, name, logo_url") || queryText.includes("SELECT name, logo_url")) {
+      if (queryText.includes("SELECT hotel_id, name, logo_url") || queryText.includes("SELECT name, logo_url") || queryText.includes("h.hotel_id, h.name, h.logo_url")) {
         if (slug === "nonexistent") {
           return Promise.resolve({ rows: [] });
         }

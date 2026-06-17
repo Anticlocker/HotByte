@@ -1,29 +1,30 @@
 // Database Connection Pool - PostgreSQL
 const { Pool } = require("pg");
 const bcrypt = require("bcrypt");
+const logger = require("../utils/logger");
 require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 
 // Set timezone to IST
 process.env.TZ = 'Asia/Kolkata';
 
-// Create connection pool live url
+// Create connection pool
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: {
-        rejectUnauthorized: false
-    }
+    ssl: process.env.DB_SSL === 'false'
+        ? false
+        : { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
 });
 
 // Test initial connection
 pool.connect(async (err, client, release) => {
     if (err) {
-        console.error("❌ Database connection error:", err.message);
+        logger.error("Database connection error:", { message: err.message });
         if (process.env.NODE_ENV === 'production') {
-            console.error("❌ FATAL: Cannot connect to database in production");
+            logger.error("FATAL: Cannot connect to database in production");
             process.exit(1);
         }
     } else {
-        console.log("✅ Connected to PostgreSQL Database");
+        logger.info("Connected to PostgreSQL Database");
         try {
             // ─── Schema Migrations (hotels, admins, customers) ───────────────────
             const migrations = [
@@ -112,6 +113,12 @@ pool.connect(async (err, client, release) => {
                 "ALTER TABLE public.payment_sessions ADD COLUMN IF NOT EXISTS email VARCHAR(100);",
                 "ALTER TABLE public.payment_sessions ADD COLUMN IF NOT EXISTS password VARCHAR(200);",
                 "ALTER TABLE public.payment_sessions ADD COLUMN IF NOT EXISTS name VARCHAR(100);",
+                "ALTER TABLE public.payment_sessions ADD COLUMN IF NOT EXISTS hotel_name VARCHAR(200);",
+                "ALTER TABLE public.payment_sessions ADD COLUMN IF NOT EXISTS hotel_slug VARCHAR(100);",
+                "ALTER TABLE public.payment_sessions ADD COLUMN IF NOT EXISTS hotel_phone VARCHAR(20);",
+                "ALTER TABLE public.payment_sessions ADD COLUMN IF NOT EXISTS hotel_address TEXT;",
+                "ALTER TABLE public.payment_sessions ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100);",
+                "ALTER TABLE public.payment_sessions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '2 hours');",
                 // Customer Auth Controls settings & logging
                 "ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS require_customer_auth BOOLEAN DEFAULT FALSE;",
                 "ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS customer_auth_required BOOLEAN DEFAULT FALSE;",
@@ -154,22 +161,105 @@ pool.connect(async (err, client, release) => {
                 );`,
                 `CREATE INDEX IF NOT EXISTS idx_menu_item_variants_item_id ON public.menu_item_variants(menu_item_id);`,
                 `ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS variant_id INTEGER REFERENCES public.menu_item_variants(id) ON DELETE SET NULL;`,
-                `ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS variant_name VARCHAR(100);`
+                `ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS variant_name VARCHAR(100);`,
+                // restaurant_tables table for table-wise QR ordering
+                `CREATE TABLE IF NOT EXISTS public.restaurant_tables (
+                    id SERIAL PRIMARY KEY,
+                    hotel_id INTEGER NOT NULL REFERENCES public.hotels(hotel_id) ON DELETE CASCADE,
+                    table_number VARCHAR(20) NOT NULL,
+                    table_name VARCHAR(100),
+                    capacity INTEGER DEFAULT 2,
+                    qr_slug VARCHAR(64) NOT NULL UNIQUE,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT unique_table_per_hotel UNIQUE (hotel_id, table_number)
+                );`,
+                `CREATE INDEX IF NOT EXISTS idx_restaurant_tables_hotel ON public.restaurant_tables(hotel_id);`,
+                `CREATE INDEX IF NOT EXISTS idx_restaurant_tables_qr_slug ON public.restaurant_tables(qr_slug);`,
+                // super_admin_settings table for global platform config
+                `CREATE TABLE IF NOT EXISTS public.super_admin_settings (
+                    key VARCHAR(100) PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    description TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );`,
+                // Insert default grace period setting (0 = no grace period)
+                `INSERT INTO public.super_admin_settings (key, value, description) 
+                 VALUES ('grace_period_days', '0', 'Grace period in days after subscription/trial expiry before freezing')
+                 ON CONFLICT (key) DO NOTHING;`,
+                // expiry_history table for tracking all expiry events
+                `CREATE TABLE IF NOT EXISTS public.expiry_history (
+                    id SERIAL PRIMARY KEY,
+                    hotel_id INTEGER NOT NULL REFERENCES public.hotels(hotel_id) ON DELETE CASCADE,
+                    event_type VARCHAR(50) NOT NULL,
+                    previous_plan VARCHAR(20),
+                    new_plan VARCHAR(20),
+                    previous_expiry TIMESTAMP,
+                    new_expiry TIMESTAMP,
+                    triggered_by VARCHAR(50) DEFAULT 'system',
+                    admin_id INTEGER REFERENCES public.admins(admin_id) ON DELETE SET NULL,
+                    notes TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );`,
+                `CREATE INDEX IF NOT EXISTS idx_expiry_history_hotel ON public.expiry_history(hotel_id);`,
+                `CREATE INDEX IF NOT EXISTS idx_expiry_history_created ON public.expiry_history(created_at);`,
+                // hotels grace period tracking
+                `ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS grace_period_end TIMESTAMP;`,
+                // subscription auto-renewal flag
+                `ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN DEFAULT FALSE;`,
+                // plan changed_at tracking
+                `ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS plan_changed_at TIMESTAMP;`,
+                // Hotel-specific QR payment fields (renamed for clarity)
+                `ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS payment_qr_url TEXT;`,
+                `ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS payment_instructions TEXT;`,
+                // subscription_expiry_date on hotels (read by menu.js, auth.js)
+                `ALTER TABLE public.hotels ADD COLUMN IF NOT EXISTS subscription_expiry_date TIMESTAMP;`,
+                // is_order_accept on admins for manual order toggle
+                `ALTER TABLE public.admins ADD COLUMN IF NOT EXISTS is_order_accept BOOLEAN DEFAULT true;`,
+                // Missing indexes for performance
+                `CREATE INDEX IF NOT EXISTS idx_subscriptions_hotel_id ON public.subscriptions(hotel_id);`,
+                `CREATE INDEX IF NOT EXISTS idx_subscriptions_plan_id ON public.subscriptions(plan_id);`,
+                `CREATE INDEX IF NOT EXISTS idx_sessions_admin_id ON public.sessions(admin_id);`,
+                `CREATE INDEX IF NOT EXISTS idx_auth_logs_hotel_id ON public.auth_logs(hotel_id);`,
+                `CREATE INDEX IF NOT EXISTS idx_auth_logs_admin_id ON public.auth_logs(admin_id);`,
+                // OTP store table (DB-backed, replaces in-memory Map)
+                `CREATE TABLE IF NOT EXISTS public.otp_store (
+                    id SERIAL PRIMARY KEY,
+                    otp_key VARCHAR(255) UNIQUE NOT NULL,
+                    data JSONB NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );`,
+                `CREATE INDEX IF NOT EXISTS idx_otp_store_key ON public.otp_store(otp_key);`,
+                `CREATE INDEX IF NOT EXISTS idx_otp_store_expires ON public.otp_store(expires_at);`,
+                // NOT NULL constraints on critical FK columns
+                `ALTER TABLE public.order_items ALTER COLUMN order_id SET NOT NULL;`,
+                `ALTER TABLE public.payments ALTER COLUMN order_id SET NOT NULL;`,
+                `ALTER TABLE public.orders ALTER COLUMN customer_id SET NOT NULL;`,
+                // Add hotel_id to ratings table for multi-tenant isolation
+                `ALTER TABLE public.ratings ADD COLUMN IF NOT EXISTS hotel_id INTEGER REFERENCES public.hotels(hotel_id) ON DELETE CASCADE;`,
+                `CREATE INDEX IF NOT EXISTS idx_ratings_hotel_id ON public.ratings(hotel_id);`,
+                // Table-based UPI payment reference system
+                `ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS customer_name VARCHAR(100);`,
+                `ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS order_display_id VARCHAR(20);`,
+                `ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(200);`,
+                `CREATE INDEX IF NOT EXISTS idx_orders_order_display_id ON public.orders(order_display_id);`,
+                `CREATE INDEX IF NOT EXISTS idx_payments_payment_reference ON public.payments(payment_reference);`
             ];
             for (const sql of migrations) {
                 await client.query(sql);
             }
             // Cleanup expired payment sessions (older than 24 hours and still pending)
-            await client.query("DELETE FROM public.payment_sessions WHERE created_at < NOW() - INTERVAL '24 hours' AND status = 'pending_payment';");
+            await client.query("DELETE FROM public.payment_sessions WHERE created_at < NOW() - INTERVAL '24 hours' AND status IN ('pending', 'pending_payment');");
             console.log("✅ Database: Expired payment sessions cleaned up.");
             // Seed subscription plans if empty
             const plansCount = await client.query("SELECT COUNT(*) FROM public.subscription_plans;");
             if (parseInt(plansCount.rows[0].count) === 0) {
                 await client.query(`
                     INSERT INTO public.subscription_plans (name, price_monthly, price_yearly, features) VALUES
-                    ('trial', 1, 1, '{"all_basic":true,"unlimited_staff":true,"advanced_analytics":true,"occupancy_tracking":true,"priority_support":true,"menu_assistant":true,"is_trial_pro":true}'),
-                    ('basic', 999, 11988, '{"menu_items":"unlimited","admin_managers":3,"razorpay":true,"kds":true,"dynamic_qr":true,"pdf_reports":true}'),
-                    ('pro', 2499, 29988, '{"all_basic":true,"unlimited_staff":true,"advanced_analytics":true,"occupancy_tracking":true,"priority_support":true,"menu_assistant":true}');
+                    ('trial', 1, 1, '{"QR Menu System":"5 Tables","Digital Menu Card":true,"Online Ordering":"Basic","Table QR Codes":"5 Tables","Menu Items":"Up to 30","Categories":"Up to 5","Email Support":true}'),
+                    ('basic', 999, 11988, '{"QR Menu System":"Unlimited Tables","Digital Menu Card":true,"Online Ordering":"Full","Dynamic QR per Table":true,"Menu Items":"Unlimited","Categories":"Unlimited","Razorpay Payments":true,"Kitchen Display System":true,"PDF Reports & Invoices":true,"Admin Managers":"Up to 3","Customer Auth":true,"Analytics Dashboard":true}'),
+                    ('pro', 2499, 29988, '{"QR Menu System":"Unlimited Tables","Digital Menu Card":true,"Online Ordering":"Full","Dynamic QR per Table":true,"Menu Items":"Unlimited","Categories":"Unlimited","Razorpay Payments":true,"Kitchen Display System":true,"PDF Reports & Invoices":true,"Admin Managers":"Unlimited","Customer Auth":true,"Analytics Dashboard":"Advanced","Occupancy Tracking":true,"24/7 Priority Support":true,"AI Menu Assistant":true,"Multi-Branch Support":true,"Custom Branding":true,"Dedicated Account Manager":true,"Priority Feature Access":true}');
                 `);
                 console.log("✅ Database: Seeded default subscription plans");
             } else {
@@ -178,7 +268,7 @@ pool.connect(async (err, client, release) => {
                     UPDATE public.subscription_plans 
                     SET price_monthly = 1, 
                         price_yearly = 1, 
-                        features = '{"all_basic":true,"unlimited_staff":true,"advanced_analytics":true,"occupancy_tracking":true,"priority_support":true,"menu_assistant":true,"is_trial_pro":true}' 
+                        features = '{"QR Menu System":"5 Tables","Digital Menu Card":true,"Online Ordering":"Basic","Table QR Codes":"5 Tables","Menu Items":"Up to 30","Categories":"Up to 5","Email Support":true}' 
                     WHERE name = 'trial';
                 `);
                 console.log("✅ Database: Upgraded existing Trial plan price to ₹1 and loaded Pro features");
@@ -194,6 +284,16 @@ pool.connect(async (err, client, release) => {
                 await client.query("UPDATE public.customers SET hotel_id = $1 WHERE hotel_id IS NULL;", [defaultHotelId]);
             }
 
+            // Backfill hotel_id for existing ratings via menu_items or orders join
+            await client.query(`
+                UPDATE public.ratings r
+                SET hotel_id = COALESCE(
+                    (SELECT mi.hotel_id FROM public.menu_items mi WHERE mi.item_id = r.item_id LIMIT 1),
+                    (SELECT o.hotel_id FROM public.orders o WHERE o.order_id = r.order_id LIMIT 1)
+                )
+                WHERE r.hotel_id IS NULL;
+            `);
+
             // ─── Sync sequences ───────────────────────────────────────────────
             const tablesToSync = [
                 { name: 'public.hotels', pk: 'hotel_id' },
@@ -204,7 +304,8 @@ pool.connect(async (err, client, release) => {
                 { name: 'public.orders', pk: 'order_id' },
                 { name: 'public.order_items', pk: 'order_item_id' },
                 { name: 'public.payments', pk: 'payment_id' },
-                { name: 'public.ratings', pk: 'rating_id' }
+                { name: 'public.ratings', pk: 'rating_id' },
+                { name: 'public.restaurant_tables', pk: 'id' }
             ];
             for (const table of tablesToSync) {
                 try {
@@ -215,12 +316,12 @@ pool.connect(async (err, client, release) => {
                         );
                     `);
                 } catch (seqErr) {
-                    console.warn(`⚠️  Sequence sync skipped for ${table.name}: ${seqErr.message}`);
+                    logger.warn(`Sequence sync skipped for ${table.name}: ${seqErr.message}`);
                 }
             }
-            console.log("✅ Database: Sequences synchronized");
+            logger.info("Database: Sequences synchronized");
         } catch (schemaErr) {
-            console.error("❌ Database schema migration failed:", schemaErr.message);
+            logger.error("Database schema migration failed:", { message: schemaErr.message });
         } finally {
             release();
         }
@@ -229,13 +330,13 @@ pool.connect(async (err, client, release) => {
 
 // Handle unexpected errors
 pool.on('error', (err) => {
-    console.error('❌ Unexpected database error:', err);
+    logger.error('Unexpected database error:', { message: err.message });
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
     pool.end(() => {
-        console.log('✅ Database pool closed gracefully');
+        logger.info('Database pool closed gracefully');
     });
 });
 

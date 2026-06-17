@@ -7,13 +7,17 @@ const db = require("./database");
 
 router.get("/categories", async (req, res) => {
   try {
-    const hotelSlug = req.query.hotel_slug || "hotbyte";
+    const hotelSlug = req.query.hotel_slug;
+    if (!hotelSlug) {
+      return res.status(400).json({ success: false, message: "hotel_slug is required." });
+    }
     const hotelResult = await db.query(
       `SELECT hotel_id, name, logo_url, banner_url, is_frozen, is_open, table_count,
               tagline, description, show_logo, show_banner, primary_color, secondary_color,
               enable_online_orders, enable_qr_ordering, settings_json, phone, email,
               latitude, longitude, order_radius, hotel_type, customer_auth_required, suspicious_activity_mode,
-              location_ordering_enabled
+              location_ordering_enabled,
+              plan, trial_ends_at, subscription_expiry_date
        FROM public.hotels WHERE slug = $1`,
       [hotelSlug]
     );
@@ -46,11 +50,21 @@ router.get("/categories", async (req, res) => {
       hotel_type: hotelType,
       customer_auth_required: customerAuthRequired,
       suspicious_activity_mode: suspiciousActivityMode,
-      location_ordering_enabled: locationOrderingEnabled
+      location_ordering_enabled: locationOrderingEnabled,
+      plan,
+      trial_ends_at: trialEndsAt,
+      subscription_expiry_date: subscriptionExpiryDate
     } = hotelResult.rows[0];
 
     if (isFrozen) {
-      return res.status(403).json({ success: false, isFrozen: true, message: "This hotel account is frozen due to payment / subscription trial expiration." });
+      const now = new Date();
+      const planExpiryDate = plan === "trial" ? trialEndsAt : subscriptionExpiryDate;
+      const daysSinceExpiry = planExpiryDate ? Math.floor((now.getTime() - new Date(planExpiryDate).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+      return res.status(403).json({
+        success: false, isFrozen: true,
+        message: "This hotel account is frozen due to payment / subscription trial expiration.",
+        plan, trialEndsAt, subscriptionExpiryDate, daysSinceExpiry: Math.max(0, daysSinceExpiry)
+      });
     }
 
     const result = await db.query(
@@ -92,17 +106,27 @@ router.get("/categories", async (req, res) => {
 
 router.get("/items", async (req, res) => {
   try {
-    const hotelSlug = req.query.hotel_slug || "hotbyte";
+    const hotelSlug = req.query.hotel_slug;
+    if (!hotelSlug) {
+      return res.status(400).json({ success: false, message: "hotel_slug is required." });
+    }
     const categoryId = req.query.category_id;
 
-    const hotelResult = await db.query("SELECT hotel_id, is_frozen, hotel_type FROM public.hotels WHERE slug = $1", [hotelSlug]);
+    const hotelResult = await db.query("SELECT hotel_id, is_frozen, hotel_type, plan, trial_ends_at, subscription_expiry_date FROM public.hotels WHERE slug = $1", [hotelSlug]);
     if (hotelResult.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Hotel not found" });
     }
-    const { hotel_id: hotelId, is_frozen: isFrozen, hotel_type: hotelType } = hotelResult.rows[0];
+    const { hotel_id: hotelId, is_frozen: isFrozen, hotel_type: hotelType, plan, trial_ends_at: trialEndsAt, subscription_expiry_date: subscriptionExpiryDate } = hotelResult.rows[0];
     
     if (isFrozen) {
-      return res.status(403).json({ success: false, isFrozen: true, message: "This hotel account is frozen due to payment / subscription trial expiration." });
+      const now = new Date();
+      const planExpiryDate = plan === "trial" ? trialEndsAt : subscriptionExpiryDate;
+      const daysSinceExpiry = planExpiryDate ? Math.floor((now.getTime() - new Date(planExpiryDate).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+      return res.status(403).json({
+        success: false, isFrozen: true,
+        message: "This hotel account is frozen due to payment / subscription trial expiration.",
+        plan, trialEndsAt, subscriptionExpiryDate, daysSinceExpiry: Math.max(0, daysSinceExpiry)
+      });
     }
     
     let query = `
@@ -182,7 +206,10 @@ router.get("/items", async (req, res) => {
 
 router.get("/status", async (req, res) => {
   try {
-    const hotelSlug = req.query.hotel_slug || "hotbyte";
+    const hotelSlug = req.query.hotel_slug;
+    if (!hotelSlug) {
+      return res.status(400).json({ success: false, message: "hotel_slug is required." });
+    }
     const result = await db.query(
       `SELECT name, logo_url, banner_url, is_frozen, is_open,
               tagline, description, show_logo, show_banner, primary_color, secondary_color,

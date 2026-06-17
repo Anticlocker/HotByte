@@ -3,7 +3,8 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ChefHat, Flame, Bell, CheckCircle2, Clock, Check, Utensils } from "lucide-react";
-import Swal from "sweetalert2";
+import { useNotification } from "@/context/NotificationContext";
+import { logger } from "@/lib/utils/logger";
 import { useAdminSession } from "@/context/AdminSessionContext";
 
 interface OrderItem {
@@ -15,6 +16,7 @@ interface OrderItem {
 
 interface Order {
   order_id: number;
+  order_display_id?: string;
   table_number: string;
   total_amount: number;
   status: "pending" | "preparing" | "ready";
@@ -26,6 +28,7 @@ export default function KitchenKDS() {
   const router = useRouter();
   const { admin } = useAdminSession();
 
+  const notif = useNotification();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const prevPendingCountRef = useRef(0);
@@ -52,7 +55,7 @@ export default function KitchenKDS() {
         prevPendingCountRef.current = currentPendingCount;
       }
     } catch (err) {
-      console.error("Failed to load kitchen display system orders", err);
+      logger.error("Failed to load kitchen display system orders", err);
     } finally {
       setLoading(false);
     }
@@ -70,25 +73,24 @@ export default function KitchenKDS() {
 
   const handleUpdateStatus = async (orderId: number, nextStatus: "preparing" | "ready") => {
     try {
+      const getCsrfToken = () => {
+        if (typeof document === "undefined") return "";
+        const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+        return match ? decodeURIComponent(match[1]) : "";
+      };
       const res = await fetch(`/api/admin/orders/${orderId}/status`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({ status: nextStatus }),
       });
       const data = await res.json();
 
       if (data.success) {
-        Swal.fire({
-          title: nextStatus === "preparing" ? "Cooking Started!" : "Dish Ready!",
-          text: `Order #${orderId} moved forward.`,
-          icon: "success",
-          timer: 1000,
-          showConfirmButton: false,
-        });
+        notif.success(nextStatus === "preparing" ? "Cooking Started!" : "Dish Ready!", `Order #${orderId} moved forward.`);
         fetchKitchenOrders();
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     }
   };
 
@@ -247,9 +249,9 @@ function KitchenOrderCard({
         {/* Card Header */}
         <div className="flex justify-between items-start gap-4">
           <div className="space-y-1">
-            <h3 className="font-extrabold text-sm text-white">Order #{order.order_id}</h3>
-            <span className="px-2 py-0.5 bg-gray-900 border border-gray-800 text-gray-400 rounded text-[9px] font-extrabold uppercase tracking-wide">
-              Table {order.table_number.replace("T-", "")}
+            <h3 className="font-extrabold text-sm text-white">{order.order_display_id || `Order #${order.order_id}`}</h3>
+            <span className="px-2 py-0.5 bg-gray-900 border border-gray-800 text-gray-400 rounded text-[9px] font-extrabold uppercase tracking-wide flex items-center gap-1">
+              🪑 {order.table_number.replace("T-", "")}
             </span>
           </div>
 

@@ -45,6 +45,8 @@ app.use(helmet({
       connectSrc: ["'self'", "https://api.razorpay.com", "https://accounts.google.com", "https://oauth2.googleapis.com"],
       frameSrc: ["checkout.razorpay.com", "accounts.google.com"],
       fontSrc: ["'self'", "fonts.gstatic.com", "cdnjs.cloudflare.com"],
+      formAction: ["'self'"],
+      baseUri: ["'self'"],
     }
   }
 }));
@@ -163,6 +165,33 @@ const guestCheckinLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// 🔐 Super Admin routes rate limiting — prevent brute force on admin-level operations
+const superAdminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { success: false, message: 'Too many requests. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 🔐 Admin signup/forgot-password/reset-password rate limiting
+const adminAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { success: false, message: 'Too many admin auth attempts. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 🌐 Public onboarding endpoints rate limiting — prevent account creation spam
+const onboardingLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // Max 5 onboarding attempts per IP per hour
+  message: { success: false, message: 'Too many onboarding attempts. Please try again after an hour.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ================= MIDDLEWARE SETUP =================
 // 📦 Middleware = Request aur Response ke beech me kaam karne wale functions
 
@@ -178,6 +207,28 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // User authentication ke liye cookies use hoti hain
 // Secret key se cookies ko encrypt karta hai (security ke liye)
 app.use(cookieParser(process.env.COOKIE_SECRET));
+
+// ================= CSRF PROTECTION =================
+// Double-submit cookie pattern: all state-changing requests must include
+// x-csrf-token header matching the csrfToken cookie value.
+// Auth routes (login, csrf-token) are excluded — SameSite=Strict cookies
+// on the session itself provide CSRF protection for authenticated routes.
+const csrfProtection = (req, res, next) => {
+  if (process.env.NODE_ENV === 'test') {
+    return next();
+  }
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    return next();
+  }
+  const headerToken = req.headers['x-csrf-token'];
+  const cookieToken = req.cookies?.csrfToken;
+  if (!headerToken || !cookieToken || headerToken !== cookieToken) {
+    console.warn(`[CSRF] Mismatch for ${req.method} ${req.path}: header=${headerToken ? headerToken.substring(0,8)+'...' : '(none)'}, cookie=${cookieToken ? cookieToken.substring(0,8)+'...' : '(none)'}, allCookies=${JSON.stringify(req.cookies)}`);
+    return res.status(403).json({ success: false, message: 'Invalid or missing CSRF token.' });
+  }
+  next();
+};
+app.use('/api', csrfProtection);
 
 // ================= SECURITY HEADERS =================
 // 🛡️ Security headers browser ko batate hain ki website ko kaise protect karna hai
@@ -195,7 +246,7 @@ app.use((req, res, next) => {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 
   // Permissions Policy: disable browser features this app doesn't use
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 
   next(); // Agle middleware ko call karta hai
 });
@@ -243,11 +294,21 @@ app.get('/health', (req, res) => {
 
 // Rate limiting apply karo specific endpoints pe
 app.use('/api/auth/admin/login', adminLoginLimiter); // Admin login limit
+app.use('/api/auth/admin/signup', adminAuthLimiter); // Admin signup limit
+app.use('/api/auth/admin/forgot-otp', adminAuthLimiter); // Forgot password OTP limit
+app.use('/api/auth/admin/reset-password', adminAuthLimiter); // Reset password limit
 app.use('/api/auth/send-otp', sendOtpLimiter); // OTP bhejne ki limit
 app.use('/api/auth/verify-otp', verifyOtpLimiter); // OTP verify karne ki limit
 app.use('/api/auth/google-login', googleLoginLimiter); // Google SSO login limit
 app.use('/api/auth/guest-checkin', guestCheckinLimiter); // Guest check-in limit
 app.use('/api/payments', paymentLimiter); // Payment requests ki limit
+// Public onboarding endpoints — strict per-IP limit to prevent account creation spam
+app.use('/api/payments/create-onboarding-order', onboardingLimiter);
+app.use('/api/payments/validate-account', onboardingLimiter);
+app.use('/api/payments/verify-onboarding-payment', onboardingLimiter);
+app.use('/api/payments/complete-onboarding', onboardingLimiter);
+// Super admin routes — moderate limit for admin-level operations
+app.use('/api/superadmin', superAdminLimiter);
 
 // Authentication routes (Login, Signup, OTP, Session)
 app.use('/api/auth', require('./routes/auth'));
@@ -260,6 +321,8 @@ app.use('/api/menu', require('./routes/menu'));
 
 // Admin panel routes (Admin authentication required)
 app.use('/api/admin', require('./routes/admin'));
+// Tables routes are mounted inside admin.js at '/api/admin/tables'
+
 
 // Super Admin panel routes (Super Admin privileges required)
 app.use('/api/superadmin', require('./routes/superadmin'));
@@ -275,6 +338,10 @@ app.use('/api/sales', require('./routes/sales'));
 
 // Customer ratings aur reviews
 app.use('/api/ratings', require('./routes/ratings'));
+
+// Table management aur QR codes (Admin + Public validation)
+// Admin table routes are mounted inside admin.js at '/tables' (-> /api/admin/tables)
+app.use('/api/tables', require('./routes/tables'));
 
 // Resolve short map links (e.g. maps.app.goo.gl) to bypass CORS and extract coordinates
 app.get('/api/geocode/resolve-short-url', async (req, res) => {

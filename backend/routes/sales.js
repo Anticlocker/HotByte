@@ -190,10 +190,11 @@ router.get("/stats/by-category", requireAdmin, async (req, res) => {
       hotelFilter = "AND o.hotel_id = $1";
       params.push(req.admin.hotelId);
     } else {
-      const queryHotelId = req.query.hotel_id ? parseInt(req.query.hotel_id) : null;
-      if (queryHotelId) {
+      const hotelId = await resolveHotelSlug(req);
+      if (hotelId === -1) return res.status(404).json({ success: false, message: 'Hotel slug not found.' });
+      if (hotelId) {
         hotelFilter = "AND o.hotel_id = $1";
-        params.push(queryHotelId);
+        params.push(hotelId);
       }
     }
 

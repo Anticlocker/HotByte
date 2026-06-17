@@ -10,6 +10,9 @@ const bunnyCDN = require("./bunnyCDN");
 const crypto = require("crypto");
 const xss = require("xss");
 
+// Tables routes (mounted at /api/admin/tables)
+router.use('/tables', require('./tables'));
+
 // ─── Helper: resolve hotel_slug → hotel_id for super_admin scoped queries ───────
 // Usage: const hotelId = await resolveHotelSlug(req) || req.admin.hotelId
 const resolveHotelSlug = async (req) => {
@@ -28,10 +31,12 @@ const hashPassword = async (password) => {
   return await bcrypt.hash(password, SALT_ROUNDS);
 };
 
+const { validateImageUpload } = require("../middleware/validateImageUpload");
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 300 * 1024, // 300KB limit (covers both 200KB logo & 300KB banner)
   },
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|webp/;
@@ -42,7 +47,7 @@ const upload = multer({
     if (mimetype && extname) {
       return cb(null, true);
     } else {
-      cb(new Error("Only static image files are allowed (jpeg, jpg, png, webp)"));
+      cb(new Error("Invalid image format. Only JPG, JPEG, PNG and WEBP are allowed."));
     }
   },
 });
@@ -233,7 +238,7 @@ router.post("/items", requireAdmin, (req, res, next) => {
   upload.single("image")(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ success: false, message: "Image file is too large. Maximum size is 10MB." });
+        return res.status(400).json({ success: false, message: "Image size exceeds the maximum limit." });
       }
       return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
     } else if (err) {
@@ -241,7 +246,7 @@ router.post("/items", requireAdmin, (req, res, next) => {
     }
     next();
   });
-}, async (req, res) => {
+}, validateImageUpload, async (req, res) => {
   try {
     const { item_name, category_id, price, description, is_available, is_veg, variants } = req.body;
     let parsedVariants = null;
@@ -368,7 +373,7 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
   upload.single("image")(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ success: false, message: "Image file is too large. Maximum size is 10MB." });
+        return res.status(400).json({ success: false, message: "Image size exceeds the maximum limit." });
       }
       return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
     } else if (err) {
@@ -376,7 +381,7 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
     }
     next();
   });
-}, async (req, res) => {
+}, validateImageUpload, async (req, res) => {
   try {
     const { id } = req.params;
     const { item_name, category_id, price, description, is_available, is_veg, existing_image_url, variants } = req.body;
@@ -626,7 +631,8 @@ router.get("/orders", requireAdmin, async (req, res) => {
       SELECT 
         o.order_id,
         o.customer_id,
-        c.name AS customer_name,
+        o.order_display_id,
+        COALESCE(NULLIF(o.customer_name, ''), c.name) AS customer_name,
         c.phone AS customer_phone,
         o.table_number,
         o.total_amount,
@@ -635,6 +641,7 @@ router.get("/orders", requireAdmin, async (req, res) => {
         p.payment_status,
         p.payment_method,
         p.razorpay_payment_id,
+        p.payment_reference,
         COALESCE(
           json_agg(
             json_build_object(
@@ -693,8 +700,8 @@ router.get("/orders", requireAdmin, async (req, res) => {
     // ✅ Grouping + Pagination
     query += `
       GROUP BY 
-        o.order_id, c.name, c.phone,
-        p.payment_status, p.payment_method, p.razorpay_payment_id
+        o.order_id, o.order_display_id, o.customer_name, c.name, c.phone,
+        p.payment_status, p.payment_method, p.razorpay_payment_id, p.payment_reference
       ORDER BY o.created_at DESC
       LIMIT $${params.length + 1}
       OFFSET $${params.length + 2}
@@ -867,6 +874,54 @@ router.put("/orders/:id/mark-paid", requireAdmin, async (req, res) => {
   }
 });
 
+// Verify or reject QR payment
+router.put("/orders/:id/verify-qr-payment", requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action } = req.body;
+
+    if (!['verify', 'reject'].includes(action)) {
+      return res.status(400).json({ success: false, message: "Action must be 'verify' or 'reject'." });
+    }
+
+    if (req.admin.role !== 'super_admin') {
+      const orderCheck = await db.query("SELECT hotel_id FROM orders WHERE order_id = $1", [id]);
+      if (orderCheck.rows.length === 0 || orderCheck.rows[0].hotel_id !== req.admin.hotelId) {
+        return res.status(403).json({ success: false, message: "Unauthorized: Order belongs to another hotel." });
+      }
+    }
+
+    const paymentCheck = await db.query(
+      `SELECT p.payment_id, p.payment_status, p.payment_method
+       FROM payments p JOIN orders o ON o.order_id = p.order_id WHERE p.order_id = $1`,
+      [id]
+    );
+
+    if (paymentCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Payment record not found." });
+    }
+
+    const payment = paymentCheck.rows[0];
+    if (payment.payment_method !== 'qr') {
+      return res.status(400).json({ success: false, message: "Not a QR payment order." });
+    }
+    if (payment.payment_status !== 'submitted') {
+      return res.status(400).json({ success: false, message: "Payment not in submitted state." });
+    }
+
+    const newStatus = action === 'verify' ? 'completed' : 'rejected';
+    await db.query("UPDATE payments SET payment_status = $1 WHERE order_id = $2", [newStatus, id]);
+
+    return res.json({
+      success: true,
+      message: action === 'verify' ? "QR payment verified successfully." : "QR payment rejected."
+    });
+  } catch (error) {
+    logger.error("Verify QR payment error:", error);
+    return res.status(500).json({ success: false, message: "Failed to verify QR payment." });
+  }
+});
+
 // Get dashboard stats
 router.get("/dashboard/stats", requireAdmin, async (req, res) => {
   try {
@@ -955,11 +1010,14 @@ router.get("/customer-stats", requireAdmin, async (req, res) => {
     const totalParams = [];
     const todayParams = [];
 
-    if (req.admin.role !== 'super_admin') {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req).then(id => { if (id === -1) throw new Error('Hotel slug not found'); return id; })
+      : req.admin.hotelId;
+    if (hotelId) {
       totalCustomersQuery += " WHERE hotel_id = $1";
       todayCustomersQuery += " AND hotel_id = $1";
-      totalParams.push(req.admin.hotelId);
-      todayParams.push(req.admin.hotelId);
+      totalParams.push(hotelId);
+      todayParams.push(hotelId);
     }
 
     const [totalCustomers, todayCustomers] = await Promise.all([
@@ -1833,7 +1891,19 @@ router.post("/settings/logout-devices", requireAdmin, async (req, res) => {
 });
 
 // ─── Settings: POST /settings/upload ───────────────────────────────
-router.post("/settings/upload", requireAdmin, upload.single("image"), async (req, res) => {
+router.post("/settings/upload", requireAdmin, (req, res, next) => {
+  upload.single("image")(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ success: false, message: "Image size exceeds 200 KB limit." });
+      }
+      return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
+    } else if (err) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    next();
+  });
+}, validateImageUpload, async (req, res) => {
   try {
     const { type } = req.body; // 'logo' or 'banner'
     const file = req.file;
@@ -1844,24 +1914,6 @@ router.post("/settings/upload", requireAdmin, upload.single("image"), async (req
 
     if (type !== "logo" && type !== "banner") {
       return res.status(400).json({ success: false, message: "Invalid upload type. Must be 'logo' or 'banner'" });
-    }
-
-    // Image size check (logo: 2MB, banner: 5MB)
-    const maxSize = type === "logo" ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
-    if (file.size > maxSize) {
-      return res.status(400).json({
-        success: false,
-        message: `${type === 'logo' ? 'Logo' : 'Banner'} file size must be less than ${type === 'logo' ? '2MB' : '5MB'}`
-      });
-    }
-
-    // Verify MIME types
-    const allowedMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
-    if (!allowedMimeTypes.includes(file.mimetype)) {
-      return res.status(400).json({
-        success: false,
-        message: "Only JPEG, PNG, or WEBP image files are allowed"
-      });
     }
 
     // Generate unique name — resolve hotel ID for super_admin
@@ -1950,9 +2002,9 @@ router.get('/subscription-plans', requireAdmin, async (req, res) => {
         if (parseInt(seedCheck.rows[0].count) === 0) {
           await db.query(`
             INSERT INTO public.subscription_plans (name, price_monthly, price_yearly, features) VALUES
-              ('trial', 1, 1, '{"all_basic":true,"unlimited_staff":true,"advanced_analytics":true,"occupancy_tracking":true,"priority_support":true,"menu_assistant":true,"is_trial_pro":true}'),
-              ('basic', 999, 11988, '{"menu_items":"unlimited","admin_managers":3,"razorpay":true,"kds":true,"dynamic_qr":true,"pdf_reports":true}'),
-              ('pro', 2499, 29988, '{"all_basic":true,"unlimited_staff":true,"advanced_analytics":true,"occupancy_tracking":true,"priority_support":true,"menu_assistant":true}');
+              ('trial', 1, 1, '{"QR Menu System":"5 Tables","Digital Menu Card":true,"Online Ordering":"Basic","Table QR Codes":"5 Tables","Menu Items":"Up to 30","Categories":"Up to 5","Email Support":true}'),
+              ('basic', 999, 11988, '{"QR Menu System":"Unlimited Tables","Digital Menu Card":true,"Online Ordering":"Full","Dynamic QR per Table":true,"Menu Items":"Unlimited","Categories":"Unlimited","Razorpay Payments":true,"Kitchen Display System":true,"PDF Reports & Invoices":true,"Admin Managers":"Up to 3","Customer Auth":true,"Analytics Dashboard":true}'),
+              ('pro', 2499, 29988, '{"QR Menu System":"Unlimited Tables","Digital Menu Card":true,"Online Ordering":"Full","Dynamic QR per Table":true,"Menu Items":"Unlimited","Categories":"Unlimited","Razorpay Payments":true,"Kitchen Display System":true,"PDF Reports & Invoices":true,"Admin Managers":"Unlimited","Customer Auth":true,"Analytics Dashboard":"Advanced","Occupancy Tracking":true,"24/7 Priority Support":true,"AI Menu Assistant":true,"Multi-Branch Support":true,"Custom Branding":true,"Dedicated Account Manager":true,"Priority Feature Access":true}');
           `);
         }
         // Re-run the original query now that table exists
@@ -2167,6 +2219,170 @@ router.get("/auth-logs", requireAdmin, async (req, res) => {
   } catch (error) {
     logger.error("Get hotel auth logs error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch authentication logs" });
+  }
+});
+
+// ─── Payment Settings ───────────────────────────────────────────────
+router.get("/payment-settings", requireAdmin, async (req, res) => {
+  try {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req)
+      : req.admin.hotelId;
+
+    if (!hotelId || hotelId === -1) {
+      return res.status(404).json({ success: false, message: "Hotel not resolved." });
+    }
+
+    const result = await db.query(
+      `SELECT merchant_name, upi_id, payment_qr_url, payment_instructions
+       FROM public.hotels WHERE hotel_id = $1`,
+      [hotelId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found." });
+    }
+
+    const row = result.rows[0];
+    return res.json({
+      success: true,
+      merchantName: row.merchant_name || "",
+      upiId: row.upi_id || "",
+      paymentQrUrl: row.payment_qr_url || "",
+      paymentInstructions: row.payment_instructions || ""
+    });
+  } catch (error) {
+    logger.error("Get payment settings error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch payment settings." });
+  }
+});
+
+router.post("/payment-settings", requireAdmin, async (req, res) => {
+  try {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req)
+      : req.admin.hotelId;
+
+    if (!hotelId || hotelId === -1) {
+      return res.status(404).json({ success: false, message: "Hotel not resolved." });
+    }
+
+    const { merchantName, upiId, paymentInstructions } = req.body;
+
+    await db.query(
+      `UPDATE public.hotels
+       SET merchant_name = $1, upi_id = $2, payment_instructions = $3
+       WHERE hotel_id = $4`,
+      [merchantName ? xss(merchantName.trim()) : null, upiId ? xss(upiId.trim()) : null, paymentInstructions ? xss(paymentInstructions.trim()) : null, hotelId]
+    );
+
+    return res.json({ success: true, message: "Payment settings updated." });
+  } catch (error) {
+    logger.error("Update payment settings error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update payment settings." });
+  }
+});
+
+router.post("/payment-settings/qr-upload", requireAdmin, (req, res, next) => {
+  upload.single("qrImage")(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ success: false, message: "Image size exceeds the maximum limit." });
+      }
+      return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
+    } else if (err) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    next();
+  });
+}, validateImageUpload, async (req, res) => {
+  try {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req)
+      : req.admin.hotelId;
+
+    if (!hotelId || hotelId === -1) {
+      return res.status(404).json({ success: false, message: "Hotel not resolved." });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No image file provided." });
+    }
+
+    const ext = path.extname(req.file.originalname) || ".png";
+    const fileName = `payment_qr_${hotelId}_${Date.now()}${ext}`;
+
+    let qrUrl = null;
+      try {
+        const cdnResult = await bunnyCDN.uploadImage(req.file.buffer, fileName, "payment-qr");
+        if (cdnResult.success) {
+          qrUrl = cdnResult.url;
+        }
+      } catch (cdnErr) {
+        logger.warn("BunnyCDN upload failed, using local fallback:", cdnErr.message);
+      }
+
+      if (!qrUrl) {
+        const uploadDir = path.join(__dirname, "../public/uploads/payment-qr");
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        const localPath = path.join(uploadDir, fileName);
+        fs.writeFileSync(localPath, req.file.buffer);
+        qrUrl = `/uploads/payment-qr/${fileName}`;
+      }
+
+      await db.query(
+        "UPDATE public.hotels SET payment_qr_url = $1 WHERE hotel_id = $2",
+        [qrUrl, hotelId]
+      );
+
+      return res.json({ success: true, message: "QR code uploaded.", qrUrl });
+    } catch (error) {
+      logger.error("QR upload error:", error);
+      return res.status(500).json({ success: false, message: "Failed to upload QR code." });
+    }
+  });
+router.delete("/payment-settings/qr", requireAdmin, async (req, res) => {
+  try {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req)
+      : req.admin.hotelId;
+
+    if (!hotelId || hotelId === -1) {
+      return res.status(404).json({ success: false, message: "Hotel not resolved." });
+    }
+
+    const result = await db.query(
+      "SELECT payment_qr_url FROM public.hotels WHERE hotel_id = $1",
+      [hotelId]
+    );
+
+    if (result.rows.length > 0 && result.rows[0].payment_qr_url) {
+      const oldUrl = result.rows[0].payment_qr_url;
+      if (oldUrl.startsWith("/uploads/")) {
+        const localPath = path.join(__dirname, "../public", oldUrl);
+        if (fs.existsSync(localPath)) {
+          fs.unlinkSync(localPath);
+        }
+      } else if (oldUrl.includes("bunnycdn") || oldUrl.includes("storage.bunnycdn")) {
+        try {
+          await bunnyCDN.deleteImage(oldUrl);
+        } catch (cdnErr) {
+          logger.warn("BunnyCDN delete failed (non-fatal):", cdnErr.message);
+        }
+      }
+    }
+
+    await db.query(
+      "UPDATE public.hotels SET payment_qr_url = NULL WHERE hotel_id = $1",
+      [hotelId]
+    );
+
+    return res.json({ success: true, message: "QR code deleted." });
+  } catch (error) {
+    logger.error("QR delete error:", error);
+    return res.status(500).json({ success: false, message: "Failed to delete QR code." });
   }
 });
 

@@ -53,7 +53,7 @@ describe("Orders APIs", () => {
         });
       }
       // 2. Subscription check query
-      if (queryText.includes("is_frozen, plan, trial_ends_at")) {
+      if (queryText.includes("public.hotels h") && queryText.includes("LEFT JOIN public.subscriptions")) {
         return Promise.resolve({
           rows: [
             {
@@ -61,6 +61,8 @@ describe("Orders APIs", () => {
               is_frozen: false,
               plan: "pro",
               trial_ends_at: null,
+              subscription_expiry_date: null,
+              subscription_status: null,
             },
           ],
         });
@@ -162,9 +164,9 @@ describe("Orders APIs", () => {
             ],
           });
         }
-        if (queryText.includes("is_frozen, plan, trial_ends_at")) {
+        if (queryText.includes("public.hotels h") && queryText.includes("LEFT JOIN public.subscriptions")) {
           return Promise.resolve({
-            rows: [{ hotel_id: 10, is_frozen: false, plan: "pro", trial_ends_at: null }],
+            rows: [{ hotel_id: 10, is_frozen: false, plan: "pro", trial_ends_at: null, subscription_expiry_date: null, subscription_status: null }],
           });
         }
         if (queryText.includes("SELECT hotel_id, is_open")) {
@@ -227,7 +229,7 @@ describe("Orders APIs", () => {
             rows: [{ customer_id: 1, name: "John Customer", phone: "9876543210", email: "john@example.com", dob: null, hotel_id: 10 }]
           });
         }
-        if (queryText.includes("is_frozen, plan, trial_ends_at")) {
+        if (queryText.includes("public.hotels h") && queryText.includes("LEFT JOIN public.subscriptions")) {
           return Promise.resolve({
             rows: [{ hotel_id: 10, is_frozen: false, plan: "pro", trial_ends_at: null }]
           });
@@ -262,7 +264,7 @@ describe("Orders APIs", () => {
             rows: [{ customer_id: 1, name: "John Customer", phone: "9876543210", email: "john@example.com", dob: null, hotel_id: 10 }]
           });
         }
-        if (queryText.includes("is_frozen, plan, trial_ends_at")) {
+        if (queryText.includes("public.hotels h") && queryText.includes("LEFT JOIN public.subscriptions")) {
           return Promise.resolve({
             rows: [{ hotel_id: 10, is_frozen: false, plan: "pro", trial_ends_at: null }]
           });
@@ -316,9 +318,9 @@ describe("Orders APIs", () => {
             ],
           });
         }
-        if (queryText.includes("is_frozen, plan, trial_ends_at")) {
+        if (queryText.includes("public.hotels h") && queryText.includes("LEFT JOIN public.subscriptions")) {
           return Promise.resolve({
-            rows: [{ hotel_id: 10, is_frozen: false, plan: "pro", trial_ends_at: null }],
+            rows: [{ hotel_id: 10, is_frozen: false, plan: "pro", trial_ends_at: null, subscription_expiry_date: null, subscription_status: null }],
           });
         }
         if (queryText.includes("SELECT hotel_id FROM public.hotels")) {
