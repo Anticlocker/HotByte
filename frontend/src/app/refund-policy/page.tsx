@@ -10,33 +10,33 @@ export const metadata: Metadata = {
 
 export default function RefundPolicy() {
   return (
-    <div className="mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700 bg-white dark:bg-[#0b0d11] transition-colors duration-300 pt-14">
+    <div className="relative z-0 bg-[#050507] min-h-screen flex flex-col justify-between text-white font-sans selection:bg-orange-500/30 overflow-x-hidden antialiased">
       <CustomerNavbar hideActions />
 
       <main className="flex-grow max-w-[800px] mx-auto w-full px-6 py-12 relative overflow-hidden">
         {/* Glow */}
         <div className="absolute top-1/4 right-1/4 w-80 h-80 bg-orange-500/5 rounded-full blur-[100px] pointer-events-none" />
 
-        <div className="bg-white/70 dark:bg-zinc-900/60 border border-gray-150/40 dark:border-zinc-800/40 shadow-2xl backdrop-blur-xl p-8 md:p-12 rounded-[32px] animate-fade-in-up">
+        <div className="glass-card-dark rounded-3xl border border-gray-900/60 p-8 md:p-12 animate-fade-in-up">
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-12 h-12 rounded-2xl bg-orange-50 dark:bg-orange-950/20 text-orange-500 flex items-center justify-center shadow-inner">
+            <div className="w-12 h-12 rounded-2xl bg-orange-500/10 text-orange-400 flex items-center justify-center shadow-inner">
               <RotateCcw size={22} />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white tracking-tight">
+              <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
                 Refund Policy
               </h1>
-              <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mt-1">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-1">
                 Last Updated: June 2026
               </p>
             </div>
           </div>
 
-          <div className="h-px bg-gray-150 dark:bg-zinc-800/50 my-6" />
+          <div className="h-px bg-gray-900/50 my-6" />
 
-          <div className="space-y-6 text-sm text-gray-600 dark:text-gray-400 font-semibold leading-relaxed">
+          <div className="space-y-6 text-sm text-gray-300 font-semibold leading-relaxed">
             <section className="space-y-2">
-              <h2 className="text-base font-black text-gray-900 dark:text-white tracking-tight">
+              <h2 className="text-base font-black text-white tracking-tight">
                 1. Subscription Plans
               </h2>
               <p>
@@ -47,7 +47,7 @@ export default function RefundPolicy() {
             </section>
 
             <section className="space-y-2">
-              <h2 className="text-base font-black text-gray-900 dark:text-white tracking-tight">
+              <h2 className="text-base font-black text-white tracking-tight">
                 2. Free Trial Period
               </h2>
               <p>
@@ -58,7 +58,7 @@ export default function RefundPolicy() {
             </section>
 
             <section className="space-y-2">
-              <h2 className="text-base font-black text-gray-900 dark:text-white tracking-tight">
+              <h2 className="text-base font-black text-white tracking-tight">
                 3. Paid Subscription Refunds
               </h2>
               <p>
@@ -70,7 +70,7 @@ export default function RefundPolicy() {
             </section>
 
             <section className="space-y-2">
-              <h2 className="text-base font-black text-gray-900 dark:text-white tracking-tight">
+              <h2 className="text-base font-black text-white tracking-tight">
                 4. Cancellation Policy
               </h2>
               <p>
@@ -82,7 +82,7 @@ export default function RefundPolicy() {
             </section>
 
             <section className="space-y-2">
-              <h2 className="text-base font-black text-gray-900 dark:text-white tracking-tight">
+              <h2 className="text-base font-black text-white tracking-tight">
                 5. Service Downtime &amp; Credits
               </h2>
               <p>
@@ -94,7 +94,7 @@ export default function RefundPolicy() {
             </section>
 
             <section className="space-y-2">
-              <h2 className="text-base font-black text-gray-900 dark:text-white tracking-tight">
+              <h2 className="text-base font-black text-white tracking-tight">
                 6. Chargebacks &amp; Disputes
               </h2>
               <p>
@@ -102,7 +102,7 @@ export default function RefundPolicy() {
                 team at{" "}
                 <a
                   href="mailto:support@hotbyte.in"
-                  className="text-orange-500 hover:underline font-bold"
+                  className="text-orange-400 hover:underline font-bold"
                 >
                   support@hotbyte.in
                 </a>{" "}
@@ -112,21 +112,21 @@ export default function RefundPolicy() {
             </section>
 
             <section className="space-y-2">
-              <h2 className="text-base font-black text-gray-900 dark:text-white tracking-tight">
+              <h2 className="text-base font-black text-white tracking-tight">
                 7. Contact
               </h2>
               <p>
                 For any refund or billing inquiries, reach out to us at{" "}
                 <a
                   href="mailto:support@hotbyte.in"
-                  className="text-orange-500 hover:underline font-bold"
+                  className="text-orange-400 hover:underline font-bold"
                 >
                   support@hotbyte.in
                 </a>{" "}
                 or visit our{" "}
                 <a
                   href="/contact"
-                  className="text-orange-500 hover:underline font-bold"
+                  className="text-orange-400 hover:underline font-bold"
                 >
                   Contact page
                 </a>.

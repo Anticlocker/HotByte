@@ -79,9 +79,12 @@ backend/public/uploads/
 # Agent notes
 AGENT_NOTES.md
 
-# Playwright
+# Playwright (e2e tests removed)
 /test-results/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Playwright config
+playwright.config.ts
