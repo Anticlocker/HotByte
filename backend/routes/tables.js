@@ -111,7 +111,6 @@ router.get("/qr-pdf", requireAdmin, async (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="${tables[0].hotel_slug}-all-tables-qr.pdf"`);
     doc.pipe(res);
 
-    // Title
     doc.fontSize(22).font("Helvetica-Bold").text(tables[0].hotel_name || "QR Codes", { align: "center" });
     doc.fontSize(12).font("Helvetica").text(`All Active Tables - ${tables.length} tables`, { align: "center" });
     doc.moveDown(1.5);
@@ -160,7 +159,6 @@ router.get("/:id", requireAdmin, async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Table not found." });
     }
-    // Tenant check
     if (req.admin.role !== "super_admin" && result.rows[0].hotel_id !== req.admin.hotelId) {
       return res.status(403).json({ success: false, message: "Unauthorized." });
     }
@@ -182,7 +180,6 @@ router.put("/:id", requireAdmin, async (req, res) => {
       return res.status(400).json({ success: false, message: "Hotel context required." });
     }
 
-    // Tenant check
     const existing = await db.query("SELECT hotel_id FROM public.restaurant_tables WHERE id = $1", [id]);
     if (existing.rows.length === 0) return res.status(404).json({ success: false, message: "Table not found." });
     if (req.admin.role !== "super_admin" && existing.rows[0].hotel_id !== hotelId) {
@@ -303,7 +300,6 @@ router.get("/:id/qr-image", requireAdmin, async (req, res) => {
 });
 
 // ─── PUBLIC: VALIDATE TABLE QR ────────────────────────────────────────
-// Called from customer frontend when scanning a QR — validates & returns table info
 
 router.get("/validate/:qr_slug", async (req, res) => {
   try {
@@ -373,7 +369,6 @@ router.get("/analytics/orders-per-table", requireAdmin, async (req, res) => {
       [hotelId]
     );
 
-    // Map table numbers to names
     const tablesResult = await db.query(
       "SELECT table_number, table_name FROM public.restaurant_tables WHERE hotel_id = $1",
       [hotelId]

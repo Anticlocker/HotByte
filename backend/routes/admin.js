@@ -12,7 +12,11 @@ const xss = require("xss");
 const { resolveHotelSlug } = require("../utils/hotelUtils");
 
 // Tables routes (mounted at /api/admin/tables)
-router.use('/tables', require('./tables'));
+const tablesRouter = require('./tables');
+router.use('/tables', (req, res, next) => {
+  req.url = req.url.replace(/^\/tables(?=\/|$)/, '') || '/';
+  tablesRouter(req, res, next);
+});
 
 const bcrypt = require("bcrypt");
 const SALT_ROUNDS = 12;
