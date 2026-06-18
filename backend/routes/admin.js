@@ -9,20 +9,10 @@ const { requireAdmin } = require("./auth");
 const bunnyCDN = require("./bunnyCDN");
 const crypto = require("crypto");
 const xss = require("xss");
+const { resolveHotelSlug } = require("../utils/hotelUtils");
 
 // Tables routes (mounted at /api/admin/tables)
 router.use('/tables', require('./tables'));
-
-// ─── Helper: resolve hotel_slug → hotel_id for super_admin scoped queries ───────
-// Usage: const hotelId = await resolveHotelSlug(req) || req.admin.hotelId
-const resolveHotelSlug = async (req) => {
-  if (req.admin.role !== 'super_admin') return req.admin.hotelId;
-  const slug = req.query.hotel_slug || req.body?.hotel_slug;
-  if (!slug) return null; // super_admin with no filter = all hotels
-  const result = await db.query('SELECT hotel_id FROM public.hotels WHERE slug = $1', [slug]);
-  if (result.rows.length === 0) return -1; // sentinel: slug not found
-  return result.rows[0].hotel_id;
-};
 
 const bcrypt = require("bcrypt");
 const SALT_ROUNDS = 12;

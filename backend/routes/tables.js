@@ -5,6 +5,7 @@ const db = require("./database");
 const { requireAdmin } = require("./auth");
 const crypto = require("crypto");
 const QRCode = require("qrcode");
+const PDFDocument = require("pdfkit");
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
@@ -77,6 +78,72 @@ router.get("/", requireAdmin, async (req, res) => {
   } catch (error) {
     logger.error("List tables error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch tables." });
+  }
+});
+
+// ─── DOWNLOAD ALL QR CODES AS PDF ────────────────────────────────────
+
+router.get("/qr-pdf", requireAdmin, async (req, res) => {
+  try {
+    const hotelId = await resolveHotelId(req);
+    if (!hotelId || hotelId === -1) {
+      return res.status(400).json({ success: false, message: "Hotel context required." });
+    }
+
+    const tablesResult = await db.query(
+      `SELECT rt.*, h.slug AS hotel_slug, h.name AS hotel_name
+       FROM public.restaurant_tables rt
+       JOIN public.hotels h ON rt.hotel_id = h.hotel_id
+       WHERE rt.hotel_id = $1 AND rt.is_active = TRUE
+       ORDER BY rt.table_number ASC`,
+      [hotelId]
+    );
+
+    if (tablesResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "No active tables found for this hotel." });
+    }
+
+    const tables = tablesResult.rows;
+    const baseUrl = getBaseUrl(req);
+    const doc = new PDFDocument({ size: "A4", layout: "landscape", margins: { top: 40, bottom: 40, left: 40, right: 40 } });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${tables[0].hotel_slug}-all-tables-qr.pdf"`);
+    doc.pipe(res);
+
+    // Title
+    doc.fontSize(22).font("Helvetica-Bold").text(tables[0].hotel_name || "QR Codes", { align: "center" });
+    doc.fontSize(12).font("Helvetica").text(`All Active Tables - ${tables.length} tables`, { align: "center" });
+    doc.moveDown(1.5);
+
+    let itemsOnPage = 0;
+    const maxPerPage = 6;
+
+    for (const table of tables) {
+      if (itemsOnPage > 0 && itemsOnPage % maxPerPage === 0) {
+        doc.addPage();
+      }
+
+      const qrUrl = `${baseUrl}/menu/${table.hotel_slug}/table/${table.table_number}`;
+      const qrBuffer = await QRCode.toBuffer(qrUrl, { type: "png", width: 200, margin: 1 });
+
+      const col = itemsOnPage % maxPerPage;
+      const x = 40 + (col % 3) * 200;
+      const y = 100 + Math.floor(col / 3) * 200;
+
+      doc.image(qrBuffer, x, y, { width: 140 });
+      doc.fontSize(10).font("Helvetica-Bold").text(`Table ${table.table_number}`, x + 140, y + 10, { width: 150 });
+      if (table.table_name) {
+        doc.fontSize(9).font("Helvetica").text(table.table_name, x + 140, y + 28, { width: 150 });
+      }
+
+      itemsOnPage++;
+    }
+
+    doc.end();
+  } catch (error) {
+    logger.error("QR PDF generation error:", error);
+    return res.status(500).json({ success: false, message: "Failed to generate QR PDF." });
   }
 });
 

@@ -214,5 +214,6 @@ const MenuItemCard: React.FC<Props> = React.memo(({
     </div>
   );
 });
+MenuItemCard.displayName = 'MenuItemCard';
 
 export default MenuItemCard;

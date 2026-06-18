@@ -7,7 +7,7 @@ async function createSuperAdmin() {
   const password = process.env.SUPER_ADMIN_PASSWORD;
   const name = process.env.SUPER_ADMIN_NAME || 'Super Admin';
   const email = process.env.SUPER_ADMIN_EMAIL || 'admin@hotbyte.in';
-  const phone = process.env.SUPER_ADMIN_PHONE || '9356918260';
+  const phone = process.env.SUPER_ADMIN_PHONE;
   const role = 'super_admin';
 
   if (!password) {

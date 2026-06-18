@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS public.hotels (
     hotel_type      VARCHAR(10)  DEFAULT 'both',
     location_ordering_enabled BOOLEAN DEFAULT TRUE,
     settings_json   jsonb        DEFAULT '{}',
+    subscription_expiry_date timestamp,
     created_at      timestamp    DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT hotels_hotel_type_check CHECK (hotel_type IN ('veg', 'nonveg', 'both'))
 );
@@ -148,11 +149,14 @@ CREATE TABLE IF NOT EXISTS public.orders
     total_amount numeric(10, 2) DEFAULT 0,
     status character varying(20) COLLATE pg_catalog."default" DEFAULT 'pending'::character varying,
     hotel_id integer REFERENCES public.hotels(hotel_id) ON DELETE CASCADE,
+    customer_name character varying(100) COLLATE pg_catalog."default",
+    order_display_id character varying(20) COLLATE pg_catalog."default",
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT orders_pkey PRIMARY KEY (order_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_orders_hotel_id ON public.orders(hotel_id);
+CREATE INDEX IF NOT EXISTS idx_orders_order_display_id ON public.orders(order_display_id);
 
 CREATE TABLE IF NOT EXISTS public.payments
 (
@@ -162,6 +166,7 @@ CREATE TABLE IF NOT EXISTS public.payments
     payment_status character varying(20) COLLATE pg_catalog."default",
     payment_method character varying(50) COLLATE pg_catalog."default",
     razorpay_payment_id character varying(200) COLLATE pg_catalog."default" UNIQUE,
+    payment_reference character varying(200) COLLATE pg_catalog."default",
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT payments_pkey PRIMARY KEY (payment_id)
 );
@@ -280,6 +285,8 @@ ALTER TABLE IF EXISTS public.payments
     ON DELETE NO ACTION;
 CREATE INDEX IF NOT EXISTS idx_payments_order_id
     ON public.payments(order_id);
+CREATE INDEX IF NOT EXISTS idx_payments_payment_reference
+    ON public.payments(payment_reference);
 
 
 ALTER TABLE IF EXISTS public.ratings

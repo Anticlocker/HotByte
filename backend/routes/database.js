@@ -251,7 +251,7 @@ pool.connect(async (err, client, release) => {
             }
             // Cleanup expired payment sessions (older than 24 hours and still pending)
             await client.query("DELETE FROM public.payment_sessions WHERE created_at < NOW() - INTERVAL '24 hours' AND status IN ('pending', 'pending_payment');");
-            console.log("✅ Database: Expired payment sessions cleaned up.");
+            logger.info("Database: Expired payment sessions cleaned up.");
             // Seed subscription plans if empty
             const plansCount = await client.query("SELECT COUNT(*) FROM public.subscription_plans;");
             if (parseInt(plansCount.rows[0].count) === 0) {
@@ -261,7 +261,7 @@ pool.connect(async (err, client, release) => {
                     ('basic', 999, 11988, '{"QR Menu System":"Unlimited Tables","Digital Menu Card":true,"Online Ordering":"Full","Dynamic QR per Table":true,"Menu Items":"Unlimited","Categories":"Unlimited","Razorpay Payments":true,"Kitchen Display System":true,"PDF Reports & Invoices":true,"Admin Managers":"Up to 3","Customer Auth":true,"Analytics Dashboard":true}'),
                     ('pro', 2499, 29988, '{"QR Menu System":"Unlimited Tables","Digital Menu Card":true,"Online Ordering":"Full","Dynamic QR per Table":true,"Menu Items":"Unlimited","Categories":"Unlimited","Razorpay Payments":true,"Kitchen Display System":true,"PDF Reports & Invoices":true,"Admin Managers":"Unlimited","Customer Auth":true,"Analytics Dashboard":"Advanced","Occupancy Tracking":true,"24/7 Priority Support":true,"AI Menu Assistant":true,"Multi-Branch Support":true,"Custom Branding":true,"Dedicated Account Manager":true,"Priority Feature Access":true}');
                 `);
-                console.log("✅ Database: Seeded default subscription plans");
+                logger.info("Database: Seeded default subscription plans");
             } else {
                 // Backfill/upgrade existing trial plan price and features in database
                 await client.query(`
@@ -271,11 +271,11 @@ pool.connect(async (err, client, release) => {
                         features = '{"QR Menu System":"5 Tables","Digital Menu Card":true,"Online Ordering":"Basic","Table QR Codes":"5 Tables","Menu Items":"Up to 30","Categories":"Up to 5","Email Support":true}' 
                     WHERE name = 'trial';
                 `);
-                console.log("✅ Database: Upgraded existing Trial plan price to ₹1 and loaded Pro features");
+                logger.info("Database: Upgraded existing Trial plan price to ₹1 and loaded Pro features");
             }
             // Backfill trial_ends_at
             await client.query("UPDATE public.hotels SET trial_ends_at = created_at + INTERVAL '14 days' WHERE trial_ends_at IS NULL AND plan = 'trial';");
-            console.log("✅ Database: Schema up to date");
+            logger.info("Database: Schema up to date");
 
             // Legacy customer backfill
             const hotelRes = await client.query("SELECT hotel_id FROM public.hotels LIMIT 1;");

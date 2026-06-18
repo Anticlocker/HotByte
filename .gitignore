@@ -72,3 +72,16 @@ backend/public/uploads/
 # ─── Package Lock (root only – workspaces handle their own) ──────────────────
 # Uncomment below if you don't want to commit the root lock file
 # package-lock.json
+
+# Auto-generated audit reports
+/reports/
+
+# Agent notes
+AGENT_NOTES.md
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

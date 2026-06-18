@@ -69,7 +69,7 @@ module.exports = async (req, res, next) => {
       const settingsRows = await db.query(
         "SELECT value FROM public.super_admin_settings WHERE key = 'grace_period_days'"
       );
-      const graceDays = settingsRows.rows.length > 0 ? parseInt(settingsRows.rows[0].value) : 0;
+      const graceDays = settingsRows.rows.length > 0 ? (parseInt(settingsRows.rows[0].value) || 7) : 7;
       if (graceDays > 0) {
         gracePeriodRemaining = Math.max(0, graceDays - daysSinceExpiry);
       }

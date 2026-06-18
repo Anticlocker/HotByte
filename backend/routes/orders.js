@@ -17,7 +17,7 @@ if (!RAZORPAY_KEY_SECRET && process.env.NODE_ENV === 'production') {
 
 // ── Haversine distance helper (returns meters) ─────────────────────────
 const haversineDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371000; // Earth radius in metres
+  const R = 6371000;
   const toRad = (deg) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
@@ -26,6 +26,22 @@ const haversineDistance = (lat1, lon1, lat2, lon2) => {
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const validateTableForHotel = async (tableNumber, hotelId) => {
+  if (!tableNumber.startsWith("T-")) {
+    const result = await db.query(
+      "SELECT id, is_active FROM public.restaurant_tables WHERE table_number = $1 AND hotel_id = $2",
+      [tableNumber.trim(), hotelId]
+    );
+    if (result.rows.length === 0) {
+      return { valid: false, message: "Table not found for this hotel." };
+    }
+    if (!result.rows[0].is_active) {
+      return { valid: false, message: "This table is currently inactive." };
+    }
+  }
+  return { valid: true };
 };
 
 router.post("/create-after-payment", requireAuth, async (req, res) => {
@@ -56,37 +72,6 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
         success: false,
         message: "Table number required"
       });
-    }
-
-    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-      return res.status(400).json({
-        success: false,
-        message: "Payment details missing"
-      });
-    }
-
-    // ---------------- PAYMENT SIGNATURE VERIFY ----------------
-
-    const text = `${razorpay_order_id}|${razorpay_payment_id}`;
-    const generatedSignature = crypto
-      .createHmac("sha256", RAZORPAY_KEY_SECRET)
-      .update(text)
-      .digest("hex");
-
-    if (generatedSignature !== razorpay_signature) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid payment signature"
-      });
-    }
-
-    // ---------------- DUPLICATE PAYMENT CHECK ----------------
-    const dupCheck = await db.query(
-      "SELECT payment_id FROM payments WHERE razorpay_payment_id = $1",
-      [razorpay_payment_id]
-    );
-    if (dupCheck.rows.length > 0) {
-      return res.status(409).json({ success: false, message: "This payment has already been used to place an order." });
     }
 
     // ---------------- HOTEL RESOLVING & TABLE AVAILABILITY CHECK ----------------
@@ -136,18 +121,40 @@ router.post("/create-after-payment", requireAuth, async (req, res) => {
       });
     }
 
-    // Validate table exists in restaurant_tables (unless legacy T-N format)
-    if (!table_number.startsWith("T-")) {
-      const tableExists = await db.query(
-        "SELECT id, is_active FROM public.restaurant_tables WHERE table_number = $1 AND hotel_id = $2",
-        [table_number.trim(), hotelId]
-      );
-      if (tableExists.rows.length === 0) {
-        return res.status(400).json({ success: false, message: "Table not found for this hotel." });
-      }
-      if (!tableExists.rows[0].is_active) {
-        return res.status(400).json({ success: false, message: "This table is currently inactive." });
-      }
+    const tableValidation = await validateTableForHotel(table_number, hotelId);
+    if (!tableValidation.valid) {
+      return res.status(400).json({ success: false, message: tableValidation.message });
+    }
+
+    // ---------------- PAYMENT SIGNATURE VERIFY ----------------
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment details missing"
+      });
+    }
+
+    const text = `${razorpay_order_id}|${razorpay_payment_id}`;
+    const generatedSignature = crypto
+      .createHmac("sha256", RAZORPAY_KEY_SECRET)
+      .update(text)
+      .digest("hex");
+
+    if (generatedSignature !== razorpay_signature) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment signature"
+      });
+    }
+
+    // ---------------- DUPLICATE PAYMENT CHECK ----------------
+    const dupCheck = await db.query(
+      "SELECT payment_id FROM payments WHERE razorpay_payment_id = $1",
+      [razorpay_payment_id]
+    );
+    if (dupCheck.rows.length > 0) {
+      return res.status(409).json({ success: false, message: "This payment has already been used to place an order." });
     }
 
     // ---------------- CALCULATE TOTAL ----------------
@@ -336,7 +343,7 @@ router.post("/create", requireAuth, async (req, res) => {
   try {
     const { items, table_number, customerLat, customerLng, customer_name } = req.body;
     const customerId = req.customer.customerId;
-    const customerName = (customer_name || "").trim();
+    const customerName = (customer_name || req.customer.name || "").trim();
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: "Cart is empty. Please add items to cart." });
@@ -359,18 +366,9 @@ router.post("/create", requireAuth, async (req, res) => {
     }
     const { hotel_id: hotelId, is_open: isOpen, latitude: hotelLat, longitude: hotelLng, order_radius: orderRadius, location_ordering_enabled: locationOrderingEnabled, merchant_name: merchantName, upi_id: upiId, payment_qr_url: qrUrl, payment_instructions: paymentInstructions } = hotelResult.rows[0];
 
-    // Validate table exists in restaurant_tables (unless it's the legacy T-N format)
-    if (!table_number.startsWith("T-")) {
-      const tableExists = await db.query(
-        "SELECT id, is_active FROM public.restaurant_tables WHERE table_number = $1 AND hotel_id = $2",
-        [table_number.trim(), hotelId]
-      );
-      if (tableExists.rows.length === 0) {
-        return res.status(400).json({ success: false, message: "Table not found for this hotel." });
-      }
-      if (!tableExists.rows[0].is_active) {
-        return res.status(400).json({ success: false, message: "This table is currently inactive." });
-      }
+    const tableValidation = await validateTableForHotel(table_number, hotelId);
+    if (!tableValidation.valid) {
+      return res.status(400).json({ success: false, message: tableValidation.message });
     }
 
     if (isOpen === false) {
@@ -591,7 +589,7 @@ router.post("/create-qr-order", requireAuth, async (req, res) => {
   try {
     const { items, table_number, customerLat, customerLng, customer_name } = req.body;
     const customerId = req.customer.customerId;
-    const customerName = (customer_name || "").trim();
+    const customerName = (customer_name || req.customer.name || "").trim();
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: "Cart is empty." });
@@ -619,17 +617,9 @@ router.post("/create-qr-order", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: "Hotel has not configured QR payment." });
     }
 
-    if (!table_number.startsWith("T-")) {
-      const tableExists = await db.query(
-        "SELECT id, is_active FROM public.restaurant_tables WHERE table_number = $1 AND hotel_id = $2",
-        [table_number.trim(), hotelId]
-      );
-      if (tableExists.rows.length === 0) {
-        return res.status(400).json({ success: false, message: "Table not found." });
-      }
-      if (!tableExists.rows[0].is_active) {
-        return res.status(400).json({ success: false, message: "Table is inactive." });
-      }
+    const tableValidation = await validateTableForHotel(table_number, hotelId);
+    if (!tableValidation.valid) {
+      return res.status(400).json({ success: false, message: tableValidation.message });
     }
 
     if (isOpen === false) {

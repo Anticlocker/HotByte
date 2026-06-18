@@ -223,7 +223,7 @@ const csrfProtection = (req, res, next) => {
   const headerToken = req.headers['x-csrf-token'];
   const cookieToken = req.cookies?.csrfToken;
   if (!headerToken || !cookieToken || headerToken !== cookieToken) {
-    console.warn(`[CSRF] Mismatch for ${req.method} ${req.path}: header=${headerToken ? headerToken.substring(0,8)+'...' : '(none)'}, cookie=${cookieToken ? cookieToken.substring(0,8)+'...' : '(none)'}, allCookies=${JSON.stringify(req.cookies)}`);
+    logger.warn(`[CSRF] Mismatch for ${req.method} ${req.path}: header=${headerToken ? 'present' : 'none'}, cookie=${cookieToken ? 'present' : 'none'}`);
     return res.status(403).json({ success: false, message: 'Invalid or missing CSRF token.' });
   }
   next();

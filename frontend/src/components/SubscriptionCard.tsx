@@ -1,5 +1,5 @@
 "use client"
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Check, Crown, Star, Sparkles } from 'lucide-react';
 
@@ -49,10 +49,15 @@ export const SubscriptionCard: React.FC<Props> = ({ plan, currentSubscription, o
   const Icon = config.icon;
 
   const isCurrent = currentSubscription?.plan_id === plan.plan_id;
-  const now = Date.now();
-  const daysRemaining = currentSubscription && now
-    ? Math.max(0, Math.ceil((new Date(currentSubscription.expiry_date).getTime() - now) / (1000 * 60 * 60 * 24)))
-    : null;
+  const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+  useEffect(() => {
+    if (currentSubscription) {
+      const now = Date.now();
+      setDaysRemaining(Math.max(0, Math.ceil((new Date(currentSubscription.expiry_date).getTime() - now) / (1000 * 60 * 60 * 24))));
+    } else {
+      setDaysRemaining(null);
+    }
+  }, [currentSubscription]);
   const expired = currentSubscription?.status === 'expired';
   const isFree = plan.price_monthly === 0;
 

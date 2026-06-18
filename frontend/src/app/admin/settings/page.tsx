@@ -1964,7 +1964,7 @@ export default function AdminSettings() {
                   
                   {/* Circular Brand Logo */}
                   {showLogo && logoPreview ? (
-                    <div className="w-16 h-16 rounded-full bg-gray-900 border-3 border-gray-950 overflow-hidden flex items-center justify-center shrink-0 shadow-lg shadow-black/80">
+                    <div className="w-16 h-16 rounded-full bg-gray-900 border-[3px] border-gray-950 overflow-hidden flex items-center justify-center shrink-0 shadow-lg shadow-black/80">
                       <img src={logoPreview} alt="Logo" className="w-full h-full object-cover" />
                     </div>
                   ) : (

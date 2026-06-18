@@ -161,7 +161,7 @@ function LoginContent() {
           <div className="w-full flex flex-col items-center justify-center min-h-[50px] relative z-10 my-4 gap-4">
             {!clientId ? (
               <div className="flex flex-col items-center gap-2">
-                <div className="w-8 h-8 border-3 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-8 h-8 border-[3px] border-orange-500 border-t-transparent rounded-full animate-spin"></div>
                 <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider">{t('login.preparing')}</span>
               </div>
             ) : (
@@ -184,6 +184,7 @@ function LoginContent() {
           {loading && (
             <div className="flex items-center justify-center gap-2.5 mt-6 text-sm font-bold text-orange-500 animate-pulse">
               <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+
               <span>{t('login.verifying')}</span>
             </div>
           )}

@@ -4,16 +4,7 @@ const logger = require("../utils/logger");
 const router = express.Router();
 const db = require("./database");
 const { requireAdmin } = require("./auth");
-
-// ─── Helper: resolve hotel_slug → hotel_id for super_admin scoped queries ───────
-const resolveHotelSlug = async (req) => {
-  if (req.admin.role !== 'super_admin') return req.admin.hotelId;
-  const slug = req.query.hotel_slug || req.body?.hotel_slug;
-  if (!slug) return null;
-  const result = await db.query('SELECT hotel_id FROM public.hotels WHERE slug = $1', [slug]);
-  if (result.rows.length === 0) return -1;
-  return result.rows[0].hotel_id;
-};
+const { resolveHotelSlug } = require("../utils/hotelUtils");
 
 // Overview statistics
 router.get("/stats/overview", requireAdmin, async (req, res) => {

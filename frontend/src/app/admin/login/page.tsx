@@ -5,6 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, User, ShieldAlert, ArrowRight } from "lucide-react";
 import { useNotification } from "@/context/NotificationContext";
 
+const getCsrfToken = () => {
+  if (typeof document === "undefined") return "";
+  const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : "";
+};
+
 function AdminLoginContent() {
   const notif = useNotification();
   const router = useRouter();
@@ -13,9 +19,13 @@ function AdminLoginContent() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [csrfToken, setCsrfToken] = useState("");
 
   useEffect(() => {
-    // Redirect if already logged in as admin
+    fetch("/api/auth/csrf-token")
+      .then((r) => r.json())
+      .then((d) => { if (d.csrfToken) setCsrfToken(d.csrfToken); })
+      .catch(() => {});
     fetch("/api/auth/admin/session-check")
       .then((res) => res.json())
       .then((data) => {
@@ -36,9 +46,10 @@ function AdminLoginContent() {
 
     setLoading(true);
     try {
+      const token = csrfToken || getCsrfToken();
       const res = await fetch("/api/auth/admin/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": token },
         body: JSON.stringify({ username, password, role: "admin", hotelSlug }),
       });
       const data = await res.json();

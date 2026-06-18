@@ -26,10 +26,6 @@ export default function PaymentSettings() {
   const [showQrPreview, setShowQrPreview] = useState(false);
   const notif = useNotification();
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
   const fetchSettings = async () => {
     try {
       const res = await fetch("/api/admin/payment-settings");
@@ -48,6 +44,10 @@ export default function PaymentSettings() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
 
   const getCsrfToken = () => 
     document.cookie.split('; ').find(r => r.startsWith('csrfToken='))?.split('=')[1];
@@ -152,7 +152,7 @@ export default function PaymentSettings() {
         </div>
         <div>
           <h3 className="text-base font-black text-white">Payment Settings</h3>
-          <p className="text-[10px] text-gray-500 font-semibold">Configure your hotel's direct payment QR code</p>
+          <p className="text-[10px] text-gray-500 font-semibold">Configure your hotel&apos;s direct payment QR code</p>
         </div>
       </div>
 
@@ -289,7 +289,7 @@ export default function PaymentSettings() {
               </div>
               <div>
                 <p className="text-xs text-gray-500 font-semibold">No QR Code Uploaded</p>
-                <p className="text-[9px] text-gray-600 mt-1">Customers will see "Online payment unavailable"</p>
+                <p className="text-[9px] text-gray-600 mt-1">Customers will see &quot;Online payment unavailable&quot;</p>
               </div>
               <button
                 onClick={() => {
