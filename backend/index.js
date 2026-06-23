@@ -321,7 +321,8 @@ app.use('/api/menu', require('./routes/menu'));
 
 // Admin panel routes (Admin authentication required)
 app.use('/api/admin', require('./routes/admin'));
-// Tables routes are mounted inside admin.js at '/api/admin/tables'
+// Table management routes (Admin-facing: /api/admin/tables/*)
+app.use('/api/admin/tables', require('./routes/tables'));
 
 
 // Super Admin panel routes (Super Admin privileges required)
