@@ -8,7 +8,6 @@ const bcrypt = require("bcrypt");
 const SALT_ROUNDS = 12;
 const db = require("./database");
 const { requireAuth, requireAdmin } = require("./auth");
-require("dotenv").config();
 
 // ── In-memory rate limiter for public onboarding endpoints ──────────────────
 // Prevents spam registration attempts on /create-inactive-session

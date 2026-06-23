@@ -146,6 +146,55 @@ router.get("/qr-pdf", requireAdmin, async (req, res) => {
   }
 });
 
+// ─── ANALYTICS: ORDERS PER TABLE ───────────────────────────────────────
+
+router.get("/analytics/orders-per-table", requireAdmin, async (req, res) => {
+  try {
+    const hotelId = await resolveHotelId(req);
+    if (!hotelId || hotelId === -1) {
+      return res.status(400).json({ success: false, message: "Hotel context required." });
+    }
+
+    const { period = "all" } = req.query;
+    let dateFilter = "";
+    if (period === "today") dateFilter = " AND DATE(o.created_at) = CURRENT_DATE";
+    else if (period === "week") dateFilter = " AND o.created_at >= CURRENT_DATE - INTERVAL '7 days'";
+    else if (period === "month") dateFilter = " AND o.created_at >= CURRENT_DATE - INTERVAL '30 days'";
+
+    const result = await db.query(
+      `SELECT o.table_number,
+              COUNT(*) AS order_count,
+              COALESCE(SUM(CASE WHEN o.status = 'completed' THEN o.total_amount ELSE 0 END), 0) AS revenue
+       FROM public.orders o
+       WHERE o.hotel_id = $1${dateFilter}
+       GROUP BY o.table_number
+       ORDER BY order_count DESC`,
+      [hotelId]
+    );
+
+    const tablesResult = await db.query(
+      "SELECT table_number, table_name FROM public.restaurant_tables WHERE hotel_id = $1",
+      [hotelId]
+    );
+    const tableMap = {};
+    tablesResult.rows.forEach((t) => {
+      tableMap[t.table_number] = t.table_name;
+    });
+
+    const enriched = result.rows.map((r) => ({
+      table_number: r.table_number,
+      table_name: tableMap[r.table_number] || null,
+      order_count: parseInt(r.order_count),
+      revenue: parseFloat(r.revenue),
+    }));
+
+    return res.json({ success: true, analytics: enriched });
+  } catch (error) {
+    logger.error("Table analytics error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch table analytics." });
+  }
+});
+
 // ─── GET SINGLE TABLE ──────────────────────────────────────────────────
 
 router.get("/:id", requireAdmin, async (req, res) => {
@@ -340,55 +389,6 @@ router.get("/validate/:qr_slug", async (req, res) => {
   } catch (error) {
     logger.error("Validate table QR error:", error);
     return res.status(500).json({ success: false, message: "Failed to validate QR code." });
-  }
-});
-
-// ─── ANALYTICS: ORDERS PER TABLE ───────────────────────────────────────
-
-router.get("/analytics/orders-per-table", requireAdmin, async (req, res) => {
-  try {
-    const hotelId = await resolveHotelId(req);
-    if (!hotelId || hotelId === -1) {
-      return res.status(400).json({ success: false, message: "Hotel context required." });
-    }
-
-    const { period = "all" } = req.query;
-    let dateFilter = "";
-    if (period === "today") dateFilter = " AND DATE(o.created_at) = CURRENT_DATE";
-    else if (period === "week") dateFilter = " AND o.created_at >= CURRENT_DATE - INTERVAL '7 days'";
-    else if (period === "month") dateFilter = " AND o.created_at >= CURRENT_DATE - INTERVAL '30 days'";
-
-    const result = await db.query(
-      `SELECT o.table_number,
-              COUNT(*) AS order_count,
-              COALESCE(SUM(CASE WHEN o.status = 'completed' THEN o.total_amount ELSE 0 END), 0) AS revenue
-       FROM public.orders o
-       WHERE o.hotel_id = $1${dateFilter}
-       GROUP BY o.table_number
-       ORDER BY order_count DESC`,
-      [hotelId]
-    );
-
-    const tablesResult = await db.query(
-      "SELECT table_number, table_name FROM public.restaurant_tables WHERE hotel_id = $1",
-      [hotelId]
-    );
-    const tableMap = {};
-    tablesResult.rows.forEach((t) => {
-      tableMap[t.table_number] = t.table_name;
-    });
-
-    const enriched = result.rows.map((r) => ({
-      table_number: r.table_number,
-      table_name: tableMap[r.table_number] || null,
-      order_count: parseInt(r.order_count),
-      revenue: parseFloat(r.revenue),
-    }));
-
-    return res.json({ success: true, analytics: enriched });
-  } catch (error) {
-    logger.error("Table analytics error:", error);
-    return res.status(500).json({ success: false, message: "Failed to fetch table analytics." });
   }
 });
 
