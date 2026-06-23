@@ -12,7 +12,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const isLoginPage = pathname === "/admin/login";
   const isSubscriptionPage = pathname === "/admin/subscription-plans";
 
-  if (isLoginPage || isSubscriptionPage) {
+  if (isLoginPage) {
     return <>{children}</>;
   }
 
@@ -27,7 +27,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (isFrozen) {
+  if (isFrozen && !isSubscriptionPage) {
     return (
       <SubscriptionExpiredCard
         plan={plan}

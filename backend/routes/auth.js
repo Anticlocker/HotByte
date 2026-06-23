@@ -188,10 +188,14 @@ const requireAdmin = async (req, res, next) => {
 
       const isFrozen = hotelRes.rows[0].is_frozen;
       if (isFrozen && ["POST", "PUT", "DELETE"].includes(req.method)) {
-        return res.status(403).json({
-          success: false,
-          message: "Your hotel account is temporarily frozen. Mutating operations are locked."
-        });
+        const fullPath = req.originalUrl || req.url;
+        const isPaymentRoute = /\/payments\/(create-subscription-order|verify-subscription|admin-razorpay-key)/.test(fullPath);
+        if (!isPaymentRoute) {
+          return res.status(403).json({
+            success: false,
+            message: "Your hotel account is temporarily frozen. Mutating operations are locked."
+          });
+        }
       }
     }
     
