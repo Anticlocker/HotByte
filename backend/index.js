@@ -93,6 +93,8 @@ app.use(cors({
     const isAllowed = allowedOrigins.includes(origin) ||
       origin === 'https://www.rav1.in' ||
       origin === 'https://rav1.in' ||
+      origin === 'https://www.hotbyte.in' ||
+      origin === 'https://hotbyte.in' ||
       isLocalIP;
       
     if (isAllowed) {
@@ -477,9 +479,7 @@ app.use((err, req, res, next) => {
   logger.error('Unhandled server error', err); // Console me error log karo
   res.status(500).json({
     success: false,
-    message: 'Internal server error',
-    error: err.message,
-    stack: err.stack
+    message: 'Internal server error'
   });
 });
 

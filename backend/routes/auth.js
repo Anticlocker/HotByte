@@ -604,7 +604,7 @@ router.post("/admin/login", async (req, res) => {
     });
   } catch (error) {
     logger.error("Admin login error:", error);
-    return res.status(500).json({ success: false, message: "Admin login failed.", error: error.message, stack: error.stack });
+    return res.status(500).json({ success: false, message: "Admin login failed." });
   }
 });
 
