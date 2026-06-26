@@ -28,7 +28,7 @@ const BubbleTrail: React.FC<BubbleTrailProps> = React.memo(
   ({ fishX, fishY, direction, paused }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const poolRef = useRef<Bubble[]>([]);
-    const intervalRef = useRef<ReturnType<typeof setInterval>>();
+    const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
     // Initialize bubble pool
     useEffect(() => {

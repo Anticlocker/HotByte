@@ -57,7 +57,7 @@ export default function FishController() {
   const [reducedMotion, setReducedMotion] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [fishSize, setFishSize] = useState(FISH_SIZE.desktop);
+  const [fishSize, setFishSize] = useState<number>(FISH_SIZE.desktop);
   const [direction, setDirection] = useState(1);
 
   // Smooth position state (updated via rAF, not React state to avoid rerenders)
