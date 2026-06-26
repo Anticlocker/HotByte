@@ -477,7 +477,9 @@ app.use((err, req, res, next) => {
   logger.error('Unhandled server error', err); // Console me error log karo
   res.status(500).json({
     success: false,
-    message: 'Internal server error'
+    message: 'Internal server error',
+    error: err.message,
+    stack: err.stack
   });
 });
 
