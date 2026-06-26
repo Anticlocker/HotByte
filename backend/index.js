@@ -491,6 +491,9 @@ if (process.env.NODE_ENV !== 'test') {
   server = app.listen(port, () => {
     logger.info(`Server running on port ${port}`, { port, env: process.env.NODE_ENV || 'development' });
   });
+  // Fix for Next.js proxy ECONNRESET (socket hang up) issue
+  server.keepAliveTimeout = 61000;
+  server.headersTimeout = 65000;
 }
 
 // ================= GRACEFUL SHUTDOWN =================
