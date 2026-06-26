@@ -136,7 +136,7 @@ export default function RefundPolicy() {
         </div>
       </main>
 
-      <Footer />
+      <Footer dark />
     </div>
   );
 }

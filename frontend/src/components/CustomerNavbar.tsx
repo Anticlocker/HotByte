@@ -20,9 +20,10 @@ interface Customer {
 
 interface CustomerNavbarProps {
   hideActions?: boolean;
+  hotelName?: string;
 }
 
-export default function CustomerNavbar({ hideActions }: CustomerNavbarProps = {}) {
+export default function CustomerNavbar({ hideActions, hotelName: propHotelName }: CustomerNavbarProps = {}) {
   const { t } = useTranslation();
   const pathname = usePathname();
   const router = useRouter();
@@ -136,15 +137,12 @@ export default function CustomerNavbar({ hideActions }: CustomerNavbarProps = {}
   };
 
   const handleCartClick = () => {
-    const isMenuPage = pathname?.endsWith("/menu");
+    const segments = pathname?.split("/").filter(Boolean) || [];
+    const isMenuPage = segments.length >= 2 && segments[segments.length - 1] === "menu";
     if (isMenuPage) {
       window.dispatchEvent(new Event("openMenuCart"));
     } else {
-      const slug = pathname?.split("/")[1];
-      const menuPath =
-        slug && !["admin", "super-admin", "login", "profile"].includes(slug)
-          ? `/${slug}/menu?openCart=true`
-          : "/";
+      const menuPath = activeSlug ? `/${activeSlug}/menu?openCart=true` : "/";
       router.push(menuPath);
     }
   };
@@ -168,7 +166,7 @@ export default function CustomerNavbar({ hideActions }: CustomerNavbarProps = {}
 
   const path = pathname || "";
   const firstSegment = path.split("/")[1];
-  const isHotelSlug = firstSegment && !["admin", "super-admin", "login", "profile", ""].includes(firstSegment);
+  const isHotelSlug = firstSegment && !["admin", "super-admin", "login", "profile", "menu", ""].includes(firstSegment);
   const activeSlug = isHotelSlug ? firstSegment : (customer?.hotelSlug || "");
   const menuHref = activeSlug ? `/${activeSlug}/menu` : "/";
 
@@ -184,7 +182,7 @@ export default function CustomerNavbar({ hideActions }: CustomerNavbarProps = {}
         {/* Branding (Left) */}
         <Link href={isHotelSlug ? `/${activeSlug}/menu` : "/"} className="flex items-center gap-2 group" aria-label="Home">
           <span className="text-xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-orange-500 to-amber-500 group-hover:opacity-90 transition-opacity flex items-center gap-1.5 leading-none">
-            <img src="/icon.png" alt="" className="w-5 h-5 object-contain" />{hotelName || "HotByte"}
+            <img src="/icon.png" alt="" className="w-5 h-5 object-contain" />{propHotelName || hotelName || "HotByte"}
           </span>
         </Link>
         

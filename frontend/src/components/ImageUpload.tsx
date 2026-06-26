@@ -54,25 +54,34 @@ async function compressImage(file: File, maxSize: number): Promise<File> {
         resolve(compressed);
       }, "image/webp", 0.8);
     };
-    img.onerror = () => { clearTimeout(timer); resolve(file); };
-    img.src = URL.createObjectURL(file);
+    const objectUrl = URL.createObjectURL(file);
+    img.onerror = () => { clearTimeout(timer); URL.revokeObjectURL(objectUrl); resolve(file); };
+    const origOnload = img.onload;
+    img.onload = (ev: Event) => {
+      URL.revokeObjectURL(objectUrl);
+      if (origOnload) {
+        origOnload.call(img, ev);
+      }
+    };
+    img.src = objectUrl;
   });
 }
 
 export default function ImageUpload({
   onFileSelect,
   preview,
-  accept = "image/jpeg,image/jpg,image/png,image/webp",
+  accept,
   maxSize = MAX_SIZE,
   helperText = HELP_TEXT,
   showSize = true,
-  disabled = false,
+  disabled,
   label,
 }: ImageUploadProps) {
   const notif = useNotification();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const objectUrlRef = useRef<string>("");
+  const [localPreview, setLocalPreview] = useState<string>("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [localPreview, setLocalPreview] = useState(preview);
   const [error, setError] = useState("");
   const [processing, setProcessing] = useState(false);
 
@@ -113,7 +122,9 @@ export default function ImageUpload({
       }
 
       setProcessing(false);
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
       const objectUrl = URL.createObjectURL(processedFile);
+      objectUrlRef.current = objectUrl;
       setLocalPreview(objectUrl);
       setSelectedFile(processedFile);
       onFileSelect(processedFile);
@@ -128,6 +139,7 @@ export default function ImageUpload({
     setLocalPreview("");
     setError("");
     onFileSelect(null);
+    if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = ""; }
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }

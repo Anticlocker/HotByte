@@ -122,6 +122,8 @@ export default function AdminSettings() {
   const [secondaryColor, setSecondaryColor] = useState("#FF5A1F");
 
   // Files state
+  const logoPreviewRef = useRef("");
+  const bannerPreviewRef = useRef("");
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState("");
   const [logoUploading, setLogoUploading] = useState(false);
@@ -269,10 +271,16 @@ export default function AdminSettings() {
 
       if (type === "logo") {
         setLogoFile(file);
-        setLogoPreview(URL.createObjectURL(file));
+        if (logoPreviewRef.current) { URL.revokeObjectURL(logoPreviewRef.current); }
+        const url = URL.createObjectURL(file);
+        logoPreviewRef.current = url;
+        setLogoPreview(url);
       } else {
         setBannerFile(file);
-        setBannerPreview(URL.createObjectURL(file));
+        if (bannerPreviewRef.current) { URL.revokeObjectURL(bannerPreviewRef.current); }
+        const url = URL.createObjectURL(file);
+        bannerPreviewRef.current = url;
+        setBannerPreview(url);
       }
     }
   };

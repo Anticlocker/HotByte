@@ -48,6 +48,11 @@ app.use(helmet({
       formAction: ["'self'"],
       baseUri: ["'self'"],
     }
+  },
+  strictTransportSecurity: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
   }
 }));
 
@@ -118,23 +123,14 @@ const adminLoginLimiter = rateLimit({
 // 📱 OTP Send endpoints ke liye rate limiting
 // Koi bhi IP 15 minutes me sirf 5 baar OTP request kar sakta hai
 // Isse OTP spam aur SMS bombing attacks rukti hain
-const sendOtpLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes ka window
-  max: 5, // Maximum 5 requests per IP
+const otpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Max 5 OTP requests per 15 minutes per IP
   message: { success: false, message: 'Too many OTP requests. Please try again after 15 minutes.' },
-  standardHeaders: true, // Rate limit info headers me bhejta hai
-  legacyHeaders: false, // Purane headers disable karta hai
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
-// 📱 OTP Verification endpoints ke liye rate limiting
-// 5 attempts limits set karta hai user block/timer ke liye
-const verifyOtpLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes ka window
-  max: 5, // Maximum 5 requests per IP
-  message: { success: false, message: 'Too many incorrect verification attempts. Please try again after 15 minutes.' },
-  standardHeaders: true, // Rate limit info headers me bhejta hai
-  legacyHeaders: false, // Purane headers disable karta hai
-});
 
 // 💳 Payment endpoints ke liye rate limiting
 // 15 minutes me max 10 payment requests per IP
@@ -245,16 +241,16 @@ app.use((req, res, next) => {
   // Referrer Policy: don't leak full URL to third-party domains
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 
-  // Permissions Policy: disable browser features this app doesn't use
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // Permissions Policy: disable browser features this app doesn't use, allow geolocation
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)');
 
   next(); // Agle middleware ko call karta hai
 });
 
 // 🔄 Cache Control - Logout ke baad back button issue fix karta hai
-// Browser ko pages cache nahi karne deta
+// Browser ko pages cache nahi karne deta (applied selectively to API endpoints)
 // Isse logout ke baad back button dabane par protected pages nahi khulte
-app.use((req, res, next) => {
+app.use('/api', (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
@@ -273,9 +269,10 @@ const validateHotelHeader = require('./middleware/validateHotelHeader');
 // 🔐 Subscription check: trial expiry auto-freeze + frozen hotel block karta hai
 const checkSubscription = require('./middleware/checkSubscription');
 
-// Apply to all public menu and order routes (customer-facing)
+// Apply to all public menu, order, and ratings routes (customer-facing)
 app.use('/api/menu', validateHotelHeader, checkSubscription);
 app.use('/api/orders', validateHotelHeader, checkSubscription);
+app.use('/api/ratings', validateHotelHeader, checkSubscription);
 
 // ================= HEALTH CHECK ENDPOINT =================
 // ✅ Server running hai ya nahi check karne ke liye
@@ -295,10 +292,9 @@ app.get('/health', (req, res) => {
 // Rate limiting apply karo specific endpoints pe
 app.use('/api/auth/admin/login', adminLoginLimiter); // Admin login limit
 app.use('/api/auth/admin/signup', adminAuthLimiter); // Admin signup limit
-app.use('/api/auth/admin/forgot-otp', adminAuthLimiter); // Forgot password OTP limit
+app.use('/api/auth/admin/forgot-otp', otpLimiter); // Forgot password OTP limit specifically
 app.use('/api/auth/admin/reset-password', adminAuthLimiter); // Reset password limit
-app.use('/api/auth/send-otp', sendOtpLimiter); // OTP bhejne ki limit
-app.use('/api/auth/verify-otp', verifyOtpLimiter); // OTP verify karne ki limit
+
 app.use('/api/auth/google-login', googleLoginLimiter); // Google SSO login limit
 app.use('/api/auth/guest-checkin', guestCheckinLimiter); // Guest check-in limit
 app.use('/api/payments', paymentLimiter); // Payment requests ki limit
@@ -339,9 +335,8 @@ app.use('/api/sales', require('./routes/sales'));
 // Customer ratings aur reviews
 app.use('/api/ratings', require('./routes/ratings'));
 
-// Table management aur QR codes (Admin + Public validation)
-// Admin table routes are mounted inside admin.js at '/tables' (-> /api/admin/tables)
-app.use('/api/tables', require('./routes/tables'));
+// Table routes are mounted INSIDE admin.js at '/tables' -> /api/admin/tables
+// (Direct mount removed to avoid duplicate path exposure)
 
 // Resolve short map links (e.g. maps.app.goo.gl) to bypass CORS and extract coordinates
 app.get('/api/geocode/resolve-short-url', async (req, res) => {

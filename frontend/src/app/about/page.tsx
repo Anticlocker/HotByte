@@ -134,7 +134,7 @@ export default function About() {
         </div>
       </main>
 
-      <Footer />
+      <Footer dark />
     </div>
   );
 }

@@ -14,6 +14,7 @@ import Swal from "sweetalert2";
 // ── Premium SaaS Landing Components ──
 import HeroBackground from "@/components/landing/HeroBackground";
 import FloatingElements from "@/components/landing/FloatingElements";
+import FishController from "@/components/landing/FishController";
 import { AnimateOnScroll, StaggerContainer, StaggerItem } from "@/components/landing/ScrollAnimations";
 import CountUp from "@/components/landing/CountUp";
 
@@ -298,6 +299,7 @@ export default function Home() {
       <div className="fixed inset-0 z-0 pointer-events-none">
         <HeroBackground />
         <FloatingElements />
+        <FishController />
       </div>
 
       {/* ── HEADER NAVIGATION ── */}
@@ -957,7 +959,7 @@ export default function Home() {
       </section>
 
       {/* ── FOOTER ── */}
-      <Footer />
+      <Footer dark />
 
     </div>
   );

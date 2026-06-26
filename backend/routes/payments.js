@@ -177,18 +177,19 @@ router.post("/verify", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid payment signature" });
     }
 
-    // Check if the payment ID has already been verified/saved
-    const dupCheck = await db.query(
-      "SELECT payment_id FROM payments WHERE razorpay_payment_id = $1",
-      [razorpay_payment_id]
-    );
-    if (dupCheck.rows.length > 0) {
-      return res.status(409).json({ success: false, message: "This payment has already been verified and processed." });
-    }
-
     const client = await db.connect();
     try {
       await client.query("BEGIN");
+
+      // Check if the payment ID has already been verified/saved (inside transaction for atomicity)
+      const dupCheck = await client.query(
+        "SELECT payment_id FROM payments WHERE razorpay_payment_id = $1",
+        [razorpay_payment_id]
+      );
+      if (dupCheck.rows.length > 0) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ success: false, message: "This payment has already been verified and processed." });
+      }
 
       // Check if payment record exists
       const paymentCheck = await client.query(
@@ -331,6 +332,12 @@ router.post("/verify-subscription", requireAdmin, async (req, res) => {
 
     if (generatedSignature !== razorpay_signature) {
       return res.status(400).json({ success: false, message: "Invalid payment signature." });
+    }
+
+    // Duplicate payment check
+    const subDupCheck = await db.query("SELECT payment_id FROM public.payments WHERE razorpay_payment_id = $1", [razorpay_payment_id]);
+    if (subDupCheck.rows.length > 0) {
+      return res.status(409).json({ success: false, message: "This subscription payment has already been processed." });
     }
 
     // Update hotel plan and reactivate/unfreeze
@@ -696,7 +703,7 @@ router.post("/create-inactive-session", inactiveSessionRateLimit, async (req, re
     const { plan, billing_cycle, username, email, password } = req.body;
 
     // Normalize plan identifier (accept friendly names like "14-Day Trial")
-    const normalizedPlan = plan.toString().toLowerCase().includes('trial') ? 'trial' : plan;
+    const normalizedPlan = plan ? (plan.toString().toLowerCase().includes('trial') ? 'trial' : plan) : 'trial';
     if (normalizedPlan !== 'trial' && normalizedPlan !== 'basic' && normalizedPlan !== 'pro') {
       return res.status(400).json({ success: false, message: "Invalid plan selected." });
     }

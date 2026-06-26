@@ -958,7 +958,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
         />
       </div>
 
-      <CustomerNavbar />
+      <CustomerNavbar hotelName={hotelName} />
 
       {!isOpen && (
         <div className="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white py-3.5 px-6 font-sans border-b border-red-800 shadow-md z-20">

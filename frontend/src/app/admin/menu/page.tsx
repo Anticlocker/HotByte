@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import "@/i18n";
@@ -61,6 +61,7 @@ export default function AdminMenu() {
   const [formDescription, setFormDescription] = useState("");
   const [formIsVeg, setFormIsVeg] = useState(true);
   const [formIsAvailable, setFormIsAvailable] = useState(true);
+  const formFilePreviewRef = useRef("");
   const [formFile, setFormFile] = useState<File | null>(null);
   const [formFilePreview, setFormFilePreview] = useState("");
   const [portionType, setPortionType] = useState<"single" | "half_full">("single");
@@ -166,8 +167,11 @@ export default function AdminMenu() {
 
   const handleFileChange = (file: File | null) => {
     setFormFile(file);
+    if (formFilePreviewRef.current) { URL.revokeObjectURL(formFilePreviewRef.current); formFilePreviewRef.current = ""; }
     if (file) {
-      setFormFilePreview(URL.createObjectURL(file));
+      const url = URL.createObjectURL(file);
+      formFilePreviewRef.current = url;
+      setFormFilePreview(url);
     } else {
       setFormFilePreview("");
     }

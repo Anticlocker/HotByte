@@ -34,10 +34,23 @@ pool.connect(async (err, client, release) => {
                     name character varying(100) NOT NULL,
                     price_monthly numeric(10,2) NOT NULL,
                     price_yearly numeric(10,2),
-                    features text,
+                    features jsonb,
                     trial_days integer DEFAULT 14,
                     CONSTRAINT subscription_plans_pkey PRIMARY KEY (plan_id)
                 );`,
+                // Migrate features column from text to jsonb if needed
+                `DO $$ BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'subscription_plans'
+                          AND column_name = 'features'
+                          AND data_type = 'text'
+                    ) THEN
+                        ALTER TABLE public.subscription_plans
+                            ALTER COLUMN features TYPE jsonb USING features::jsonb;
+                    END IF;
+                END $$;`,
                 // subscriptions table
                 `CREATE TABLE IF NOT EXISTS public.subscriptions (
                     subscription_id serial NOT NULL,
@@ -257,21 +270,31 @@ pool.connect(async (err, client, release) => {
             if (parseInt(plansCount.rows[0].count) === 0) {
                 await client.query(`
                     INSERT INTO public.subscription_plans (name, price_monthly, price_yearly, features) VALUES
-                    ('trial', 1, 1, '{"QR Menu System":"5 Tables","Digital Menu Card":true,"Online Ordering":"Basic","Table QR Codes":"5 Tables","Menu Items":"Up to 30","Categories":"Up to 5","Email Support":true}'),
-                    ('basic', 999, 11988, '{"QR Menu System":"Unlimited Tables","Digital Menu Card":true,"Online Ordering":"Full","Dynamic QR per Table":true,"Menu Items":"Unlimited","Categories":"Unlimited","Razorpay Payments":true,"Kitchen Display System":true,"PDF Reports & Invoices":true,"Admin Managers":"Up to 3","Customer Auth":true,"Analytics Dashboard":true}'),
-                    ('pro', 2499, 29988, '{"QR Menu System":"Unlimited Tables","Digital Menu Card":true,"Online Ordering":"Full","Dynamic QR per Table":true,"Menu Items":"Unlimited","Categories":"Unlimited","Razorpay Payments":true,"Kitchen Display System":true,"PDF Reports & Invoices":true,"Admin Managers":"Unlimited","Customer Auth":true,"Analytics Dashboard":"Advanced","Occupancy Tracking":true,"24/7 Priority Support":true,"AI Menu Assistant":true,"Multi-Branch Support":true,"Custom Branding":true,"Dedicated Account Manager":true,"Priority Feature Access":true}');
+                    ('trial', 1, 1, '["14-Day Free Trial","1 Restaurant","Unlimited Categories","Unlimited Menu Items","QR Digital Menu","Table Wise QR Ordering","Hotel QR Payment","Google Customer Login","Customer Auth Toggle","Location Based Ordering","Order Management","Ratings & Reviews","Basic Analytics","Email Support"]'::jsonb),
+                    ('basic', 999, 11988, '["Everything in Trial","Unlimited Orders","Up to 3 Admin Managers","Sales Dashboard","Customer Logs","Restaurant Branding","Daily Sales Reports","Restaurant Settings","Priority Email Support","Monthly Database Backup","Performance Optimizations"]'::jsonb),
+                    ('pro', 2499, 29988, '["Everything in Basic","Unlimited Admin Managers","Unlimited Staff Accounts","Kitchen Display System (KDS)","Advanced Analytics","Peak Hour Reports","Table Management","Premium QR Payment Verification","Restaurant Insights","Premium Dashboard","Dedicated Priority Support","Early Access Features","Future Enterprise Features"]'::jsonb);
                 `);
                 logger.info("Database: Seeded default subscription plans");
             } else {
-                // Backfill/upgrade existing trial plan price and features in database
+                // Backfill/upgrade all plans with correct feature arrays
                 await client.query(`
-                    UPDATE public.subscription_plans 
-                    SET price_monthly = 1, 
-                        price_yearly = 1, 
-                        features = '{"QR Menu System":"5 Tables","Digital Menu Card":true,"Online Ordering":"Basic","Table QR Codes":"5 Tables","Menu Items":"Up to 30","Categories":"Up to 5","Email Support":true}' 
+                    UPDATE public.subscription_plans
+                    SET price_monthly = 1,
+                        price_yearly = 1,
+                        features = '["14-Day Free Trial","1 Restaurant","Unlimited Categories","Unlimited Menu Items","QR Digital Menu","Table Wise QR Ordering","Hotel QR Payment","Google Customer Login","Customer Auth Toggle","Location Based Ordering","Order Management","Ratings & Reviews","Basic Analytics","Email Support"]'::jsonb
                     WHERE name = 'trial';
                 `);
-                logger.info("Database: Upgraded existing Trial plan price to ₹1 and loaded Pro features");
+                await client.query(`
+                    UPDATE public.subscription_plans
+                    SET features = '["Everything in Trial","Unlimited Orders","Up to 3 Admin Managers","Sales Dashboard","Customer Logs","Restaurant Branding","Daily Sales Reports","Restaurant Settings","Priority Email Support","Monthly Database Backup","Performance Optimizations"]'::jsonb
+                    WHERE name = 'basic';
+                `);
+                await client.query(`
+                    UPDATE public.subscription_plans
+                    SET features = '["Everything in Basic","Unlimited Admin Managers","Unlimited Staff Accounts","Kitchen Display System (KDS)","Advanced Analytics","Peak Hour Reports","Table Management","Premium QR Payment Verification","Restaurant Insights","Premium Dashboard","Dedicated Priority Support","Early Access Features","Future Enterprise Features"]'::jsonb
+                    WHERE name = 'pro';
+                `);
+                logger.info("Database: Upgraded all plan features to proper JSON arrays");
             }
             // Backfill trial_ends_at
             await client.query("UPDATE public.hotels SET trial_ends_at = created_at + INTERVAL '14 days' WHERE trial_ends_at IS NULL AND plan = 'trial';");

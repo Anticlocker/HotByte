@@ -1694,3 +1694,136 @@ button:where(:not(.text-\[0\])):where(:empty),
     gap: 6px !important;
   }
 }
+
+/* ==========================================================================
+   HERO FISH ANIMATION SYSTEM
+   ========================================================================== */
+
+/* ── Fish Container ── */
+.hero-fish-container {
+  contain: layout style;
+}
+
+/* ── Fish Body ── */
+.hero-fish {
+  position: relative;
+  transition: filter 0.3s ease;
+}
+
+/* ── Tail Wag ── */
+.hero-fish-tail {
+  transform-origin: 18px 55px;
+  animation: fishTailWag var(--tail-wag-duration, 1.2s) ease-in-out infinite alternate;
+}
+
+@keyframes fishTailWag {
+  0% { transform: rotate(-12deg) scaleX(0.92); }
+  50% { transform: rotate(0deg) scaleX(1); }
+  100% { transform: rotate(12deg) scaleX(0.92); }
+}
+
+/* ── Body Sway (breathing) ── */
+.hero-fish-body {
+  transform-origin: 100px 55px;
+  animation: fishBodySway 3.5s ease-in-out infinite alternate;
+}
+
+@keyframes fishBodySway {
+  0% { transform: translateX(-1px) scaleY(0.98); }
+  50% { transform: translateX(0px) scaleY(1); }
+  100% { transform: translateX(1px) scaleY(1.01); }
+}
+
+/* ── Dorsal Fin ── */
+.hero-fish-dorsal {
+  transform-origin: 95px 18px;
+  animation: fishDorsalWave 2s ease-in-out infinite alternate;
+}
+
+@keyframes fishDorsalWave {
+  0% { transform: rotate(-3deg) scaleY(0.95); }
+  100% { transform: rotate(3deg) scaleY(1.05); }
+}
+
+/* ── Pectoral Fin ── */
+.hero-fish-pectoral {
+  transform-origin: 90px 70px;
+  animation: fishPectoralFlutter var(--fin-flutter-duration, 2s) ease-in-out infinite alternate;
+  animation-delay: -0.5s;
+}
+
+@keyframes fishPectoralFlutter {
+  0% { transform: rotate(-8deg); }
+  100% { transform: rotate(8deg); }
+}
+
+/* ── Eyelid Blink ── */
+.hero-fish-eyelid {
+  animation: fishBlink 4s ease-in-out infinite;
+}
+
+@keyframes fishBlink {
+  0%, 92%, 100% { ry: 0; }
+  95%, 97% { ry: 8px; }
+}
+
+/* ── Glow Pulse ── */
+.hero-fish-glow {
+  animation: fishGlowPulse 4s ease-in-out infinite alternate;
+}
+
+@keyframes fishGlowPulse {
+  0% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.9); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+}
+
+/* ── Bubble ── */
+.hero-fish-bubble {
+  position: fixed;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 35% 35%,
+    rgba(255, 200, 150, 0.5),
+    rgba(255, 140, 50, 0.15) 60%,
+    transparent 100%
+  );
+  border: 0.5px solid rgba(255, 180, 100, 0.15);
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.hero-fish-bubble-animate {
+  animation: fishBubbleFloat var(--bubble-duration, 2s) ease-out forwards;
+}
+
+@keyframes fishBubbleFloat {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: var(--bubble-opacity, 0.2);
+  }
+  60% {
+    opacity: var(--bubble-opacity, 0.2);
+  }
+  100% {
+    transform: translate3d(var(--bubble-drift, 5px), -80px, 0) scale(0.3);
+    opacity: 0;
+  }
+}
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .hero-fish-tail,
+  .hero-fish-body,
+  .hero-fish-dorsal,
+  .hero-fish-pectoral,
+  .hero-fish-eyelid,
+  .hero-fish-glow,
+  .hero-fish-bubble-animate {
+    animation: none !important;
+  }
+
+  .hero-fish-container {
+    display: none !important;
+  }
+}
+

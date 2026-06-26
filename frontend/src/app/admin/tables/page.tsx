@@ -37,9 +37,12 @@ export default function TableManagement() {
   const [qrPreview, setQrPreview] = useState<{ id: number; table_number: string; svg: string } | null>(null);
   const qrModalRef = useRef<HTMLDivElement>(null);
 
+  const queryParam = hotelSlug ? `?hotel_slug=${hotelSlug}` : "";
+  const queryAmp = hotelSlug ? `&hotel_slug=${hotelSlug}` : "";
+
   const fetchTables = async () => {
     try {
-      const res = await fetch("/api/admin/tables");
+      const res = await fetch(`/api/admin/tables${queryParam}`);
       const data = await res.json();
       if (data.success) setTables(data.tables);
     } catch (err) {
@@ -70,6 +73,7 @@ export default function TableManagement() {
   };
 
   const handleSave = async () => {
+    // table creation payload
     if (!formData.table_number.trim()) {
       Swal.fire("Error", "Table number is required", "error");
       return;
@@ -81,8 +85,8 @@ export default function TableManagement() {
 
     try {
       const url = editing
-        ? `/api/admin/tables/${editing.id}`
-        : "/api/admin/tables";
+        ? `/api/admin/tables/${editing.id}${queryParam}`
+        : `/api/admin/tables${queryParam}`;
       const method = editing ? "PUT" : "POST";
 
       const getCsrfToken = () => {
@@ -105,6 +109,7 @@ export default function TableManagement() {
         Swal.fire("Error", data.message || "Something went wrong", "error");
       }
     } catch (err) {
+      logger.error("table creation err", err);
       Swal.fire("Error", "Network error", "error");
     }
   };
@@ -127,7 +132,7 @@ export default function TableManagement() {
         const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
         return match ? decodeURIComponent(match[1]) : "";
       };
-      const res = await fetch(`/api/admin/tables/${table.id}`, { method: "DELETE", headers: { "x-csrf-token": getCsrfToken() || "" } });
+      const res = await fetch(`/api/admin/tables/${table.id}${queryParam}`, { method: "DELETE", headers: { "x-csrf-token": getCsrfToken() || "" } });
       const data = await res.json();
       if (data.success) {
         Swal.fire({ icon: "success", title: "Deleted!", timer: 1000, showConfirmButton: false });
@@ -147,7 +152,7 @@ export default function TableManagement() {
         const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
         return match ? decodeURIComponent(match[1]) : "";
       };
-      const res = await fetch(`/api/admin/tables/${table.id}`, {
+      const res = await fetch(`/api/admin/tables/${table.id}${queryParam}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({ is_active: !table.is_active }),
@@ -180,7 +185,7 @@ export default function TableManagement() {
         const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
         return match ? decodeURIComponent(match[1]) : "";
       };
-      const res = await fetch(`/api/admin/tables/${table.id}/regenerate-qr`, { method: "POST", headers: { "x-csrf-token": getCsrfToken() || "" } });
+      const res = await fetch(`/api/admin/tables/${table.id}/regenerate-qr${queryParam}`, { method: "POST", headers: { "x-csrf-token": getCsrfToken() || "" } });
       const data = await res.json();
       if (data.success) {
         Swal.fire({ icon: "success", title: "QR Regenerated!", timer: 1000, showConfirmButton: false });
@@ -194,7 +199,7 @@ export default function TableManagement() {
   const showQrPreview = async (table: RestaurantTable) => {
     setQrPreview({ id: table.id, table_number: table.table_number, svg: "" });
     try {
-      const res = await fetch(`/api/admin/tables/${table.id}/qr-image?size=400`);
+      const res = await fetch(`/api/admin/tables/${table.id}/qr-image?size=400${queryAmp}`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       setQrPreview({ id: table.id, table_number: table.table_number, svg: url });
@@ -206,7 +211,7 @@ export default function TableManagement() {
 
   const downloadPng = async (table: RestaurantTable) => {
     try {
-      const res = await fetch(`/api/admin/tables/${table.id}/qr-image?size=600`);
+      const res = await fetch(`/api/admin/tables/${table.id}/qr-image?size=600${queryAmp}`);
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -227,7 +232,7 @@ export default function TableManagement() {
     });
 
     try {
-      const res = await fetch("/api/admin/tables/qr-pdf");
+      const res = await fetch(`/api/admin/tables/qr-pdf${queryParam}`);
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -253,7 +258,7 @@ export default function TableManagement() {
         p { color:#666; font-size:12px; margin:0; }
         @media print { body { margin:0; } }
       </style></head><body>
-      <img src="/api/admin/tables/${table.id}/qr-image?size=400" />
+      <img src="/api/admin/tables/${table.id}/qr-image?size=400${queryAmp}" />
       <h2>Table ${table.table_number}</h2>
       <p>${table.table_name || ""}</p>
       <script>window.onload=function(){window.print();}</script>
@@ -335,18 +340,16 @@ export default function TableManagement() {
           {filteredTables.map((table) => (
             <div
               key={table.id}
-              className={`relative bg-gray-900/60 border rounded-2xl p-5 transition-all duration-200 hover:shadow-lg hover:shadow-orange-500/5 ${
-                table.is_active ? "border-gray-800" : "border-gray-800/40 opacity-60"
-              }`}
+              className={`relative bg-gray-900/60 border rounded-2xl p-5 transition-all duration-200 hover:shadow-lg hover:shadow-orange-500/5 ${table.is_active ? "border-gray-800" : "border-gray-800/40 opacity-60"
+                }`}
             >
               {/* Table Number Badge */}
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2.5">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black ${
-                    table.is_active
-                      ? "bg-orange-500/10 text-orange-500"
-                      : "bg-gray-800 text-gray-500"
-                  }`}>
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black ${table.is_active
+                    ? "bg-orange-500/10 text-orange-500"
+                    : "bg-gray-800 text-gray-500"
+                    }`}>
                     <Table2 size={16} />
                   </div>
                   <div>
@@ -358,11 +361,10 @@ export default function TableManagement() {
                     )}
                   </div>
                 </div>
-                <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                  table.is_active
-                    ? "bg-emerald-500/10 text-emerald-400"
-                    : "bg-red-500/10 text-red-400"
-                }`}>
+                <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${table.is_active
+                  ? "bg-emerald-500/10 text-emerald-400"
+                  : "bg-red-500/10 text-red-400"
+                  }`}>
                   {table.is_active ? "Active" : "Disabled"}
                 </span>
               </div>
@@ -394,11 +396,10 @@ export default function TableManagement() {
                 </button>
                 <button
                   onClick={() => handleToggleActive(table)}
-                  className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    table.is_active
-                      ? "bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20"
-                      : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
-                  }`}
+                  className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${table.is_active
+                    ? "bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20"
+                    : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                    }`}
                 >
                   {table.is_active ? <PowerOff size={12} /> : <Power size={12} />}
                   {table.is_active ? "Disable" : "Enable"}

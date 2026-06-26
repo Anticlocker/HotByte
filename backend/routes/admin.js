@@ -91,14 +91,14 @@ router.post("/categories", requireAdmin, async (req, res) => {
       [name, hotelId]
     );
 
-    res.json({ success: true, category: rows[0] });
+    return res.json({ success: true, category: rows[0] });
 
   } catch (error) {
     if (error.code === "23505")
       return res.status(409).json({ success: false, message: "Category already exists" });
 
     logger.error("Create category error:", error);
-    res.status(500).json({ success: false, message: "Failed to create category" });
+    return res.status(500).json({ success: false, message: "Failed to create category" });
   }
 });
 
@@ -709,7 +709,7 @@ router.get("/orders", requireAdmin, async (req, res) => {
 
   } catch (error) {
     logger.error("Get orders error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to fetch orders"
     });
@@ -1967,15 +1967,71 @@ router.post("/settings/upload", requireAdmin, (req, res, next) => {
   }
 });
 
+// Helper to normalize plan features to a clean string array
+function normalizePlanFeatures(features) {
+  if (!features) return [];
+  // Already an array (jsonb array from postgres)
+  if (Array.isArray(features)) return features.filter(f => typeof f === 'string' && f.trim());
+  // It's a plain string — try JSON.parse
+  if (typeof features === 'string') {
+    try {
+      const parsed = JSON.parse(features);
+      if (Array.isArray(parsed)) return parsed.filter(f => typeof f === 'string' && f.trim());
+      // It's a key-value object string — convert to readable labels
+      return Object.entries(parsed)
+        .filter(([, v]) => v === true || (typeof v === 'string' && v !== '0' && v !== 'false'))
+        .map(([k, v]) => (typeof v === 'string' && v !== 'true' ? `${k}: ${v}` : k));
+    } catch {
+      return [];
+    }
+  }
+  // It's a key-value object (postgres jsonb object)
+  if (typeof features === 'object') {
+    return Object.entries(features)
+      .filter(([, v]) => v === true || (typeof v === 'string' && v !== '0' && v !== 'false'))
+      .map(([k, v]) => (typeof v === 'string' && v !== 'true' ? `${k}: ${v}` : k));
+  }
+  return [];
+}
+
+const PLAN_FEATURES = {
+  trial: [
+    '14-Day Free Trial', '1 Restaurant', 'Unlimited Categories', 'Unlimited Menu Items',
+    'QR Digital Menu', 'Table Wise QR Ordering', 'Hotel QR Payment', 'Google Customer Login',
+    'Customer Auth Toggle', 'Location Based Ordering', 'Order Management',
+    'Ratings & Reviews', 'Basic Analytics', 'Email Support'
+  ],
+  basic: [
+    'Everything in Trial', 'Unlimited Orders', 'Up to 3 Admin Managers',
+    'Sales Dashboard', 'Customer Logs', 'Restaurant Branding', 'Daily Sales Reports',
+    'Restaurant Settings', 'Priority Email Support', 'Monthly Database Backup',
+    'Performance Optimizations'
+  ],
+  pro: [
+    'Everything in Basic', 'Unlimited Admin Managers', 'Unlimited Staff Accounts',
+    'Kitchen Display System (KDS)', 'Advanced Analytics', 'Peak Hour Reports',
+    'Table Management', 'Premium QR Payment Verification', 'Restaurant Insights',
+    'Premium Dashboard', 'Dedicated Priority Support', 'Early Access Features',
+    'Future Enterprise Features'
+  ]
+};
 
 router.get('/subscription-plans', requireAdmin, async (req, res) => {
   try {
-    // Subscription plans are global; no hotel scoping needed
     const result = await db.query('SELECT plan_id, name, price_monthly, price_yearly, features FROM public.subscription_plans ORDER BY plan_id');
-    return res.json({ success: true, plans: result.rows });
+    const plans = result.rows.map(plan => ({
+      ...plan,
+      features: (() => {
+        const normalized = normalizePlanFeatures(plan.features);
+        // If DB features look like characters or are empty, fall back to hardcoded list
+        const key = plan.name?.toLowerCase();
+        if (normalized.length < 3 && PLAN_FEATURES[key]) return PLAN_FEATURES[key];
+        return normalized;
+      })()
+    }));
+    return res.json({ success: true, plans });
   } catch (error) {
     logger.error('Fetch subscription plans error:', error);
-    // If the table does not exist, create it and seed default plans
     if (error.code === '42P01') {
       try {
         await db.query(`
@@ -1988,19 +2044,25 @@ router.get('/subscription-plans', requireAdmin, async (req, res) => {
             trial_days integer DEFAULT 14
           );
         `);
-        // Seed default plans if table empty
         const seedCheck = await db.query('SELECT COUNT(*) FROM public.subscription_plans');
         if (parseInt(seedCheck.rows[0].count) === 0) {
           await db.query(`
             INSERT INTO public.subscription_plans (name, price_monthly, price_yearly, features) VALUES
-              ('trial', 1, 1, '{"QR Menu System":"5 Tables","Digital Menu Card":true,"Online Ordering":"Basic","Table QR Codes":"5 Tables","Menu Items":"Up to 30","Categories":"Up to 5","Email Support":true}'),
-              ('basic', 999, 11988, '{"QR Menu System":"Unlimited Tables","Digital Menu Card":true,"Online Ordering":"Full","Dynamic QR per Table":true,"Menu Items":"Unlimited","Categories":"Unlimited","Razorpay Payments":true,"Kitchen Display System":true,"PDF Reports & Invoices":true,"Admin Managers":"Up to 3","Customer Auth":true,"Analytics Dashboard":true}'),
-              ('pro', 2499, 29988, '{"QR Menu System":"Unlimited Tables","Digital Menu Card":true,"Online Ordering":"Full","Dynamic QR per Table":true,"Menu Items":"Unlimited","Categories":"Unlimited","Razorpay Payments":true,"Kitchen Display System":true,"PDF Reports & Invoices":true,"Admin Managers":"Unlimited","Customer Auth":true,"Analytics Dashboard":"Advanced","Occupancy Tracking":true,"24/7 Priority Support":true,"AI Menu Assistant":true,"Multi-Branch Support":true,"Custom Branding":true,"Dedicated Account Manager":true,"Priority Feature Access":true}');
-          `);
+              ('trial', 1, 1, $1::jsonb),
+              ('basic', 999, 11988, $2::jsonb),
+              ('pro', 2499, 29988, $3::jsonb);
+          `, [
+            JSON.stringify(PLAN_FEATURES.trial),
+            JSON.stringify(PLAN_FEATURES.basic),
+            JSON.stringify(PLAN_FEATURES.pro)
+          ]);
         }
-        // Re-run the original query now that table exists
         const retryResult = await db.query('SELECT plan_id, name, price_monthly, price_yearly, features FROM public.subscription_plans ORDER BY plan_id');
-        return res.json({ success: true, plans: retryResult.rows });
+        const plans = retryResult.rows.map(plan => ({
+          ...plan,
+          features: normalizePlanFeatures(plan.features)
+        }));
+        return res.json({ success: true, plans });
       } catch (creationError) {
         logger.error('Error creating subscription_plans table:', creationError);
         return res.status(500).json({ success: false, message: 'Failed to fetch subscription plans' });

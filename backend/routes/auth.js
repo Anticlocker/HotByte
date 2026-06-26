@@ -520,25 +520,11 @@ router.post("/admin/login", async (req, res) => {
 
     const admin = result.rows[0];
     
-    // Safe password verification handling standard bcrypt & fallback legacy/seeded SHA-256 hashes
+    // Safe password verification handling standard bcrypt
     let passwordMatch = false;
     try {
       if (admin.password && (admin.password.startsWith("$2a$") || admin.password.startsWith("$2b$") || admin.password.startsWith("$2y$"))) {
         passwordMatch = await bcrypt.compare(password, admin.password);
-      } else {
-        // Fallback for seeded SHA-256 accounts (64-char hex strings)
-        const sha256 = crypto.createHash("sha256").update(password).digest("hex");
-        passwordMatch = (sha256 === admin.password);
-        if (passwordMatch) {
-          // Re-hash and migrate to bcrypt
-          try {
-            const hashedPassword = await bcrypt.hash(password, 12);
-            await db.query("UPDATE admins SET password = $1 WHERE admin_id = $2", [hashedPassword, admin.admin_id]);
-            logger.info(`Migrated admin password to bcrypt for admin_id: ${admin.admin_id}`);
-          } catch (migrateErr) {
-            logger.error(`Failed to migrate admin password to bcrypt for admin_id: ${admin.admin_id}`, migrateErr);
-          }
-        }
       }
     } catch (err) {
       passwordMatch = false;

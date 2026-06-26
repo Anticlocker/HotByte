@@ -193,7 +193,7 @@ export default function PrivacyPolicy() {
         </div>
       </main>
 
-      <Footer />
+      <Footer dark />
     </div>
   );
 }
