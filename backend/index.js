@@ -95,6 +95,9 @@ app.use(cors({
       origin === 'https://rav1.in' ||
       origin === 'https://www.hotbyte.in' ||
       origin === 'https://hotbyte.in' ||
+      origin.endsWith('.vercel.app') ||
+      origin.endsWith('.hotbyte.in') ||
+      origin.endsWith('.rav1.in') ||
       isLocalIP;
       
     if (isAllowed) {
