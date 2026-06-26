@@ -4,8 +4,8 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import "@/i18n";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+// Leaflet is browser-only — dynamically imported in useEffect to avoid
+// Turbopack dev-mode crash caused by window/document access at module eval time.
 import {
   Building,
   Palette,
@@ -104,7 +104,8 @@ export default function AdminSettings() {
   const [locationMapReady, setLocationMapReady] = useState(false);
   const [locationOrderingEnabled, setLocationOrderingEnabled] = useState(true);
 
-  const mapRef = useRef<L.Map | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapRef = useRef<any>(null);
 
   // Forms
   // Hotel form
@@ -631,8 +632,9 @@ export default function AdminSettings() {
     // 4. Update Leaflet map marker
     const map = mapRef.current;
     if (map) {
+      const L = (await import('leaflet')).default;
       map.setView([coords.lat, coords.lng], 17);
-      
+
       map.eachLayer((layer: any) => {
         if (layer instanceof L.Marker) {
           map.removeLayer(layer);
@@ -764,7 +766,7 @@ export default function AdminSettings() {
     };
 
     let retryCount = 0;
-    const initMap = () => {
+    const initMap = async () => {
       const container = document.getElementById(mapContainerId);
       if (!container) {
         if (retryCount < 10) {
@@ -778,6 +780,10 @@ export default function AdminSettings() {
         try { mapRef.current.remove(); } catch (_) {}
         mapRef.current = null;
       }
+
+      // Dynamically import Leaflet to avoid Turbopack dev-mode crash
+      const L = (await import('leaflet')).default;
+      await import('leaflet/dist/leaflet.css');
 
       const defaultLat = locationLat || 20.5937;
       const defaultLng = locationLng || 78.9629;
@@ -798,11 +804,11 @@ export default function AdminSettings() {
         iconSize: [28, 28], iconAnchor: [14, 14], className: ""
       });
 
-      let marker: L.Marker | null = null;
+      let marker: any = null;
       if (locationLat && locationLng) {
         marker = L.marker([locationLat, locationLng], { draggable: true, icon }).addTo(map);
         marker.on("dragend", (e: any) => {
-          const { lat, lng } = (e.target as L.Marker).getLatLng();
+          const { lat, lng } = e.target.getLatLng();
           setLocationLat(lat); setLocationLng(lng);
           reverseGeocode(lat, lng);
         });
@@ -815,7 +821,7 @@ export default function AdminSettings() {
         else {
           marker = L.marker([lat, lng], { draggable: true, icon }).addTo(map);
           marker.on("dragend", (ev: any) => {
-            const { lat: la, lng: lo } = (ev.target as L.Marker).getLatLng();
+            const { lat: la, lng: lo } = ev.target.getLatLng();
             setLocationLat(la); setLocationLng(lo);
             reverseGeocode(la, lo);
           });
@@ -841,6 +847,7 @@ export default function AdminSettings() {
       }
     };
   }, [activeTab, locationLat, locationLng]);
+
 
   return (
     <div className="p-6 lg:p-10 space-y-8 animate-fade-in">

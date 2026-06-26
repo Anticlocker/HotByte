@@ -209,11 +209,29 @@ app.use(cookieParser(process.env.COOKIE_SECRET));
 // x-csrf-token header matching the csrfToken cookie value.
 // Auth routes (login, csrf-token) are excluded — SameSite=Strict cookies
 // on the session itself provide CSRF protection for authenticated routes.
+// Routes that are exempt from CSRF: login endpoints have no session yet,
+// so no csrfToken cookie exists. SameSite=Strict on the session cookie
+// already protects authenticated state-changing routes.
+const CSRF_EXEMPT_PATHS = [
+  '/api/auth/admin/login',
+  '/api/auth/admin/logout',
+  '/api/auth/logout',
+  '/api/auth/csrf-token',
+  '/api/auth/google-login',
+  '/api/auth/guest-checkin',
+];
+
 const csrfProtection = (req, res, next) => {
   if (process.env.NODE_ENV === 'test') {
     return next();
   }
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    return next();
+  }
+  // Exempt login and pre-auth routes — no session cookie exists yet
+  const reqPath = req.path || '';
+  const fullPath = `/api${reqPath}`;
+  if (CSRF_EXEMPT_PATHS.some(p => fullPath === p || fullPath.startsWith(p + '/'))) {
     return next();
   }
   const headerToken = req.headers['x-csrf-token'];

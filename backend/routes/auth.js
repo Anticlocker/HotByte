@@ -495,9 +495,17 @@ router.post("/admin/signup", requireAdmin, async (req, res) => {
 router.post("/admin/login", async (req, res) => {
   try {
     let { username, password, role } = req.body;
-    
-    if (!username || !password || !role) {
+
+    // If all three fields are missing, preserve original error message for backward compatibility
+    if (!username && !password && !role) {
       return res.status(400).json({ success: false, message: "Username, password, and role required." });
+    }
+
+    // Role is optional; default to 'admin' for standard admin logins when username/password are present
+    if (!role) role = 'admin';
+
+    if (!username || !password) {
+      return res.status(400).json({ success: false, message: "Username and password required." });
     }
 
     username = String(username).trim();
