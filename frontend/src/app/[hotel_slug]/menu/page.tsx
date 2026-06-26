@@ -305,7 +305,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
 
   useEffect(() => {
     // Fetch CSRF token to set cookie
-    fetch(`/api/auth/csrf-token`).catch(() => {});
+    fetch(`/api/auth/csrf-token`).catch((e) => console.error('CSRF token fetch failed:', e));
 
     // Parallel fetch: session, categories, items
     const loadData = async () => {
@@ -322,7 +322,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
           if (sessionData.authenticated) {
             setCustomer(sessionData.customer);
           }
-        } catch {}
+        } catch (e) { console.error('Session parse failed:', e); }
 
         // Categories
         try {
@@ -353,7 +353,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
             setRequireCustomerAuth(data.requireCustomerAuth || false);
             setSuspiciousActivityMode(data.suspiciousActivityMode || false);
           }
-        } catch {}
+        } catch (e) { console.error('Categories parse failed:', e); }
 
         // Items
         try {
@@ -368,8 +368,8 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
             }));
             setMenuItems(mappedItems);
           }
-        } catch {}
-      } catch {}
+          } catch (e) { console.error('Items parse failed:', e); }
+      } catch (e) { console.error('Menu data load failed:', e); }
       setLoading(false);
     };
     loadData();
@@ -413,7 +413,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
             }
           }
         })
-        .catch(() => {});
+        .catch((e) => console.error('Status poll failed:', e));
     }, 5000);
 
     // Back-to-top scroll listener

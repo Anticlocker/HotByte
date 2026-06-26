@@ -285,8 +285,8 @@ Tests use:
 | # | Severity | Location | Issue |
 |---|---|---|---|
 | V-08 | **MEDIUM** | `index.js:42` | **CSP allows `'unsafe-inline'` for scripts** — Weakens XSS protection. Razorpay checkout and Google SSO require inline scripts, but a stricter nonce-based CSP would be more secure. |
-| V-09 | **LOW** | `index.js:38-52` | **No HSTS header** — Helmet's default HSTS is not explicitly configured. In production, missing HSTS allows protocol downgrade attacks. |
-| V-10 | **LOW** | `index.js:233` | **Geolocation disabled via Permissions-Policy** — But location-based ordering (`location_ordering_enabled`) requires customer geolocation. |
+| V-09 | **FIXED** | `index.js:52-56` | **HSTS configured** — `maxAge: 31536000`, `includeSubDomains: true`, `preload: true`. No protocol downgrade risk. |
+| V-10 | **FIXED** | `index.js:268` | **Geolocation allowed** — Permissions-Policy sets `geolocation=(self)`, enabling location-based ordering. |
 | V-11 | **LOW** | `index.js:242` | **Cache-Control: no-store on ALL routes** — While secure for auth pages, this prevents caching of public assets like menu images, increasing load times. |
 
 ### 5.4 Multi-Tenant Isolation — **VERIFIED SECURE**

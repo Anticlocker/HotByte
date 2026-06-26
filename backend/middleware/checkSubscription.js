@@ -2,7 +2,9 @@ const db = require('../routes/database');
 const logger = require('../utils/logger');
 
 module.exports = async (req, res, next) => {
-  const hotelSlug =
+  // If validateHotelHeader already resolved the hotel, reuse it and only query subscription data
+  let hotelId = req.hotel?.id;
+  let hotelSlug = req.hotel?.slug ||
     req.query.hotel_slug ||
     req.body?.hotel_slug ||
     req.headers['x-hotel-slug'];
@@ -12,20 +14,34 @@ module.exports = async (req, res, next) => {
   }
 
   try {
-    const { rows } = await db.query(
-      `SELECT h.hotel_id, h.is_frozen, h.plan, h.trial_ends_at,
-              s.expiry_date AS subscription_expiry_date, s.status AS subscription_status
-       FROM public.hotels h
-       LEFT JOIN public.subscriptions s ON s.hotel_id = h.hotel_id AND s.status = 'active'
-       WHERE h.slug = $1`,
-      [hotelSlug]
-    );
+    let hotel;
 
-    if (!rows.length) {
-      return res.status(404).json({ success: false, message: 'Hotel not found.' });
+    if (hotelId && req.hotel?._found) {
+      // Already resolved by validateHotelHeader — fetch full details
+      const { rows } = await db.query(
+        `SELECT h.hotel_id, h.is_frozen, h.plan, h.trial_ends_at,
+                s.expiry_date AS subscription_expiry_date, s.status AS subscription_status
+         FROM public.hotels h
+         LEFT JOIN public.subscriptions s ON s.hotel_id = h.hotel_id AND s.status = 'active'
+         WHERE h.hotel_id = $1`,
+        [hotelId]
+      );
+      hotel = rows[0];
+    } else {
+      const { rows } = await db.query(
+        `SELECT h.hotel_id, h.is_frozen, h.plan, h.trial_ends_at,
+                s.expiry_date AS subscription_expiry_date, s.status AS subscription_status
+         FROM public.hotels h
+         LEFT JOIN public.subscriptions s ON s.hotel_id = h.hotel_id AND s.status = 'active'
+         WHERE h.slug = $1`,
+        [hotelSlug]
+      );
+      hotel = rows[0];
     }
 
-    const hotel = rows[0];
+    if (!hotel) {
+      return res.status(404).json({ success: false, message: 'Hotel not found.' });
+    }
     const now = new Date();
     let expired = false;
     let expiryReason = null;

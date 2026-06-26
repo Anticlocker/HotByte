@@ -1755,7 +1755,9 @@ router.post("/settings", requireAdmin, async (req, res) => {
            hotel_type = $15
        WHERE hotel_id = $16`,
       [
-        name.trim(), description || null, address || null, phone || null, email || null, tagline || 'Served with Love ❤️',
+        xss(name.trim()), description ? xss(description) : null,
+        address ? xss(address) : null, phone ? xss(phone) : null,
+        email ? xss(email) : null, xss(tagline || 'Served with Love ❤️'),
         show_logo !== false, show_banner !== false, primary_color || '#FF5A1F', secondary_color || '#FF5A1F',
         enable_online_orders !== false, enable_qr_ordering !== false, parseInt(table_count) || 5, settings_json || {},
         safeHotelType, hotelId
@@ -1843,14 +1845,14 @@ router.post("/settings/account", requireAdmin, async (req, res) => {
         `UPDATE public.admins 
          SET name = $1, email = $2, phone = $3, password = $4
          WHERE admin_id = $5`,
-        [name?.trim() || null, email.trim().toLowerCase(), phone?.trim() || null, hashedNewPassword, req.admin.id]
+        [name ? xss(name.trim()) : null, email.trim().toLowerCase(), phone?.trim() || null, hashedNewPassword, req.admin.id]
       );
     } else {
       await db.query(
         `UPDATE public.admins 
          SET name = $1, email = $2, phone = $3
          WHERE admin_id = $4`,
-        [name?.trim() || null, email.trim().toLowerCase(), phone?.trim() || null, req.admin.id]
+        [name ? xss(name.trim()) : null, email.trim().toLowerCase(), phone?.trim() || null, req.admin.id]
       );
     }
 
