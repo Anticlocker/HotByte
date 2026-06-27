@@ -232,6 +232,7 @@ pool.connect(async (err, client, release) => {
                 // Missing indexes for performance
                 `CREATE INDEX IF NOT EXISTS idx_subscriptions_hotel_id ON public.subscriptions(hotel_id);`,
                 `CREATE INDEX IF NOT EXISTS idx_subscriptions_plan_id ON public.subscriptions(plan_id);`,
+                `ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS admin_id INTEGER;`,
                 `CREATE INDEX IF NOT EXISTS idx_sessions_admin_id ON public.sessions(admin_id);`,
                 `CREATE INDEX IF NOT EXISTS idx_auth_logs_hotel_id ON public.auth_logs(hotel_id);`,
                 `CREATE INDEX IF NOT EXISTS idx_auth_logs_admin_id ON public.auth_logs(admin_id);`,

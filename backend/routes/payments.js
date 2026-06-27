@@ -280,7 +280,7 @@ router.post("/create-subscription-order", requireAdmin, async (req, res) => {
     const razorpayOrder = await getRazorpay().orders.create({
       amount: amountInPaise,
       currency: "INR",
-      receipt: `sub_${hotel_slug}_${plan}_${normalizedCycle}_${Date.now()}`
+      receipt: `sub_${Date.now()}`
     });
 
     return res.json({
@@ -466,7 +466,7 @@ router.post("/create-new-hotel-subscription-order", async (req, res) => {
     const razorpayOrder = await getRazorpay().orders.create({
       amount: amountInPaise,
       currency: "INR",
-      receipt: `reg_${cleanSlug}_${plan}_${billing_cycle || 'monthly'}_${Date.now()}`
+      receipt: `reg_${Date.now()}`
     });
 
     return res.json({
@@ -649,7 +649,7 @@ router.post("/create-onboarding-order", async (req, res) => {
     const razorpayOrder = await getRazorpay().orders.create({
       amount: amountInPaise,
       currency: "INR",
-      receipt: `onb_${plan}_${billing_cycle || 'monthly'}_${Date.now()}`
+      receipt: `onb_${Date.now()}`
     });
 
     return res.json({
@@ -769,7 +769,7 @@ router.post("/create-inactive-session", inactiveSessionRateLimit, async (req, re
       razorpayOrder = await getRazorpay().orders.create({
         amount: amountInPaise,
         currency: "INR",
-        receipt: `onb_act_${username.trim()}_${Date.now()}`
+        receipt: `onb_act_${Date.now()}`
       });
     } catch (rpErr) {
       if (process.env.NODE_ENV !== 'production') {
@@ -778,7 +778,7 @@ router.post("/create-inactive-session", inactiveSessionRateLimit, async (req, re
           id: `mock_order_${Date.now()}`,
           amount: amountInPaise,
           currency: "INR",
-          receipt: `onb_act_${username.trim()}_${Date.now()}`
+          receipt: `onb_act_${Date.now()}`
         };
       } else {
         throw rpErr;

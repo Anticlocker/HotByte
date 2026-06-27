@@ -145,7 +145,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           ) : modalState?.type === "alert" || modalState?.type === "confirm" ? (
             <div className="flex flex-col items-center gap-4 py-4">
               {modalState.alertType && <div>{iconMap[modalState.alertType]}</div>}
-              <p className="text-[13px] text-gray-300 text-center leading-relaxed">{modalState.message || modalState.title}</p>
+              <p 
+                className="text-[13px] text-gray-300 text-center leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: modalState.message || modalState.title || "" }}
+              />
               <div className="flex gap-3 mt-2 w-full">
                 {modalState.type === "confirm" && (
                   <button onClick={handleModalCancel} className="flex-1 px-4 py-2.5 rounded-xl border border-gray-700 text-gray-400 text-[11px] font-bold uppercase tracking-wider hover:bg-white/5 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-gray-500/50">

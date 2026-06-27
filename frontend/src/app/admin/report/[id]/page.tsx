@@ -217,8 +217,8 @@ export default function CustomerDetailReport({
                         <div className="flex justify-between items-center text-xs font-bold border-b border-gray-900 pb-3">
                           <div className="flex items-center gap-2">
                             <span className="text-white">Order #{order.order_id}</span>
-                            <span className="px-2 py-0.5 bg-gray-900 border border-gray-800 text-gray-400 rounded text-[9px] font-black uppercase">
-                              🪑 {order.table_number.replace("T-", "")}
+                            <span className="px-2.5 py-1 bg-orange-600 text-white rounded text-[11px] font-black uppercase tracking-wide flex items-center gap-1 shadow-sm">
+                              🍽️ TABLE {order.table_number.replace("T-", "").padStart(2, "0")}
                             </span>
                           </div>
                           <span className="text-sm font-black text-white">₹{order.total_amount}</span>

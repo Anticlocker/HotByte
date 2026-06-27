@@ -96,6 +96,7 @@ app.use(cors({
       origin === 'https://www.hotbyte.in' ||
       origin === 'https://hotbyte.in' ||
       origin.endsWith('.vercel.app') ||
+      origin.endsWith('.onrender.com') ||
       origin.endsWith('.hotbyte.in') ||
       origin.endsWith('.rav1.in') ||
       isLocalIP;
@@ -103,9 +104,9 @@ app.use(cors({
     if (isAllowed) {
       callback(null, true);
     } else {
-      // ✅ SECURITY FIX: Reject disallowed origins
+      // ✅ SECURITY FIX: Reject disallowed origins without throwing 500
       logger.warn('CORS blocked request from disallowed origin', { origin });
-      callback(new Error(`CORS policy: Origin '${origin}' is not allowed.`));
+      callback(null, false);
     }
   },
   credentials: true // Cookies aur authentication headers allow karta hai

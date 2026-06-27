@@ -171,14 +171,19 @@ export const SubscriptionCard: React.FC<Props> = ({
     else onUpgrade(plan.plan_id);
   };
 
-  const ctaLabel =
-    isFree && !isCurrent
-      ? 'Get Started Free'
-      : isCurrent && !expired
-      ? 'Renew Plan'
-      : isCurrent && expired
-      ? 'Reactivate'
-      : 'Upgrade Now';
+  const isTrial = plan.name.toLowerCase() === 'trial';
+
+  const ctaLabel = isTrial
+    ? (isCurrent && !expired ? 'Trial Active' : 'Trial Used')
+    : isFree && !isCurrent
+    ? 'Get Started Free'
+    : isCurrent && !expired
+    ? 'Renew Plan'
+    : isCurrent && expired
+    ? 'Reactivate'
+    : 'Upgrade Now';
+
+  const isDisabled = isTrial;
 
   return (
     <motion.div
@@ -291,11 +296,14 @@ export const SubscriptionCard: React.FC<Props> = ({
       {/* CTA Button */}
       <button
         onClick={handleCTA}
+        disabled={isDisabled}
         id={`cta-${key}-plan`}
-        className={`w-full py-3 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-300 cursor-pointer active:scale-[0.98] ${
-          isCurrent && !expired
-            ? 'bg-white/5 border border-gray-700 text-gray-300 hover:bg-white/10 hover:border-gray-600'
-            : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white shadow-lg shadow-orange-500/20 hover:shadow-orange-500/35 hover:-translate-y-0.5'
+        className={`w-full py-3 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-300 ${
+          isDisabled
+            ? 'bg-gray-800/50 text-gray-500 cursor-not-allowed border border-gray-700/50'
+            : isCurrent && !expired
+            ? 'bg-white/5 border border-gray-700 text-gray-300 hover:bg-white/10 hover:border-gray-600 cursor-pointer active:scale-[0.98]'
+            : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white shadow-lg shadow-orange-500/20 hover:shadow-orange-500/35 hover:-translate-y-0.5 cursor-pointer active:scale-[0.98]'
         }`}
       >
         {ctaLabel}

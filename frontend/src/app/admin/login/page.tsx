@@ -23,13 +23,19 @@ function AdminLoginContent() {
 
   useEffect(() => {
     fetch("/api/auth/csrf-token")
-      .then((r) => r.json())
-      .then((d) => { if (d.csrfToken) setCsrfToken(d.csrfToken); })
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to fetch CSRF token");
+        return r.json();
+      })
+      .then((d) => { if (d && d.csrfToken) setCsrfToken(d.csrfToken); })
       .catch(() => {});
     fetch("/api/auth/admin/session-check")
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Session check failed");
+        return res.json();
+      })
       .then((data) => {
-        if (data.authenticated && data.admin.role === "admin") {
+        if (data && data.authenticated && data.admin && data.admin.role === "admin") {
           const target = data.admin.hotelSlug ? `/admin?hotel=${data.admin.hotelSlug}` : "/admin";
           router.push(target);
         }

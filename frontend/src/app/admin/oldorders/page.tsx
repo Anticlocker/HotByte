@@ -261,9 +261,11 @@ export default function OrderHistoryArchive() {
                           </td>
 
                           {/* Table */}
-                          <td className="p-4 text-xs font-bold text-gray-400">
-                            🪑 {order.table_number.replace("T-", "")}
-                          </td>
+                          <td className="p-4">
+                             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-600/90 border border-orange-500/30 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm">
+                               🍽️ TABLE {order.table_number.replace("T-", "").padStart(2, "0")}
+                             </span>
+                           </td>
 
                           {/* Items Summary */}
                           <td className="p-4 max-w-xs truncate">

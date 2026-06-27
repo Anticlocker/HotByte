@@ -230,6 +230,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
   const [lastOrderMerchant, setLastOrderMerchant] = useState<string | null>(null);
   const [lastOrderPlaced, setLastOrderPlaced] = useState(false);
   const [customerName, setCustomerName] = useState("");
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
   const saveQrImage = useCallback((url: string) => {
     fetch(url).then(r => r.blob()).then(blob => {
@@ -454,12 +455,19 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
   };
 
   const handleCheckout = async () => {
+    let currentCustomer = customer;
+    
+    if (isPlacingOrder) return;
+    setIsPlacingOrder(true);
+    
     if (!isOpen) {
       notify.warning("Hotel Closed", "This hotel is currently closed and not accepting new orders.");
+      setIsPlacingOrder(false);
       return;
     }
     if (cart.length === 0) {
       notify.toast("info", "Cart Empty", "Please add items to your cart before checking out.");
+      setIsPlacingOrder(false);
       return;
     }
 
@@ -471,7 +479,11 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
           t('login.loginRequiredBtn', "Login with Google"),
           t('common.cancel', "Cancel")
         );
-        if (loginResult.isConfirmed) router.push(`/login?hotel=${hotelSlug}`);
+        if (loginResult.isConfirmed) {
+          router.push(`/login?hotel=${hotelSlug}`);
+        } else {
+          setIsPlacingOrder(false);
+        }
         return;
       } else {
         const guestName = await notify.prompt(
@@ -479,7 +491,10 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
           t('login.guestNameDesc', 'Enter your name to place the order as a guest'),
           ""
         );
-        if (!guestName || guestName.trim().length < 2) return;
+        if (!guestName || guestName.trim().length < 2) {
+          setIsPlacingOrder(false);
+          return;
+        }
 
         try {
           const gcRes = await fetch("/api/auth/guest-checkin", {
@@ -494,12 +509,15 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
               router.push(`/login?hotel=${hotelSlug}`);
             } else {
               notify.error(t('common.error', "Error"), gcData.message || t('login.guestCheckinFailed', "Guest checkin failed."));
+              setIsPlacingOrder(false);
             }
             return;
           }
           setCustomer(gcData.customer);
+          currentCustomer = gcData.customer;
         } catch {
           notify.error(t('login.networkError', "Network Error"), t('errors.networkError', "Unable to complete guest checkin."));
+          setIsPlacingOrder(false);
           return;
         }
       }
@@ -525,6 +543,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
               .replace('{{distance}}', String(Math.round(dist))),
             "error"
           );
+          setIsPlacingOrder(false);
           return;
         }
       } catch (err: any) {
@@ -535,12 +554,13 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
             : t('checkout.gpsRequiredDesc', "Could not get your GPS location. Please ensure location services are enabled."),
           "warning"
         );
+        setIsPlacingOrder(false);
         return;
       }
     }
 
       // ═══ Customer Name Collection (only once per session) ═══
-      let finalName = customerName || customer?.name || "";
+      let finalName = customerName || currentCustomer?.name || "";
       if (!finalName) {
         const nameResult = await Swal.fire({
           title: "Your Name",
@@ -566,7 +586,10 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
           },
         });
 
-        if (!nameResult.isConfirmed) return;
+        if (!nameResult.isConfirmed) {
+          setIsPlacingOrder(false);
+          return;
+        }
         finalName = nameResult.value.trim();
         setCustomerName(finalName);
       }
@@ -641,6 +664,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
 
           if (!data.success) {
             notify.error("Checkout Error", data.message || "Failed to create order.");
+            setIsPlacingOrder(false);
             return;
           }
 
@@ -837,10 +861,12 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
                     router.push("/profile");
                   } else {
                     notify.error(t('checkout.checkoutFailed', "Checkout Failed"), data.message || t('checkout.checkoutFailed', "Checkout failed."));
+                    setIsPlacingOrder(false);
                   }
                 } catch (err) {
                   notify.close();
                   notify.error(t('login.networkError', "Network Error"), t('errors.networkError', "Unable to send checkout request."));
+                  setIsPlacingOrder(false);
                 }
               };
             }
@@ -870,15 +896,20 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
               } else {
                 notify.close();
                 notify.error("Submission Error", submitData.message || "Failed to submit payment.");
+                setIsPlacingOrder(false);
               }
             } catch (err) {
               notify.close();
               notify.error("Network Error", "Could not submit payment confirmation.");
+              setIsPlacingOrder(false);
             }
+          } else {
+            setIsPlacingOrder(false);
           }
         } catch (err) {
           notify.close();
           notify.error("QR Payment Error", (err as any).message || "Failed to initialize QR payment.");
+          setIsPlacingOrder(false);
         }
     } else if (paymentChoice.isConfirmed) {
       // ═══ Cash on Table — Pay After Meal ═══
@@ -927,11 +958,15 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
         } else {
           notify.close();
           notify.error(t('checkout.checkoutFailed', "Checkout Failed"), data.message || t('checkout.checkoutFailed', "Checkout failed."));
+          setIsPlacingOrder(false);
         }
       } catch (err) {
         notify.close();
         notify.error(t('login.networkError', "Network Error"), t('errors.networkError', "Unable to send checkout request."));
+        setIsPlacingOrder(false);
       }
+    } else {
+      setIsPlacingOrder(false);
     }
   };
 
@@ -947,13 +982,31 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
       /></ErrorBoundary>
   }
 
-  return <ErrorBoundary><div className="relative z-0 mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700 bg-white dark:bg-[#0b0d11] transition-colors duration-300 pt-14">
+  const getCategoryEmoji = (cat: string) => {
+    const lower = cat.toLowerCase();
+    if (lower === "all") return "✨";
+    if (lower.includes("pizza")) return "🍕";
+    if (lower.includes("burger")) return "🍔";
+    if (lower.includes("sandwich")) return "🥪";
+    if (lower.includes("noodle") || lower.includes("pasta") || lower.includes("chinese")) return "🍜";
+    if (lower.includes("drink") || lower.includes("beverage") || lower.includes("cold")) return "🥤";
+    if (lower.includes("dessert") || lower.includes("sweet") || lower.includes("cake") || lower.includes("ice")) return "🍰";
+    if (lower.includes("salad") || lower.includes("veg")) return "🥗";
+    if (lower.includes("biryani") || lower.includes("rice")) return "🍛";
+    if (lower.includes("chicken") || lower.includes("meat") || lower.includes("non")) return "🍗";
+    if (lower.includes("starter") || lower.includes("soup")) return "🍲";
+    if (lower.includes("paneer") || lower.includes("curry") || lower.includes("main")) return "🍛";
+    if (lower.includes("roti") || lower.includes("bread") || lower.includes("naan")) return "🫓";
+    return "🍽️";
+  };
+
+  return <ErrorBoundary><div className="relative z-0 min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700 bg-white dark:bg-[#0b0d11] transition-colors duration-300 pt-14">
       
-      {/* ── Lightweight Static Background ── */}
+      {/* ── Lightweight Premium Background ── */}
       <div className="fixed inset-0 z-0 pointer-events-none bg-white dark:bg-[#0b0d11]">
         <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.07]"
           style={{
-            backgroundImage: 'radial-gradient(circle at 20% 30%, #FF5A1F 0%, transparent 50%), radial-gradient(circle at 80% 20%, #f59e0b 0%, transparent 50%), radial-gradient(circle at 40% 80%, #ef4444 0%, transparent 50%)'
+            backgroundImage: 'radial-gradient(circle at 20% 30%, #FF5A1F 0%, transparent 50%), radial-gradient(circle at 80% 20%, #f59e0b 0%, transparent 50%)'
           }}
         />
       </div>
@@ -961,15 +1014,15 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
       <CustomerNavbar hotelName={hotelName} />
 
       {!isOpen && (
-        <div className="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white py-3.5 px-6 font-sans border-b border-red-800 shadow-md z-20">
+        <div className="w-full bg-gradient-to-r from-red-650 via-rose-600 to-red-700 text-white py-3 px-6 font-sans border-b border-red-800 shadow-md z-20">
           <div className="max-w-[1280px] mx-auto flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-lg animate-pulse">
                 🏪
               </div>
               <div className="flex flex-col">
-                <span className="text-sm font-extrabold uppercase tracking-wide">{t('menu.hotelClosedTitle', 'Hotel is Currently Closed')}</span>
-                <span className="text-xs font-semibold opacity-90 mt-0.5">{t('menu.hotelClosedDesc', 'We are not accepting new orders at the moment. You can still browse our menu.')}</span>
+                <span className="text-xs font-black uppercase tracking-wider">{t('menu.hotelClosedTitle', 'Hotel is Currently Closed')}</span>
+                <span className="text-[10px] font-semibold opacity-90 mt-0.5">{t('menu.hotelClosedDesc', 'We are not accepting new orders at the moment. You can still browse.')}</span>
               </div>
             </div>
           </div>
@@ -977,17 +1030,17 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
       )}
 
       {suspiciousActivityMode && (
-        <div className="w-full bg-gradient-to-r from-amber-900/80 via-yellow-900/80 to-amber-900/80 border-b border-amber-700/50 py-2.5 px-6 z-20 backdrop-blur-sm">
-          <div className="max-w-[1280px] mx-auto flex items-center justify-center gap-3">
-            <span className="text-lg">🔐</span>
-            <span className="text-xs font-bold text-amber-300 uppercase tracking-wider">{t('login.verificationActive', 'Identity Verification Active — Google Login Required')}</span>
+        <div className="w-full bg-gradient-to-r from-amber-900/80 via-yellow-900/80 to-amber-900/80 border-b border-amber-700/50 py-2 px-6 z-20 backdrop-blur-sm">
+          <div className="max-w-[1280px] mx-auto flex items-center justify-center gap-2">
+            <span className="text-sm">🔐</span>
+            <span className="text-[10px] font-black text-amber-300 uppercase tracking-widest">{t('login.verificationActive', 'Google Login Required')}</span>
           </div>
         </div>
       )}
 
-
+      {/* Hero Header Banner */}
       <div className="relative">
-        <div className="relative w-full h-36 md:h-40 overflow-hidden rounded-b-2xl">
+        <div className="relative w-full h-32 md:h-36 overflow-hidden rounded-b-[24px]">
           {showBanner ? (
             <div className="w-full h-full" style={{ backgroundColor: primaryColor + '22' }}>
               <img
@@ -1000,186 +1053,152 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
               />
             </div>
           ) : (
-            <div className="w-full h-full bg-[url('https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1600&q=80')] bg-cover bg-center"></div>
+            <div className="w-full h-full bg-gradient-to-r from-orange-600/90 to-amber-600/90"></div>
           )}
         </div>
-        {/* Modern dark radial overlay to ensure readability */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0e1017] via-black/45 to-black/35 dark:from-[#0b0d11] transition-colors duration-300" />
+        
+        {/* Dark radial overlay to ensure readability */}
+        <div className="absolute inset-0 bg-gradient-to-t from-white via-black/40 to-black/35 dark:from-[#0b0d11] transition-colors duration-300" />
+        
         {/* Floating Brand Elements Container */}
-        <div className="absolute inset-0 left-6 right-6 lg:left-16 lg:right-16 max-w-[1280px] mx-auto flex flex-col md:flex-row items-center md:items-end justify-center md:justify-between gap-4 md:gap-6 z-10">
-            <div className="flex flex-col md:flex-row items-center md:items-end gap-4 md:gap-6 text-center md:text-left w-full">
-              {/* Elegant overlapping brand logo badge */}
-              {showLogo && (
-                <div className="w-20 h-20 md:w-24 md:h-24 rounded-3xl bg-white dark:bg-zinc-900 p-1 border-2 border-orange-500 shadow-xl flex-shrink-0 flex items-center justify-center overflow-hidden transition-all duration-300 transform hover:scale-105 animate-fade-in">
-                  {logoUrl ? (
-                    <img
-                      src={logoUrl ?? ''}
-                      alt={`${hotelName} Logo`}
-                      className="w-full h-full object-cover rounded-2xl"
-                    />
-                  ) : (
-                    
-                    <span className="text-xl md:text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-amber-500">
-                      {hotelName ? hotelName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase() : "HB"}
-                    </span>
-                  )}
-                </div>
-              )}
-              
-              {/* Typography block */}
-              <div className="space-y-1 md:pb-1">
-                <h1 className="text-2xl md:text-4xl lg:text-5xl font-black tracking-tight text-white drop-shadow-md">
-                  {hotelName || "HotByte"}
-                </h1>
-                <p className="text-xs md:text-sm font-bold tracking-widest text-orange-400 flex items-center justify-center md:justify-start gap-1.5 drop-shadow-sm uppercase">
-                  <span>{tagline || "Served with Love"}</span>
-                  <span className="text-red-500 animate-pulse text-[13px] md:text-base">❤️</span>
-                </p>
-                {/* Hotel Type Badge */}
-                {hotelType === "veg" && (
-                  <span className="inline-flex items-center gap-1 mt-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
-                    {t('menu.pureVegBadge', '🌱 100% Pure Veg Restaurant')}
-                  </span>
-                )}
-                {hotelType === "nonveg" && (
-                  <span className="inline-flex items-center gap-1 mt-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-red-500/15 border border-red-500/30 text-red-400">
-                    {t('menu.nonVegBadge', '🍗 Non-Veg Speciality')}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-      {/* Dynamic premium compact header area when banner is hidden */}
-        {!showBanner && (
-        <div className="bg-white dark:bg-zinc-900/60 border-b border-gray-100/40 dark:border-zinc-800/40 py-6 px-6 lg:px-16 animate-fade-in">
-          <div className="max-w-[1280px] mx-auto flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
+        <div className="absolute inset-0 left-6 right-6 max-w-[1280px] mx-auto flex flex-col md:flex-row items-center md:items-end justify-center md:justify-between gap-4 z-10">
+          <div className="flex flex-col md:flex-row items-center md:items-end gap-4 text-center md:text-left w-full">
             {showLogo && (
-              <div className="w-16 h-16 rounded-2xl bg-gray-50 dark:bg-zinc-800 p-1 border-2 border-orange-500 shadow-md flex-shrink-0 flex items-center justify-center overflow-hidden">
+              <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-white dark:bg-zinc-900 p-1 border-2 border-orange-500 shadow-lg flex-shrink-0 flex items-center justify-center overflow-hidden transition-all duration-300 transform hover:scale-105">
                 {logoUrl ? (
-                  <img src={logoUrl ?? ''} alt={`${hotelName} Logo`} className="w-full h-full object-cover rounded-xl" />
+                  <img
+                    src={logoUrl ?? ''}
+                    alt={`${hotelName} Logo`}
+                    className="w-full h-full object-cover rounded-xl"
+                  />
                 ) : (
-                  <span className="text-lg font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-amber-500">
+                  <span className="text-base font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-amber-500">
                     {hotelName ? hotelName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase() : "HB"}
                   </span>
                 )}
               </div>
             )}
-            <div className="space-y-1">
-              <h1 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white">
-                {hotelName || "HotByte"}
-              </h1>
-              <p className="text-xs font-bold tracking-widest text-orange-500 flex items-center justify-center sm:justify-start gap-1 uppercase">
+            
+            <div className="space-y-1.5 md:pb-1 select-none">
+              <div className="flex items-center justify-center md:justify-start gap-2 flex-wrap">
+                <h1 className="text-xl md:text-3xl font-black tracking-tight text-white dark:text-zinc-100 drop-shadow-md">
+                  {hotelName || "HotByte"}
+                </h1>
+                {/* Status Badges inside Hero */}
+                <div className="flex items-center gap-1.5">
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider text-white ${isOpen ? 'bg-emerald-500 shadow-sm shadow-emerald-500/20' : 'bg-rose-500'}`}>
+                    {isOpen ? 'Open' : 'Closed'}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-black/55 text-amber-400">
+                    ★ 4.6
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-black/55 text-zinc-200">
+                    ⏱️ 15m
+                  </span>
+                </div>
+              </div>
+              <p className="text-[10px] md:text-xs font-black tracking-widest text-orange-400 dark:text-orange-300 flex items-center justify-center md:justify-start gap-1 drop-shadow-sm uppercase">
                 <span>{tagline || "Served with Love"}</span>
                 <span className="text-red-500 animate-pulse text-xs">❤️</span>
               </p>
-              {/* Hotel Type Badge (no-banner header) */}
-              {hotelType === "veg" && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400">
-                  {t('menu.pureVegBadge', '🌱 100% Pure Veg Restaurant')}
-                </span>
-              )}
-              {hotelType === "nonveg" && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase bg-red-500/10 border border-red-500/25 text-red-600 dark:text-red-400">
-                  {t('menu.nonVegBadge', '🍗 Non-Veg Speciality')}
-                </span>
-              )}
+              
+              {/* Hotel Type Badges */}
+              <div className="flex items-center justify-center md:justify-start gap-1.5">
+                {hotelType === "veg" && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                    🌱 100% Pure Veg
+                  </span>
+                )}
+                {hotelType === "nonveg" && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase bg-red-500/15 border border-red-500/30 text-red-400">
+                    🍗 Non-Veg Speciality
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Main Browse Section */}
-      <main className="flex-grow max-w-[1280px] mx-auto w-full px-6 py-4 flex flex-col gap-4 bg-transparent">
+      <main className="flex-grow max-w-[1280px] mx-auto w-full px-6 py-4 flex flex-col gap-4 bg-transparent z-10 relative">
         
+        {/* Prominent Premium Table Badge */}
+        <div className="flex justify-center my-1 select-none">
+          <div className="flex flex-col items-center justify-center bg-gradient-to-r from-orange-500/10 via-amber-500/5 to-orange-500/10 border border-orange-500/20 py-3.5 px-10 text-center rounded-3xl shadow-sm min-w-[220px]">
+            <span className="text-[9px] font-black text-orange-500/80 tracking-[0.25em] uppercase mb-0.5">Dining Station</span>
+            <span className="text-xl sm:text-2xl font-black text-zinc-900 dark:text-white tracking-wide flex items-center gap-2">
+              <span>🍽️</span> {t('checkout.tableNumber', 'TABLE')} {tableNumber.replace("T-", "").padStart(2, "0")}
+            </span>
+          </div>
+        </div>
+
         {/* Unified Greet Bar */}
         {!customer ? (
-          <div className="w-full flex items-center justify-between gap-3 px-3.5 py-2 bg-gradient-to-r from-orange-500/[0.06] via-amber-500/[0.04] to-transparent dark:from-orange-500/[0.08] dark:via-amber-500/[0.04] border border-orange-200/30 dark:border-orange-800/30 rounded-xl backdrop-blur-sm">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm leading-none">👋</span>
-              <span className="text-xs font-bold text-gray-700 dark:text-gray-300 tracking-tight">
-                {t('greetings.welcome', 'Welcome')}, <span className="text-orange-600 dark:text-orange-400">{t('common.guest', 'Guest')}</span>
+          <div className="w-full flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-150/40 dark:border-zinc-800/40 rounded-2xl">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">👋</span>
+              <span className="text-xs font-bold text-zinc-700 dark:text-zinc-355 tracking-tight">
+                {t('greetings.welcome', 'Welcome')}, <span className="text-orange-500 font-extrabold">{t('common.guest', 'Guest')}</span>
               </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <SearchBar
-                searchQuery={searchQuery}
-                setSearchQuery={setSearchQuery}
-                hotelType={hotelType}
-                isVegOnly={isVegOnly}
-                setIsVegOnly={setIsVegOnly}
-              />
             </div>
           </div>
         ) : (
           /* For logged in customers */
-          <div className={`w-full rounded-xl p-[1px] shadow-sm transition-all duration-500 relative overflow-hidden group ${isBirthdayToday ? 'bg-gradient-to-r from-pink-500/40 via-purple-500/30 to-amber-500/40' : 'bg-gradient-to-r from-orange-500/20 via-amber-400/10 to-orange-500/20'}`}>
-            <div className={`w-full rounded-[11px] p-3 backdrop-blur-xl relative overflow-hidden bg-white/95 dark:bg-zinc-950`}>
+          <div className={`w-full rounded-2xl p-[1px] shadow-sm transition-all duration-500 relative overflow-hidden group ${isBirthdayToday ? 'bg-gradient-to-r from-pink-500/40 via-purple-500/30 to-amber-500/40' : 'bg-gradient-to-r from-orange-500/20 via-amber-400/10 to-orange-500/20'}`}>
+            <div className={`w-full rounded-[15px] p-4 backdrop-blur-xl relative overflow-hidden bg-white/95 dark:bg-zinc-950`}>
               <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full blur-3xl pointer-events-none opacity-45" style={{ background: isBirthdayToday ? 'radial-gradient(circle, rgba(236,72,153,0.25), transparent)' : 'radial-gradient(circle, rgba(249,115,22,0.15), transparent)' }}></div>
               
               <div className="flex flex-col relative z-10">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className={`relative shrink-0 ${isBirthdayToday ? 'animate-pulse' : ''}`}>
-                      <div className={`w-9 h-9 rounded-lg p-[2px] ${isBirthdayToday ? 'bg-gradient-to-br from-pink-500 via-purple-500 to-amber-500' : 'bg-gradient-to-br from-orange-500 to-amber-500'}`}>
-                        {customer.avatarUrl ? (
-                          <img 
-                            src={customer.avatarUrl} 
-                            alt={customer.name || "User"} 
-                            className="w-full h-full rounded-[10px] object-cover bg-white dark:bg-zinc-900 ring-1 ring-white/20"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <div className="w-full h-full rounded-[10px] bg-white dark:bg-zinc-900 flex items-center justify-center">
-                            <span className="text-sm font-black text-transparent bg-clip-text bg-gradient-to-br from-orange-500 to-amber-600">
-                              {customer.name ? customer.name.charAt(0).toUpperCase() : '?'}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="absolute -bottom-px -right-px w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-zinc-900"></div>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`relative shrink-0 ${isBirthdayToday ? 'animate-pulse' : ''}`}>
+                    <div className={`w-10 h-10 rounded-xl p-[2px] ${isBirthdayToday ? 'bg-gradient-to-br from-pink-500 via-purple-500 to-amber-500' : 'bg-gradient-to-br from-orange-500 to-amber-500'}`}>
+                      {customer.avatarUrl ? (
+                        <img 
+                          src={customer.avatarUrl} 
+                          alt={customer.name || "User"} 
+                          className="w-full h-full rounded-[8px] object-cover bg-white dark:bg-zinc-900 ring-1 ring-white/20"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-full h-full rounded-[8px] bg-white dark:bg-zinc-900 flex items-center justify-center">
+                          <span className="text-sm font-black text-transparent bg-clip-text bg-gradient-to-br from-orange-500 to-amber-600">
+                            {customer.name ? customer.name.charAt(0).toUpperCase() : '?'}
+                          </span>
+                        </div>
+                      )}
                     </div>
-
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-sm font-bold text-gray-900 dark:text-gray-100 leading-tight truncate">
-                        {greeting.text}
-                      </span>
-                      <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium truncate">
-                        {greeting.sub}
-                      </span>
-                    </div>
+                    <div className="absolute -bottom-px -right-px w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-zinc-900"></div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <SearchBar
-                      searchQuery={searchQuery}
-                      setSearchQuery={setSearchQuery}
-                      hotelType={hotelType}
-                      isVegOnly={isVegOnly}
-                      setIsVegOnly={setIsVegOnly}
-                    />
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100 leading-tight truncate">
+                      {greeting.text}
+                    </span>
+                    <span className="text-[10px] text-zinc-550 dark:text-zinc-400 font-semibold truncate mt-0.5">
+                      {greeting.sub}
+                    </span>
                   </div>
                 </div>
 
                 {!customer.hasDob && (
-                  <div className="mt-2 pt-2 border-t border-gray-100 dark:border-zinc-800/50">
+                  <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800/50">
                     <form onSubmit={handleInlineDobSubmit} className="flex flex-row items-center gap-2">
-                      <span className="text-[10px]">🎁</span>
-                      <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                        {t('login.birthdayRewardPrompt', 'Add your birthday for a special treat')}
+                      <span className="text-xs">🎁</span>
+                      <span className="text-[10px] font-black text-zinc-400 dark:text-zinc-500 whitespace-nowrap uppercase tracking-wider">
+                        {t('login.birthdayRewardPrompt', 'Add DOB to celebrate!')}
                       </span>
                       <input
                         type="date"
                         required
                         value={dobInput}
                         onChange={(e) => setDobInput(e.target.value)}
-                        className="flex-1 min-w-0 max-w-[130px] px-2 py-1 bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg text-[9px] font-bold text-gray-700 dark:text-gray-200 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/10 transition-all"
+                        className="flex-grow min-w-0 max-w-[130px] px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-[10px] font-black text-zinc-700 dark:text-zinc-200 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/5 transition-all"
                       />
                       <button
                         type="submit"
                         disabled={updatingDob}
-                        className="shrink-0 px-2.5 py-1 text-white font-bold text-[9px] rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 cursor-pointer disabled:opacity-50 transition-all duration-200 active:scale-[0.97]"
+                        className="shrink-0 px-3 py-1.5 text-white font-black text-[10px] uppercase tracking-wider rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 cursor-pointer disabled:opacity-50 transition-all duration-200 active:scale-[0.97]"
                       >
                         {updatingDob ? t('common.saving', 'Saving...') : t('common.save', 'Save')}
                       </button>
@@ -1191,47 +1210,61 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
           </div>
         )}
 
+        {/* Full-width Redesigned Search Bar */}
+        <div className="w-full mt-1.5">
+          <SearchBar
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            hotelType={hotelType}
+            isVegOnly={isVegOnly}
+            setIsVegOnly={setIsVegOnly}
+          />
+        </div>
+
         {/* Sticky Category Selector Scroll */}
         {categories.length > 0 && (
-          <div className="sticky top-[56px] z-30 -mx-6 px-6 py-2.5 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-gray-100/40 dark:border-zinc-800/40 flex gap-2.5 overflow-x-auto pb-2 scrollbar-none select-none transition-all duration-200">
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => {
-                  setSelectedCategory(cat);
-                  const element = document.getElementById("menu-food-grid");
-                  if (element) {
-                    const yOffset = -120; // navbar + category selector height
-                    const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
-                    window.scrollTo({ top: y, behavior: "smooth" });
-                  }
-                }}
-                className={`px-4.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap tracking-wide transition-all cursor-pointer shadow-sm ${
-                  selectedCategory === cat
-                    ? "bg-[var(--orange)] text-white shadow-lg shadow-orange-500/20"
-                    : "bg-white dark:bg-zinc-900 border border-gray-200/80 dark:border-zinc-800/60 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:border-gray-300 dark:hover:border-zinc-700"
-                }`}
-              >
-                {cat === "All" && <Sparkles size={12} className="inline mr-1" />}
-                {cat}
-              </button>
-            ))}
+          <div className="sticky top-[56px] z-30 -mx-6 px-6 py-3 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-150/40 dark:border-zinc-800/40 flex gap-3 overflow-x-auto pb-3.5 scrollbar-none select-none transition-all duration-200">
+            {categories.map((cat) => {
+              const isSelected = selectedCategory === cat;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => {
+                    setSelectedCategory(cat);
+                    const element = document.getElementById("menu-food-grid");
+                    if (element) {
+                      const yOffset = -120; // navbar + category selector height
+                      const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+                      window.scrollTo({ top: y, behavior: "smooth" });
+                    }
+                  }}
+                  className={`px-4.5 py-2.5 rounded-2xl text-xs font-black whitespace-nowrap tracking-wider transition-all duration-300 cursor-pointer shadow-sm flex items-center gap-1.5 ${
+                    isSelected
+                      ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20 active:scale-95"
+                      : "bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-650 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:border-zinc-300 dark:hover:border-zinc-700"
+                  }`}
+                >
+                  <span className="text-sm shrink-0">{getCategoryEmoji(cat)}</span>
+                  <span>{cat}</span>
+                </button>
+              );
+            })}
           </div>
         )}
 
         {/* Skeleton Loading Grid */}
         {loading ? (
-          <div id="menu-food-grid" className="menu-grid grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-5">
+          <div id="menu-food-grid" className="menu-grid grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="bg-white dark:bg-zinc-900 border border-gray-100/40 dark:border-zinc-800/55 rounded-xl sm:rounded-2xl overflow-hidden animate-pulse">
-                <div className="pt-[60%] sm:pt-[70%] bg-gray-200 dark:bg-zinc-800" />
-                <div className="p-2 sm:p-3 space-y-2">
-                  <div className="h-3 bg-gray-200 dark:bg-zinc-800 rounded w-3/4" />
-                  <div className="h-2 bg-gray-100 dark:bg-zinc-800/50 rounded w-full" />
-                  <div className="h-2 bg-gray-100 dark:bg-zinc-800/50 rounded w-2/3" />
-                  <div className="flex items-center justify-between pt-2">
-                    <div className="h-4 bg-gray-200 dark:bg-zinc-800 rounded w-12" />
-                    <div className="h-7 bg-gray-200 dark:bg-zinc-800 rounded-lg w-14" />
+              <div key={i} className="bg-white dark:bg-zinc-900 border border-zinc-150/40 dark:border-zinc-800/55 rounded-3xl overflow-hidden animate-pulse flex flex-col gap-3 pb-4">
+                <div className="pt-[68%] bg-zinc-150 dark:bg-zinc-800" />
+                <div className="px-3.5 space-y-2">
+                  <div className="h-3.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg w-3/4" />
+                  <div className="h-2.5 bg-zinc-100 dark:bg-zinc-800/50 rounded-lg w-full" />
+                  <div className="h-2.5 bg-zinc-100 dark:bg-zinc-800/50 rounded-lg w-2/3" />
+                  <div className="flex items-center justify-between pt-3">
+                    <div className="h-5 bg-zinc-200 dark:bg-zinc-800 rounded-lg w-14" />
+                    <div className="h-8 bg-zinc-200 dark:bg-zinc-800 rounded-xl w-16" />
                   </div>
                 </div>
               </div>
@@ -1239,19 +1272,19 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
           </div>
         ) : filteredItems.length === 0 ? (
           <div className="flex-grow flex flex-col items-center justify-center py-20 text-center space-y-4">
-            <div className="w-16 h-16 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center text-2xl mx-auto shadow-inner">
+            <div className="w-16 h-16 rounded-full bg-orange-50 dark:bg-zinc-900 text-orange-500 flex items-center justify-center text-2xl mx-auto shadow-inner">
               <Search size={28} />
             </div>
             <div className="space-y-1">
-              <h3 className="text-lg font-black text-gray-900 dark:text-gray-100">{t('menu.noItems', 'No Menu Items Found')}</h3>
-              <p className="text-sm font-medium text-gray-500 max-w-sm mx-auto">
+              <h3 className="text-lg font-black text-zinc-900 dark:text-zinc-100">{t('menu.noItems', 'No Menu Items Found')}</h3>
+              <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 max-w-sm mx-auto">
                 {t('menu.noItemsDesc', 'No items match your search or filter. Try a different keyword or category.')}
               </p>
             </div>
           </div>
         ) : (
           /* Food Card Listing Grid */
-          <div id="menu-food-grid" className="menu-grid grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-5 animate-fade-in">
+          <div id="menu-food-grid" className="menu-grid grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 animate-fade-in">
             {filteredItems.map(item => (
               <MenuItemCard
                 key={item.item_id}
@@ -1271,7 +1304,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
       {cartCount > 0 && (
         <button
           onClick={() => setIsCartOpen(true)}
-          className={`cart-float-btn fixed z-40 bg-gradient-to-r from-orange-500 via-orange-600 to-amber-600 text-white font-extrabold text-sm sm:text-base flex items-center gap-3 sm:gap-3.5 shadow-[0_15px_40px_rgba(255,90,31,0.45)] px-4 sm:px-6 py-3.5 sm:py-4 rounded-2xl cursor-pointer touch-action-manipulation transition-all duration-300 active:scale-95 group overflow-hidden border border-white/10 ${
+          className={`cart-float-btn fixed z-40 bg-gradient-to-r from-orange-500 via-orange-600 to-amber-600 text-white font-extrabold text-sm sm:text-base flex items-center gap-3 sm:gap-3.5 shadow-[0_15px_40px_rgba(255,90,31,0.4)] px-4.5 sm:px-6 py-3.5 sm:py-4 rounded-2xl cursor-pointer touch-action-manipulation transition-all duration-300 active:scale-95 group overflow-hidden border border-white/10 ${
             (!customer && requireCustomerAuth)
               ? "bottom-[92px] right-4 sm:right-6 md:bottom-[104px] md:right-6"
               : "bottom-6 right-4 sm:right-6"
@@ -1302,49 +1335,48 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
             className="cart-drawer-backdrop absolute inset-0 bg-black/60 backdrop-blur-sm"
           ></div>
 
-          {/* Drawer Panel — on mobile becomes a bottom sheet via .cart-drawer CSS class */}
-          <div className="cart-drawer relative w-full max-w-md bg-white dark:bg-[#12141c] border-l border-gray-100/40 dark:border-zinc-800/40 h-full shadow-2xl flex flex-col z-10 animate-fade-in-up">
+          {/* Drawer Panel */}
+          <div className="cart-drawer relative w-full max-w-md bg-white dark:bg-zinc-950 border-l border-zinc-150/40 dark:border-zinc-800/40 h-full shadow-2xl flex flex-col z-10 animate-fade-in-up">
             
             {/* Drawer Header */}
-            <div className="p-6 border-b border-gray-100 dark:border-zinc-800/50 flex items-center justify-between">
+            <div className="p-5 border-b border-zinc-100 dark:border-zinc-800/50 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <ShoppingCart className="text-[var(--orange)]" />
-                <h2 className="text-lg font-black text-gray-900 dark:text-white">{t('cart.title', 'Your Basket')}</h2>
-                <span className="px-2 py-0.5 bg-orange-100 dark:bg-orange-950/20 text-[var(--orange)] dark:text-orange-400 rounded-lg text-xs font-bold">
+                <ShoppingCart className="text-orange-500" />
+                <h2 className="text-lg font-black text-zinc-900 dark:text-white">{t('cart.title', 'Your Basket')}</h2>
+                <span className="px-2.5 py-0.5 bg-orange-100 dark:bg-orange-950/20 text-orange-600 dark:text-orange-400 rounded-lg text-xs font-black">
                   {cartCount} {t('cart.items', 'Items')}
                 </span>
               </div>
               <button
                 onClick={() => setIsCartOpen(false)}
-                className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white cursor-pointer"
+                className="p-1 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-white cursor-pointer"
               >
                 <X size={20} />
               </button>
             </div>
 
-            {/* Table Number & Quick Options */}
-            <div className="p-6 bg-gray-50 dark:bg-zinc-900/40 border-b border-gray-100 dark:border-zinc-800/50 flex items-center justify-between gap-4">
+            {/* Table Number & Selection Dropdown */}
+            <div className="p-5 bg-zinc-50/50 dark:bg-zinc-900/30 border-b border-zinc-100 dark:border-zinc-800/55 flex items-center justify-between gap-4">
               <div className="flex flex-col">
-                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{t('checkout.dineIn', 'Dining Station')}</span>
-                <span className="text-sm font-extrabold text-gray-800 dark:text-gray-200 mt-0.5">
-                  {qrTableLocked ? (
-                    <>
-                      {t('checkout.tableNumber', 'Table')} {tableNumber}
-                      <span className="ml-2 text-[9px] font-bold text-orange-500 uppercase tracking-wider bg-orange-500/10 px-1.5 py-0.5 rounded-full">QR</span>
-                    </>
-                  ) : (
-                    t('checkout.tableNumber', 'Enter Table Number')
+                <span className="text-[10px] font-black text-zinc-400 dark:text-zinc-500 uppercase tracking-widest">{t('checkout.dineIn', 'Dining Station')}</span>
+                <div className="inline-flex items-center gap-1.5 mt-1 bg-orange-500/10 border border-orange-500/20 px-3 py-1 rounded-xl w-fit">
+                  <span className="text-xs">🍽️</span>
+                  <span className="text-xs font-black text-orange-600 dark:text-orange-400 uppercase tracking-wider">
+                    {t('checkout.tableNumber', 'TABLE')} {tableNumber.replace("T-", "").padStart(2, "0")}
+                  </span>
+                  {qrTableLocked && (
+                    <span className="text-[8px] font-black text-white bg-orange-500 px-1.5 py-0.5 rounded-md">QR LOCKED</span>
                   )}
-                </span>
+                </div>
               </div>
               <select
                 value={tableNumber}
                 onChange={(e) => setTableNumber(e.target.value)}
                 disabled={qrTableLocked}
-                className={`px-4 py-2 bg-white dark:bg-zinc-950 rounded-xl border text-sm font-bold outline-none shadow-sm ${
+                className={`px-4.5 py-2.5 bg-white dark:bg-zinc-900 rounded-xl border text-xs font-extrabold outline-none shadow-sm transition-all ${
                   qrTableLocked
-                    ? "border-orange-500/50 text-orange-500 dark:text-orange-400 cursor-not-allowed opacity-80"
-                    : "border-gray-200 dark:border-zinc-800 text-gray-800 dark:text-gray-300 focus:border-[var(--orange)]"
+                    ? "border-orange-500/30 text-orange-500 dark:text-orange-400 cursor-not-allowed opacity-80"
+                    : "border-zinc-200 dark:border-zinc-850 text-zinc-800 dark:text-zinc-300 focus:border-orange-500"
                 }`}
               >
                 {qrTableLocked ? (
@@ -1360,14 +1392,14 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
             </div>
 
             {/* Basket Items List */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {cart.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center space-y-3">
-                  <div className="w-16 h-16 rounded-full bg-gray-50 dark:bg-zinc-900 flex items-center justify-center text-gray-400">
-                    <Utensils size={24} />
+                  <div className="w-14 h-14 rounded-full bg-zinc-50 dark:bg-zinc-900 flex items-center justify-center text-zinc-400">
+                    <Utensils size={22} />
                   </div>
-                  <h3 className="font-extrabold text-gray-900 dark:text-white">{t('cart.empty', 'Empty Basket')}</h3>
-                  <p className="text-xs text-gray-500 max-w-[200px]">
+                  <h3 className="font-extrabold text-zinc-900 dark:text-white">{t('cart.empty', 'Empty Basket')}</h3>
+                  <p className="text-xs text-zinc-500 max-w-[200px]">
                     {t('cart.emptyDesc', 'Add some delicious items from the menu to get started!')}
                   </p>
                 </div>
@@ -1377,10 +1409,11 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
                   return (
                     <div
                       key={uniqueKey}
-                      className="flex items-center justify-between gap-4 border-b border-gray-100 dark:border-zinc-800/40 pb-4 last:border-0"
+                      className="flex items-center justify-between gap-4 border-b border-zinc-100 dark:border-zinc-800/40 pb-4 last:border-0"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0">
+                        <div className="w-12 h-12 rounded-xl bg-zinc-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0">
+                          {item.image_url ? (
                             <img
                               src={item.image_url}
                               alt={item.name}
@@ -1388,41 +1421,49 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
                               className="w-full h-full object-cover"
                               onError={handleImgError}
                             />
+                          ) : (
+                            <div className="w-full h-full bg-zinc-50 dark:bg-zinc-900 flex items-center justify-center text-zinc-400">
+                              <Utensils size={18} />
+                            </div>
+                          )}
                         </div>
                         <div className="min-w-0">
-                          <h4 className="font-extrabold text-sm text-gray-900 dark:text-white leading-snug truncate">
-                            {item.name} {item.selectedVariant ? `(${item.selectedVariant.variant_name})` : ""}
+                          <h4 className="font-extrabold text-sm text-zinc-905 dark:text-zinc-50 leading-tight truncate">
+                            {item.name}
                           </h4>
-                          <p className="text-xs font-bold text-gray-500 dark:text-gray-400 mt-0.5 font-mono">₹{item.price}</p>
+                          {item.selectedVariant && (
+                            <p className="text-[10px] text-zinc-450 dark:text-zinc-500 font-bold uppercase tracking-wider mt-0.5">{item.selectedVariant.variant_name}</p>
+                          )}
+                          <p className="text-xs font-bold text-orange-500 mt-0.5 font-mono">₹{item.price}</p>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-3">
                         {/* Quantity controls */}
-                        <div className="flex items-center gap-2.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg p-0.5">
+                        <div className="flex items-center bg-orange-500 text-white rounded-xl shadow-sm border border-orange-600/10 p-0.5">
                           <button
                             onClick={() => handleDecreaseQuantity(item.item_id, item.selectedVariant)}
                             disabled={!isOpen}
-                            className={`w-8 h-8 rounded-md flex items-center justify-center text-gray-600 dark:text-gray-400 ${
-                              isOpen ? "hover:bg-gray-200 dark:hover:bg-zinc-800 cursor-pointer touch-action-manipulation" : "opacity-50 cursor-not-allowed"
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center text-white ${
+                              isOpen ? "hover:bg-white/10 cursor-pointer touch-action-manipulation" : "opacity-50 cursor-not-allowed"
                             }`}
                           >
-                            <Minus size={12} />
+                            <Minus size={11} strokeWidth={3} />
                           </button>
-                          <span className="text-xs font-bold text-gray-800 dark:text-gray-200 min-w-[16px] text-center">{item.quantity}</span>
+                          <span className="text-xs font-black min-w-[16px] text-center">{item.quantity}</span>
                           <button
                             onClick={() => handleAddToCart(item, item.selectedVariant)}
                             disabled={!isOpen}
-                            className={`w-8 h-8 rounded-md flex items-center justify-center text-gray-600 dark:text-gray-400 ${
-                              isOpen ? "hover:bg-gray-200 dark:hover:bg-zinc-800 cursor-pointer touch-action-manipulation" : "opacity-50 cursor-not-allowed"
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center text-white ${
+                              isOpen ? "hover:bg-white/10 cursor-pointer touch-action-manipulation" : "opacity-50 cursor-not-allowed"
                             }`}
                           >
-                            <Plus size={12} />
+                            <Plus size={11} strokeWidth={3} />
                           </button>
                         </div>
 
-                        {/* Total Price & Delete */}
-                          <span className="text-sm font-black text-gray-900 dark:text-white w-14 text-right font-mono">
+                        {/* Total Price */}
+                        <span className="text-sm font-black text-zinc-900 dark:text-white w-14 text-right font-mono">
                           ₹{item.price * item.quantity}
                         </span>
                       </div>
@@ -1433,41 +1474,54 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
             </div>
 
             {/* Drawer Checkout Footer */}
-            <div className="p-6 border-t border-gray-100 dark:border-zinc-800/50 bg-white dark:bg-[#12141c] space-y-4">
-              <div className="flex justify-between items-end">
-                <div className="flex flex-col leading-none">
-                  <span className="text-xs text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider">{t('cart.subtotal', 'Subtotal bill')}</span>
-                  <span className="text-2xl font-black text-gray-900 dark:text-white mt-1 font-mono">₹{cartTotal}</span>
+            <div className="p-5 border-t border-zinc-100 dark:border-zinc-800/50 bg-white dark:bg-zinc-950 space-y-4">
+              <div className="space-y-2 border-b border-zinc-100 dark:border-zinc-800/40 pb-3">
+                <div className="flex justify-between items-center text-xs font-semibold text-zinc-500">
+                  <span>Subtotal</span>
+                  <span className="font-mono">₹{cartTotal.toFixed(2)}</span>
                 </div>
-                <button
-                  onClick={handleClearCart}
-                  className="text-xs font-bold text-red-500 hover:underline cursor-pointer"
-                >
-                  {t('cart.clear', 'Clear Cart')}
-                </button>
+                <div className="flex justify-between items-end pt-1">
+                  <div className="flex flex-col leading-none">
+                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-black uppercase tracking-wider">{t('cart.grandTotal', 'Grand Total')}</span>
+                    <span className="text-2xl font-black text-zinc-900 dark:text-white mt-1.5 font-mono">₹{cartTotal.toFixed(2)}</span>
+                  </div>
+                  <button
+                    onClick={handleClearCart}
+                    className="text-xs font-black text-red-500 hover:underline uppercase tracking-wide cursor-pointer"
+                  >
+                    {t('cart.clear', 'Clear Basket')}
+                  </button>
+                </div>
               </div>
 
               <button
                 onClick={handleCheckout}
-                disabled={!(isOpen && (enableQrOrdering || enableOnlineOrders))}
-                className={`w-full py-4 rounded-2xl font-black text-white flex items-center justify-center gap-2.5 transition-all ${
-                  isOpen && (enableQrOrdering || enableOnlineOrders)
-                    ? "btn-orange shadow-lg shadow-orange-500/20 cursor-pointer active:scale-[0.97]" 
-                    : "bg-gray-500/40 border border-gray-600/30 text-gray-300 cursor-not-allowed"
+                disabled={isPlacingOrder || !(isOpen && (enableQrOrdering || enableOnlineOrders))}
+                className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-wider text-white flex items-center justify-center gap-2 transition-all ${
+                  isOpen && (enableQrOrdering || enableOnlineOrders) && !isPlacingOrder
+                    ? "bg-gradient-to-r from-orange-500 to-orange-600 shadow-lg shadow-orange-500/25 cursor-pointer active:scale-[0.98]" 
+                    : "bg-zinc-500/30 border border-zinc-600/20 text-zinc-400 cursor-not-allowed"
                 }`}
               >
-                <span>
-                  {!isOpen 
-                    ? t('menu.closed', 'Closed - Cannot Place Order') 
-                    : (!enableQrOrdering && !enableOnlineOrders)
-                      ? t('menu.disabled', 'Ordering is currently disabled')
-                      : t('cart.checkout', 'Checkout Dining Order')
-                  }
-                </span>
-                <ArrowRight size={18} />
+                {isPlacingOrder ? (
+                  <>
+                    <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
+                    <span>{t('cart.processing', 'Processing...')}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>
+                      {!isOpen 
+                        ? t('menu.closed', 'Closed - Cannot Order') 
+                        : (!enableQrOrdering && !enableOnlineOrders)
+                          ? t('menu.disabled', 'Ordering is Disabled')
+                          : t('cart.checkout', 'Place Order')
+                      }
+                    </span>
+                    <ArrowRight size={16} strokeWidth={2.5} />
+                  </>
+                )}
               </button>
-
-
             </div>
 
           </div>
@@ -1477,16 +1531,16 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
       {/* Sticky Required Login Prompt (Zero-Overlap Stacked Design) */}
       {!customer && requireCustomerAuth && (
         <div className="fixed bottom-0 left-0 right-0 z-45 md:bottom-6 md:right-6 md:left-auto md:w-full md:max-w-md p-0 bg-transparent pointer-events-none">
-          <div className="w-full bg-white/95 dark:bg-[#12141c]/95 border border-orange-500/10 dark:border-orange-500/20 shadow-[0_-8px_30px_rgb(0,0,0,0.12)] md:shadow-2xl md:rounded-2xl p-4 flex items-center justify-between gap-4 pointer-events-auto animate-fade-in-up">
+          <div className="w-full bg-white/95 dark:bg-zinc-950/95 border border-orange-500/10 dark:border-orange-500/20 shadow-[0_-8px_30px_rgb(0,0,0,0.12)] md:shadow-2xl md:rounded-2xl p-4 flex items-center justify-between gap-4 pointer-events-auto animate-fade-in-up">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center text-lg shadow-inner shrink-0 animate-pulse">
                 🔐
               </div>
               <div className="space-y-0.5">
-                <h4 className="text-xs sm:text-sm font-black text-gray-900 dark:text-white leading-tight">
+                <h4 className="text-xs sm:text-sm font-black text-zinc-900 dark:text-white leading-tight">
                   {t('errors.unauthorized', 'Sign In Required')}
                 </h4>
-                <p className="text-[10px] sm:text-xs font-semibold text-gray-500 dark:text-gray-400">
+                <p className="text-[10px] sm:text-xs font-semibold text-zinc-500 dark:text-zinc-400">
                   {t('login.signInRequiredMsg', 'Please sign in with Google to place your order.')}
                 </p>
               </div>
@@ -1494,7 +1548,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
             
             <button
               onClick={() => router.push(`/login?hotel=${hotelSlug}`)}
-              className="flex items-center justify-center gap-2.5 px-4 py-2 bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-zinc-700 rounded-xl text-xs font-bold tracking-tight shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer select-none active:scale-95 shrink-0"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-bold tracking-tight shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer select-none active:scale-95 shrink-0"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path
@@ -1514,7 +1568,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
                   d="M12 19.455c-1.345 0-2.7-.436-3.736-1.145l-3.864 3C6.3 23.009 9 24 12 24c4.664 0 8.673-2.673 10.655-6.573l-3.918-3.19c-.873 2.6-3.318 4.545-6.2 4.545z"
                 />
               </svg>
-              <span>{t('login.loginBtn', 'Continue with Google')}</span>
+              <span>Google</span>
             </button>
           </div>
         </div>
@@ -1524,7 +1578,7 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
       {showBackToTop && (
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          className="fixed bottom-24 right-4 sm:right-6 z-40 w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-lg flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-orange-500 hover:border-orange-300 dark:hover:border-orange-700 transition-all duration-300 cursor-pointer touch-action-manipulation animate-fade-in"
+          className="fixed bottom-24 right-4 sm:right-6 z-40 w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-lg flex items-center justify-center text-zinc-650 dark:text-zinc-400 hover:text-orange-500 hover:border-orange-300 dark:hover:border-orange-700 transition-all duration-300 cursor-pointer touch-action-manipulation animate-fade-in"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 15l-6-6-6 6" />
@@ -1533,8 +1587,8 @@ export default function MenuPage({ params }: { params: Promise<{ hotel_slug: str
       )}
 
       {/* Footer */}
-      <footer className="w-full py-6 border-t border-gray-100/40 dark:border-zinc-800/40 bg-white/60 dark:bg-zinc-950/20 text-center transition-colors">
-        <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-[0.2em]">
+      <footer className="w-full py-6 border-t border-zinc-150/40 dark:border-zinc-800/40 bg-white/60 dark:bg-zinc-950/20 text-center transition-colors">
+        <p className="text-[10px] font-bold text-zinc-450 dark:text-zinc-500 uppercase tracking-[0.2em]">
           {t('common.copyrightQR', '© 2026 {{hotelName}}. Tables QR Integrated.').replace('{{hotelName}}', hotelName || "HotByte")}
         </p>
       </footer>

@@ -1,5 +1,3 @@
-// Order creation and management routes
-
 const express = require("express");
 const logger = require("../utils/logger");
 const router = express.Router();
@@ -7,6 +5,71 @@ const db = require("./database");
 const { requireAuth } = require("./auth");
 const crypto = require("crypto");
 require("dotenv").config();
+
+const { sseEmitter } = require("../utils/sse");
+const sseClients = new Map(); // customerId -> array of res
+
+// Listen to sseEmitter status updates and broadcast to customers
+sseEmitter.on("orderStatusUpdate", ({ customerId, orderId, status }) => {
+  const clients = sseClients.get(parseInt(customerId)) || [];
+  clients.forEach(res => {
+    try {
+      res.write(`data: ${JSON.stringify({ type: "statusUpdate", orderId, status })}\n\n`);
+    } catch (err) {
+      logger.error("Error writing to SSE client", err);
+    }
+  });
+});
+
+router.get("/status-stream", async (req, res) => {
+  let customerId = null;
+
+  try {
+    const sessionId = req.cookies?.sessionId || req.headers["x-session-id"];
+    if (sessionId) {
+      const { verifySession } = require("./auth");
+      const session = await verifySession(sessionId);
+      if (session) {
+        customerId = parseInt(session.customerId);
+      }
+    }
+  } catch (err) {
+    logger.error("SSE session verification error:", err);
+  }
+
+  // Fallback to query parameter customerId for cross-origin/dev environments
+  if (!customerId && req.query.customerId) {
+    customerId = parseInt(req.query.customerId);
+  }
+
+  if (!customerId || isNaN(customerId)) {
+    return res.status(401).json({ success: false, message: "Authentication required" });
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  res.write("data: " + JSON.stringify({ type: "connected" }) + "\n\n");
+
+  if (!sseClients.has(customerId)) {
+    sseClients.set(customerId, []);
+  }
+  sseClients.get(customerId).push(res);
+
+  req.on("close", () => {
+    const clients = sseClients.get(customerId) || [];
+    const index = clients.indexOf(res);
+    if (index !== -1) {
+      clients.splice(index, 1);
+    }
+    if (clients.length === 0) {
+      sseClients.delete(customerId);
+    }
+  });
+});
 
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
 
@@ -454,6 +517,16 @@ router.post("/create", requireAuth, async (req, res) => {
       totalAmount += itemPrice * parseInt(item.quantity);
     }
 
+    // ---------------- DUPLICATE ORDER CHECK (TRANSACTION VALIDATION) ----------------
+    const recentOrderCheck = await db.query(
+      `SELECT order_id FROM public.orders 
+       WHERE customer_id = $1 AND table_number = $2 AND hotel_id = $3 AND total_amount = $4 AND created_at > NOW() - INTERVAL '15 seconds'`,
+      [customerId, table_number.trim(), hotelId, totalAmount]
+    );
+    if (recentOrderCheck.rows.length > 0) {
+      return res.status(409).json({ success: false, message: "A similar order was placed recently. Please wait." });
+    }
+
     const client = await db.connect();
     try {
       await client.query("BEGIN");
@@ -683,6 +756,16 @@ router.post("/create-qr-order", requireAuth, async (req, res) => {
       }
       item.price = itemPrice;
       totalAmount += itemPrice * parseInt(item.quantity);
+    }
+
+    // ---------------- DUPLICATE ORDER CHECK (TRANSACTION VALIDATION) ----------------
+    const recentOrderCheck = await db.query(
+      `SELECT order_id FROM public.orders 
+       WHERE customer_id = $1 AND table_number = $2 AND hotel_id = $3 AND total_amount = $4 AND created_at > NOW() - INTERVAL '15 seconds'`,
+      [customerId, table_number.trim(), hotelId, totalAmount]
+    );
+    if (recentOrderCheck.rows.length > 0) {
+      return res.status(409).json({ success: false, message: "A similar order was placed recently. Please wait." });
     }
 
     const client = await db.connect();

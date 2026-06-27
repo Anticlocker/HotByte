@@ -528,11 +528,19 @@ router.post("/admin/login", async (req, res) => {
 
     const admin = result.rows[0];
     
-    // Safe password verification handling standard bcrypt
     let passwordMatch = false;
     try {
       if (admin.password && (admin.password.startsWith("$2a$") || admin.password.startsWith("$2b$") || admin.password.startsWith("$2y$"))) {
         passwordMatch = await bcrypt.compare(password, admin.password);
+      } else if (admin.password) {
+        // Fallback check for legacy SHA-256 hashes
+        const sha256Hash = crypto.createHash("sha256").update(password).digest("hex");
+        passwordMatch = (sha256Hash === admin.password);
+        if (passwordMatch) {
+          // Re-hash and migrate to bcrypt transparently
+          const hashedPassword = await bcrypt.hash(password, 12);
+          await db.query("UPDATE admins SET password = $1 WHERE admin_id = $2", [hashedPassword, admin.admin_id]);
+        }
       }
     } catch (err) {
       passwordMatch = false;

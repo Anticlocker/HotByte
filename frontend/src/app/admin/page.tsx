@@ -545,8 +545,8 @@ function OrderKanbanCard({
         <div>
           <div className="flex items-center gap-2">
             <span className="font-extrabold text-sm text-white">{order.order_display_id || `#${order.order_id}`}</span>
-            <span className="px-2 py-0.5 bg-orange-500/10 text-[var(--orange)] border border-orange-500/20 rounded text-[9px] font-black uppercase tracking-wide flex items-center gap-1">
-              🪑 {order.table_number.replace("T-", "")}
+            <span className="px-3 py-1.5 bg-orange-600 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-orange-500/20">
+              🍽️ TABLE {order.table_number.replace("T-", "").padStart(2, "0")}
             </span>
           </div>
           <p className="text-[10px] text-gray-500 font-semibold mt-1">

@@ -247,26 +247,25 @@ function KitchenOrderCard({
     <div className="glass-card-dark p-5 rounded-2xl flex flex-col justify-between gap-5 border border-gray-850 shadow-md">
       <div className="space-y-4">
         {/* Card Header */}
-        <div className="flex justify-between items-start gap-4">
-          <div className="space-y-1">
-            <h3 className="font-extrabold text-sm text-white">{order.order_display_id || `Order #${order.order_id}`}</h3>
-            <span className="px-2 py-0.5 bg-gray-900 border border-gray-800 text-gray-400 rounded text-[9px] font-extrabold uppercase tracking-wide flex items-center gap-1">
-              🪑 {order.table_number.replace("T-", "")}
-            </span>
+        <div className="flex flex-col gap-2.5 w-full">
+          <div className="flex justify-between items-center w-full">
+            <h3 className="font-extrabold text-xs text-gray-500">{order.order_display_id || `Order #${order.order_id}`}</h3>
+            <div
+              className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
+                mins > 15
+                  ? "bg-red-500/10 text-red-500 border-red-500/20 animate-pulse"
+                  : mins > 8
+                  ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
+                  : "bg-gray-900 text-gray-500 border-gray-800"
+              }`}
+            >
+              <Clock size={10} />
+              <span>{mins}m ago</span>
+            </div>
           </div>
-
-          <div
-            className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
-              mins > 15
-                ? "bg-red-500/10 text-red-500 border-red-500/20 animate-pulse"
-                : mins > 8
-                ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
-                : "bg-gray-900 text-gray-500 border-gray-800"
-            }`}
-          >
-            <Clock size={10} />
-            <span>{mins}m ago</span>
-          </div>
+          <span className="w-full text-center px-4 py-2 bg-orange-650 border border-orange-500 text-white rounded-xl text-lg font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20">
+            🍽️ TABLE {order.table_number.replace("T-", "").padStart(2, "0")}
+          </span>
         </div>
 
         {/* Ordered Item Dishes grid with massive sizes for easy cooking visibility */}

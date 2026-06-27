@@ -784,7 +784,7 @@ router.put("/orders/:id/status", requireAdmin, async (req, res) => {
     }
 
     const result = await db.query(
-      "UPDATE orders SET status = $1 WHERE order_id = $2 RETURNING order_id, status",
+      "UPDATE orders SET status = $1 WHERE order_id = $2 RETURNING order_id, customer_id, status",
       [status, id]
     );
 
@@ -792,7 +792,21 @@ router.put("/orders/:id/status", requireAdmin, async (req, res) => {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
 
-    return res.json({ success: true, order: result.rows[0] });
+    const updatedOrder = result.rows[0];
+
+    // Emit real-time status update to SSE clients
+    try {
+      const { sseEmitter } = require("../utils/sse");
+      sseEmitter.emit("orderStatusUpdate", {
+        customerId: updatedOrder.customer_id,
+        orderId: updatedOrder.order_id,
+        status: updatedOrder.status,
+      });
+    } catch (sseErr) {
+      logger.error("SSE emit status update failed:", sseErr);
+    }
+
+    return res.json({ success: true, order: { order_id: updatedOrder.order_id, status: updatedOrder.status } });
   } catch (error) {
     logger.error("Update order status error:", error);
     return res.status(500).json({ success: false, message: "Failed to update order status" });

@@ -30,13 +30,19 @@ export default function SuperAdminLogin() {
 
   useEffect(() => {
     fetch("/api/auth/csrf-token")
-      .then((r) => r.json())
-      .then((d) => { if (d.csrfToken) setCsrfToken(d.csrfToken); })
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to fetch CSRF token");
+        return r.json();
+      })
+      .then((d) => { if (d && d.csrfToken) setCsrfToken(d.csrfToken); })
       .catch(() => {});
     fetch("/api/auth/admin/session-check")
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Session check failed");
+        return res.json();
+      })
       .then((data) => {
-        if (data.authenticated && data.admin.role === "super_admin") {
+        if (data && data.authenticated && data.admin && data.admin.role === "super_admin") {
           router.push("/super-admin/dashboard");
         }
       })
