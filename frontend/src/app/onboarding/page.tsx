@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { 
   Building2, UserCheck, ShieldCheck, Mail, Lock, Phone, MapPin, 
   ArrowRight, ArrowLeft, Loader2, Star, CheckCircle, Sparkles, Flame,
-  CreditCard, UploadCloud, Globe, Landmark
+  CreditCard, UploadCloud, Globe, Landmark, Eye, EyeOff
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { logger } from "@/lib/utils/logger";
@@ -52,6 +52,7 @@ function OnboardingContent() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [validatingAccount, setValidatingAccount] = useState(false);
 
   // --- Step 2: Payment State ---
@@ -501,31 +502,52 @@ function OnboardingContent() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Password</label>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Password</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="text-[9px] font-black text-orange-500 hover:text-orange-400 uppercase tracking-wider flex items-center gap-1 cursor-pointer select-none"
+                    >
+                      {showPassword ? (
+                        <>
+                          <EyeOff size={11} />
+                          <span>Hide</span>
+                        </>
+                      ) : (
+                        <>
+                          <Eye size={11} />
+                          <span>Show</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 w-4 h-4" />
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Min 6 characters"
-                      className="w-full p-3.5 pl-11 bg-[#090b0e] border border-gray-900 rounded-xl outline-none focus:border-orange-500/50 text-sm font-bold text-white transition-colors"
+                      className="w-full p-3.5 pl-11 pr-11 bg-[#090b0e] border border-gray-900 rounded-xl outline-none focus:border-orange-500/50 text-sm font-bold text-white transition-colors"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Confirm Password</label>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Confirm Password</label>
+                  </div>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 w-4 h-4" />
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       required
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Repeat password"
-                      className="w-full p-3.5 pl-11 bg-[#090b0e] border border-gray-900 rounded-xl outline-none focus:border-orange-500/50 text-sm font-bold text-white transition-colors"
+                      className="w-full p-3.5 pl-11 pr-11 bg-[#090b0e] border border-gray-900 rounded-xl outline-none focus:border-orange-500/50 text-sm font-bold text-white transition-colors"
                     />
                   </div>
                 </div>
