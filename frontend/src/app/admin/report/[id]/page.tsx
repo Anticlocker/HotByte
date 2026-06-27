@@ -279,7 +279,7 @@ export default function CustomerDetailReport({
                                 size={12}
                                 className={
                                   i < rev.rating_value
-                                    ? "fill-yellow-450 text-yellow-450"
+                                    ? "fill-amber-400 text-amber-400"
                                     : "text-gray-700"
                                 }
                               />

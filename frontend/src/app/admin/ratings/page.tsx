@@ -104,7 +104,7 @@ export default function RatingsModeration() {
       <Star
         key={idx}
         size={12}
-        className={idx < score ? "fill-yellow-450 text-yellow-450" : "text-gray-700"}
+        className={idx < score ? "fill-amber-400 text-amber-400" : "text-gray-700"}
       />
     ));
   };
