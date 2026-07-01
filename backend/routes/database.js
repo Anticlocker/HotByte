@@ -6,13 +6,21 @@ require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 // Set timezone to IST
 process.env.TZ = 'Asia/Kolkata';
 
-// Create connection pool live url
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: {
+// Create connection pool
+const isLocal = process.env.DATABASE_URL && (process.env.DATABASE_URL.includes("localhost") || process.env.DATABASE_URL.includes("127.0.0.1"));
+
+const poolConfig = {
+    connectionString: process.env.DATABASE_URL
+};
+
+if (!isLocal) {
+    poolConfig.ssl = {
         rejectUnauthorized: false
-    }
-});
+    };
+}
+
+const pool = new Pool(poolConfig);
+
 
 // Test initial connection
 pool.connect(async (err, client, release) => {
