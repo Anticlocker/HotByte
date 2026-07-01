@@ -49,6 +49,7 @@ export default function ThemeToggle({ currentTheme, onToggle }: ThemeToggleProps
   }
 
   return (
+    <span className="touch-target inline-flex items-center justify-center">
     <button
       onClick={toggleTheme}
       className="group relative w-11 h-6 rounded-full bg-gray-200 dark:bg-slate-700/80 border border-gray-300/30 dark:border-slate-600/50 shadow-inner flex items-center cursor-pointer outline-none transition-all duration-300 hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-orange-500/30 focus-visible:ring-offset-2 select-none"
@@ -70,5 +71,6 @@ export default function ThemeToggle({ currentTheme, onToggle }: ThemeToggleProps
         )}
       </span>
     </button>
+    </span>
   );
 }

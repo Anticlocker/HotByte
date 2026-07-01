@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import "@/i18n";
+// Leaflet is browser-only — dynamically imported in useEffect to avoid
+// Turbopack dev-mode crash caused by window/document access at module eval time.
 import {
   Building,
   Palette,
@@ -21,12 +23,15 @@ import {
   Trash2,
   Eye,
   EyeOff,
+  Key,
+  QrCode,
+  Globe,
   Laptop,
   Smartphone,
-  Globe,
-  Key,
 } from "lucide-react";
+import PaymentSettings from "@/components/PaymentSettings";
 import Swal from "sweetalert2";
+import { logger } from "@/lib/utils/logger";
 
 interface HotelSettings {
   hotel_id: number;
@@ -84,7 +89,7 @@ export default function AdminSettings() {
   const { t } = useTranslation();
 
 
-  const [activeTab, setActiveTab] = useState<"profile" | "branding" | "operations" | "location" | "security">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "branding" | "operations" | "location" | "security" | "payment">("profile");
   const [hotel, setHotel] = useState<HotelSettings | null>(null);
   const [admin, setAdmin] = useState<AdminInfo | null>(null);
   const [sessions, setSessions] = useState<SessionLog[]>([]);
@@ -97,6 +102,10 @@ export default function AdminSettings() {
   const [locationRadius, setLocationRadius] = useState("30");
   const [locationAddress, setLocationAddress] = useState("");
   const [locationMapReady, setLocationMapReady] = useState(false);
+  const [locationOrderingEnabled, setLocationOrderingEnabled] = useState(true);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapRef = useRef<any>(null);
 
   // Forms
   // Hotel form
@@ -114,6 +123,8 @@ export default function AdminSettings() {
   const [secondaryColor, setSecondaryColor] = useState("#FF5A1F");
 
   // Files state
+  const logoPreviewRef = useRef("");
+  const bannerPreviewRef = useRef("");
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState("");
   const [logoUploading, setLogoUploading] = useState(false);
@@ -216,6 +227,7 @@ export default function AdminSettings() {
         setLocationLng(data.hotel.longitude ? parseFloat(data.hotel.longitude) : null);
         setLocationRadius(String(data.hotel.order_radius || 30));
         setLocationAddress(data.hotel.address || "");
+        setLocationOrderingEnabled(data.hotel.location_ordering_enabled !== false);
 
         // Bind admin security
         if (data.admin) {
@@ -227,7 +239,7 @@ export default function AdminSettings() {
         Swal.fire(t("common.error"), getErrorMessage(data.message) || t("admin.settings.general"), "error");
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       Swal.fire(t("common.error"), "Could not connect to the settings endpoints", "error");
     } finally {
       setLoading(false);
@@ -246,9 +258,9 @@ export default function AdminSettings() {
       const file = e.target.files[0];
       
       // Validation constraints check
-      const maxSize = type === "logo" ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
+      const maxSize = type === "logo" ? 200 * 1024 : 300 * 1024;
       if (file.size > maxSize) {
-        Swal.fire(t("common.warning"), `${type === "logo" ? "Logo" : "Banner cover"} must be smaller than ${type === "logo" ? "2MB" : "5MB"}.`, "warning");
+        Swal.fire(t("common.warning"), `${type === "logo" ? "Logo" : "Banner cover"} must be smaller than ${type === "logo" ? "200KB" : "300KB"}.`, "warning");
         return;
       }
 
@@ -260,10 +272,16 @@ export default function AdminSettings() {
 
       if (type === "logo") {
         setLogoFile(file);
-        setLogoPreview(URL.createObjectURL(file));
+        if (logoPreviewRef.current) { URL.revokeObjectURL(logoPreviewRef.current); }
+        const url = URL.createObjectURL(file);
+        logoPreviewRef.current = url;
+        setLogoPreview(url);
       } else {
         setBannerFile(file);
-        setBannerPreview(URL.createObjectURL(file));
+        if (bannerPreviewRef.current) { URL.revokeObjectURL(bannerPreviewRef.current); }
+        const url = URL.createObjectURL(file);
+        bannerPreviewRef.current = url;
+        setBannerPreview(url);
       }
     }
   };
@@ -282,6 +300,7 @@ export default function AdminSettings() {
     try {
       const res = await fetch("/api/admin/settings/upload", {
         method: "POST",
+        headers: { "x-csrf-token": getCsrfToken() || "" },
         body: formData
       });
       let data;
@@ -310,7 +329,7 @@ export default function AdminSettings() {
         Swal.fire(t("common.error"), getErrorMessage(data.message) || "Failed to deliver asset to storage CDN", "error");
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       Swal.fire(t("common.error"), "Unable to complete asset upload connection.", "error");
     } finally {
       if (type === "logo") setLogoUploading(false);
@@ -329,6 +348,12 @@ export default function AdminSettings() {
   };
 
   // Submit profile details
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return "";
+    const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : "";
+  };
+
   const saveHotelProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!hotelName.trim()) {
@@ -340,7 +365,7 @@ export default function AdminSettings() {
     try {
       const res = await fetch("/api/admin/settings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({
           name: hotelName.trim(),
           description: hotelDesc.trim() || null,
@@ -378,7 +403,7 @@ export default function AdminSettings() {
         Swal.fire(t("common.error"), getErrorMessage(data.message) || "Failed to commit modifications", "error");
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       Swal.fire(t("common.error"), "Network connection issues", "error");
     } finally {
       setSaving(false);
@@ -412,7 +437,7 @@ export default function AdminSettings() {
     try {
       const res = await fetch("/api/admin/settings/account", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({
           name: adminName.trim(),
           email: adminEmail.trim(),
@@ -443,7 +468,7 @@ export default function AdminSettings() {
         Swal.fire(t("common.error"), getErrorMessage(data.message) || "Email/phone unique constraint conflicts", "error");
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       Swal.fire(t("common.error"), "Verification connection failure", "error");
     } finally {
       setSaving(false);
@@ -464,7 +489,8 @@ export default function AdminSettings() {
     if (result.isConfirmed) {
       try {
         const res = await fetch("/api/admin/settings/logout-devices", {
-          method: "POST"
+          method: "POST",
+          headers: { "x-csrf-token": getCsrfToken() || "" },
         });
         let data;
         try {
@@ -479,7 +505,7 @@ export default function AdminSettings() {
           Swal.fire(t("common.error"), getErrorMessage(data.message) || "Failed to disconnect devices", "error");
         }
       } catch (err) {
-        console.error(err);
+        logger.error(err);
         Swal.fire(t("common.error"), "Unable to disconnect devices", "error");
       }
     }
@@ -491,7 +517,7 @@ export default function AdminSettings() {
     try {
       const res = await fetch("/api/admin/auth-settings", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({
           requireCustomerAuth,
           suspiciousActivityMode,
@@ -536,7 +562,7 @@ export default function AdminSettings() {
             text = data.resolvedUrl;
           }
         } catch (err) {
-          console.error("Failed to resolve short URL:", err);
+          logger.error("Failed to resolve short URL:", err);
         }
       }
 
@@ -588,7 +614,7 @@ export default function AdminSettings() {
           }
         }
       } catch (err) {
-        console.error("Geocoding failed:", err);
+        logger.error("Geocoding failed:", err);
       }
 
       if (!coords) {
@@ -604,11 +630,11 @@ export default function AdminSettings() {
     setDetectingLocation(false);
 
     // 4. Update Leaflet map marker
-    const map = (window as any)._adminLocMap;
-    const L = (window as any).L;
-    if (map && L) {
+    const map = mapRef.current;
+    if (map) {
+      const L = (await import('leaflet')).default;
       map.setView([coords.lat, coords.lng], 17);
-      
+
       map.eachLayer((layer: any) => {
         if (layer instanceof L.Marker) {
           map.removeLayer(layer);
@@ -664,7 +690,7 @@ export default function AdminSettings() {
     try {
       const res = await fetch("/api/admin/settings/location", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({
           latitude: locationLat,
           longitude: locationLng,
@@ -684,9 +710,48 @@ export default function AdminSettings() {
     finally { setSaving(false); }
   };
 
+  // Save location-based ordering settings
+  const saveLocationOrderingSetting = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/settings/location-ordering", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
+        body: JSON.stringify({
+          locationOrderingEnabled
+        })
+      });
+      let data;
+      try { data = await res.json(); } catch { data = { success: false }; }
+      if (data.success) {
+        Swal.fire({
+          title: t("admin.settings.saved", "Settings Saved!"),
+          text: "Location-based ordering preferences updated successfully.",
+          icon: "success",
+          timer: 1500,
+          showConfirmButton: false
+        });
+        loadSettings();
+      } else {
+        Swal.fire(t("common.error", "Error"), getErrorMessage(data.message) || "Failed to save location ordering settings", "error");
+      }
+    } catch {
+      Swal.fire(t("common.error", "Error"), "Network connection issue", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // ── Leaflet map for location tab ─────────────────────────────────────
   useEffect(() => {
-    if (activeTab !== "location") return;
+    if (activeTab !== "location") {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+        setLocationMapReady(false);
+      }
+      return;
+    }
 
     const mapContainerId = "admin-location-map";
 
@@ -701,10 +766,7 @@ export default function AdminSettings() {
     };
 
     let retryCount = 0;
-    const initMap = () => {
-      const L = (window as any).L;
-      if (!L) return;
-
+    const initMap = async () => {
       const container = document.getElementById(mapContainerId);
       if (!container) {
         if (retryCount < 10) {
@@ -714,19 +776,21 @@ export default function AdminSettings() {
         return;
       }
 
-      if ((window as any)._adminLocMap) {
-        try {
-          (window as any)._adminLocMap.remove();
-        } catch (_) {}
-        (window as any)._adminLocMap = null;
+      if (mapRef.current) {
+        try { mapRef.current.remove(); } catch (_) {}
+        mapRef.current = null;
       }
+
+      // Dynamically import Leaflet to avoid Turbopack dev-mode crash
+      const L = (await import('leaflet')).default;
+      await import('leaflet/dist/leaflet.css');
 
       const defaultLat = locationLat || 20.5937;
       const defaultLng = locationLng || 78.9629;
       const zoom = locationLat ? 17 : 5;
 
       const map = L.map(mapContainerId).setView([defaultLat, defaultLng], zoom);
-      (window as any)._adminLocMap = map;
+      mapRef.current = map;
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>',
@@ -743,10 +807,10 @@ export default function AdminSettings() {
       let marker: any = null;
       if (locationLat && locationLng) {
         marker = L.marker([locationLat, locationLng], { draggable: true, icon }).addTo(map);
-        marker.on("dragend", async (e: any) => {
+        marker.on("dragend", (e: any) => {
           const { lat, lng } = e.target.getLatLng();
           setLocationLat(lat); setLocationLng(lng);
-          await reverseGeocode(lat, lng);
+          reverseGeocode(lat, lng);
         });
       }
 
@@ -756,10 +820,10 @@ export default function AdminSettings() {
         if (marker) marker.setLatLng([lat, lng]);
         else {
           marker = L.marker([lat, lng], { draggable: true, icon }).addTo(map);
-          marker.on("dragend", async (ev: any) => {
+          marker.on("dragend", (ev: any) => {
             const { lat: la, lng: lo } = ev.target.getLatLng();
             setLocationLat(la); setLocationLng(lo);
-            await reverseGeocode(la, lo);
+            reverseGeocode(la, lo);
           });
         }
         await reverseGeocode(lat, lng);
@@ -773,30 +837,17 @@ export default function AdminSettings() {
       setTimeout(() => map.invalidateSize(), 1000);
     };
 
-    if (!(window as any).L) {
-      if (!document.getElementById("leaflet-css")) {
-        const link = document.createElement("link");
-        link.id = "leaflet-css";
-        link.rel = "stylesheet";
-        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-        document.head.appendChild(link);
-      }
-      const script = document.createElement("script");
-      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-      script.onload = initMap;
-      document.head.appendChild(script);
-    } else {
-      initMap();
-    }
+    initMap();
 
     return () => {
-      if ((window as any)._adminLocMap) {
-        (window as any)._adminLocMap.remove();
-        (window as any)._adminLocMap = null;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
         setLocationMapReady(false);
       }
     };
-  }, [activeTab]);
+  }, [activeTab, locationLat, locationLng]);
+
 
   return (
     <div className="p-6 lg:p-10 space-y-8 animate-fade-in">
@@ -819,6 +870,7 @@ export default function AdminSettings() {
             { id: "branding", label: t("admin.settings.tabs.branding"), icon: Palette },
             { id: "operations", label: t("admin.settings.tabs.operations"), icon: Sliders },
             { id: "location", label: t("admin.settings.tabs.location"), icon: MapPin },
+            { id: "payment", label: "Payment", icon: QrCode },
             { id: "security", label: t("admin.settings.tabs.security"), icon: Lock },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -1063,7 +1115,7 @@ export default function AdminSettings() {
                     <div className="p-5 border border-gray-850 bg-gray-900/10 rounded-2xl space-y-4">
                       <div className="flex justify-between items-center">
                         <span className="text-xs font-black text-white tracking-tight uppercase">Circular Brand Logo</span>
-                        <label className="text-[9px] font-black uppercase text-gray-500 bg-gray-800 px-2 py-0.5 rounded">Max size 2MB</label>
+                        <label className="text-[9px] font-black uppercase text-gray-500 bg-gray-800 px-2 py-0.5 rounded">Max size 200KB</label>
                       </div>
 
                       <div className="flex items-center gap-4">
@@ -1111,7 +1163,7 @@ export default function AdminSettings() {
                     <div className="p-5 border border-gray-850 bg-gray-900/10 rounded-2xl space-y-4">
                       <div className="flex justify-between items-center">
                         <span className="text-xs font-black text-white tracking-tight uppercase">Hero Cover Banner</span>
-                        <label className="text-[9px] font-black uppercase text-gray-500 bg-gray-800 px-2 py-0.5 rounded">Max size 5MB</label>
+                        <label className="text-[9px] font-black uppercase text-gray-500 bg-gray-800 px-2 py-0.5 rounded">Max size 300KB</label>
                       </div>
 
                       <div className="flex items-center gap-4">
@@ -1361,125 +1413,198 @@ export default function AdminSettings() {
 
             {/* TABS 4: GPS LOCATION */}
             {activeTab === "location" && (
-              <div className="glass-card-dark p-6 rounded-3xl border border-gray-850/80 bg-[#111] space-y-6 shadow-xl animate-fade-in-up">
-                <div className="flex items-center gap-3 pb-4 border-b border-gray-850">
-                  <div className="w-10 h-10 rounded-2xl bg-orange-500/10 flex items-center justify-center text-[var(--orange)]">
-                    <MapPin size={20} />
+              <div className="space-y-6 animate-fade-in-up">
+                <div className="glass-card-dark p-6 rounded-3xl border border-gray-850/80 bg-[#111] space-y-6 shadow-xl">
+                  <div className="flex items-center gap-3 pb-4 border-b border-gray-850">
+                    <div className="w-10 h-10 rounded-2xl bg-orange-500/10 flex items-center justify-center text-[var(--orange)]">
+                      <MapPin size={20} />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-black text-white">Hotel GPS Location & Geofence</h2>
+                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">Pin exact location on map — customers must be within the radius to order</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-base font-black text-white">Hotel GPS Location & Geofence</h2>
-                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">Pin exact location on map — customers must be within the radius to order</p>
-                  </div>
-                </div>
 
-                {/* Map */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-black text-gray-450 uppercase tracking-widest flex items-center gap-1.5">
-                      <MapPin size={12} className="text-orange-500" />
-                      <span>Click map to pin hotel location</span>
-                    </label>
-                    {locationLat && locationLng && (
-                      <button
-                        type="button"
-                        onClick={() => { setLocationLat(null); setLocationLng(null); }}
-                        className="text-[9px] font-black uppercase text-red-500 hover:text-red-400 transition-colors cursor-pointer"
-                      >
-                        ✕ Clear Pin
-                      </button>
+                  {/* Map */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-black text-gray-450 uppercase tracking-widest flex items-center gap-1.5">
+                        <MapPin size={12} className="text-orange-500" />
+                        <span>Click map to pin hotel location</span>
+                      </label>
+                      {locationLat && locationLng && (
+                        <button
+                          type="button"
+                          onClick={() => { setLocationLat(null); setLocationLng(null); }}
+                          className="text-[9px] font-black uppercase text-red-500 hover:text-red-400 transition-colors cursor-pointer"
+                        >
+                          ✕ Clear Pin
+                        </button>
+                      )}
+                    </div>
+                    <div
+                      id="admin-location-map"
+                      style={{ height: "280px", borderRadius: "16px", overflow: "hidden", border: "1px solid #1a1a1a", zIndex: 1 }}
+                      className="w-full bg-gray-900"
+                    />
+                    {locationLat && locationLng ? (
+                      <div className="flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-xl px-4 py-2.5">
+                        <MapPin size={12} className="text-orange-500 shrink-0" />
+                        <span className="text-[10px] font-mono font-bold text-orange-400">
+                          {locationLat.toFixed(6)}, {locationLng.toFixed(6)}
+                        </span>
+                        <span className="ml-auto text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">Pinned</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 bg-yellow-500/5 border border-yellow-500/10 rounded-xl px-4 py-2.5">
+                        <MapPin size={12} className="text-yellow-600 shrink-0" />
+                        <p className="text-[9px] text-gray-500 font-semibold">No location set — click on the map above to place a pin. Orders will be accepted from any location until a pin is set.</p>
+                      </div>
                     )}
                   </div>
-                  <div
-                    id="admin-location-map"
-                    style={{ height: "280px", borderRadius: "16px", overflow: "hidden", border: "1px solid #1a1a1a", zIndex: 1 }}
-                    className="w-full bg-gray-900"
-                  />
-                  {locationLat && locationLng ? (
-                    <div className="flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-xl px-4 py-2.5">
-                      <MapPin size={12} className="text-orange-500 shrink-0" />
-                      <span className="text-[10px] font-mono font-bold text-orange-400">
-                        {locationLat.toFixed(6)}, {locationLng.toFixed(6)}
-                      </span>
-                      <span className="ml-auto text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">Pinned</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 bg-yellow-500/5 border border-yellow-500/10 rounded-xl px-4 py-2.5">
-                      <MapPin size={12} className="text-yellow-600 shrink-0" />
-                      <p className="text-[9px] text-gray-500 font-semibold">No location set — click on the map above to place a pin. Orders will be accepted from any location until a pin is set.</p>
-                    </div>
-                  )}
-                </div>
 
-                {/* Address */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-black text-gray-450 uppercase tracking-widest">
-                      Store Address & Map Link <span className="text-orange-500 normal-case">(auto-fills on pin drop)</span>
+                  {/* Address */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[10px] font-black text-gray-450 uppercase tracking-widest">
+                        Store Address & Map Link <span className="text-orange-500 normal-case">(auto-fills on pin drop)</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => detectAndResolveLocation(locationAddress)}
+                        disabled={detectingLocation}
+                        className="text-[9px] font-black uppercase text-orange-500 hover:text-orange-400 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        {detectingLocation ? (
+                          <div className="w-2.5 h-2.5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mr-1"></div>
+                        ) : (
+                          "🔍 "
+                        )}
+                        <span>Detect Location</span>
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={locationAddress}
+                      onChange={(e) => setLocationAddress(e.target.value)}
+                      onBlur={() => {
+                        if (locationAddress.trim().startsWith("http") && !locationLat && !locationLng) {
+                          detectAndResolveLocation(locationAddress);
+                        }
+                      }}
+                      placeholder="Enter plain address OR paste Google Maps/OSM location link here..."
+                      className="w-full px-4 py-3.5 bg-gray-900 border border-gray-800 rounded-xl text-xs font-semibold text-gray-200 focus:border-orange-500 outline-none transition-all"
+                    />
+                  </div>
+
+                  {/* Radius */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-450 uppercase tracking-widest flex items-center justify-between">
+                      <span>Customer Ordering Radius</span>
+                      <span className="text-orange-500 font-mono text-base">{locationRadius}m</span>
                     </label>
+                    <div className="flex items-center gap-4">
+                      <span className="text-[10px] font-black text-gray-500">10m</span>
+                      <input
+                        type="range"
+                        min="10"
+                        max="500"
+                        value={locationRadius}
+                        onChange={(e) => setLocationRadius(e.target.value)}
+                        className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-orange-500"
+                      />
+                      <span className="text-[10px] font-black text-gray-500">500m</span>
+                    </div>
+                    <p className="text-[9px] text-gray-600 font-semibold">Customers must be within {locationRadius} meters of this hotel to place an order. Default is 30 meters.</p>
+                  </div>
+
+                  <div className="flex items-center justify-end pt-4 border-t border-gray-850">
                     <button
                       type="button"
-                      onClick={() => detectAndResolveLocation(locationAddress)}
-                      disabled={detectingLocation}
-                      className="text-[9px] font-black uppercase text-orange-500 hover:text-orange-400 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      onClick={saveLocationSettings}
+                      disabled={saving}
+                      className="btn-orange px-6 py-3 rounded-xl text-xs font-black text-white cursor-pointer shadow-lg shadow-orange-500/10 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
                     >
-                      {detectingLocation ? (
-                        <div className="w-2.5 h-2.5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mr-1"></div>
-                      ) : (
-                        "🔍 "
-                      )}
-                      <span>Detect Location</span>
+                      {saving && <RefreshCw size={14} className="animate-spin" />}
+                      <span>Save Location & Geofence</span>
                     </button>
                   </div>
-                  <input
-                    type="text"
-                    value={locationAddress}
-                    onChange={(e) => setLocationAddress(e.target.value)}
-                    onBlur={() => {
-                      if (locationAddress.trim().startsWith("http") && !locationLat && !locationLng) {
-                        detectAndResolveLocation(locationAddress);
-                      }
-                    }}
-                    placeholder="Enter plain address OR paste Google Maps/OSM location link here..."
-                    className="w-full px-4 py-3.5 bg-gray-900 border border-gray-800 rounded-xl text-xs font-semibold text-gray-200 focus:border-orange-500 outline-none transition-all"
-                  />
                 </div>
 
-                {/* Radius */}
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-450 uppercase tracking-widest flex items-center justify-between">
-                    <span>Customer Ordering Radius</span>
-                    <span className="text-orange-500 font-mono text-base">{locationRadius}m</span>
-                  </label>
-                  <div className="flex items-center gap-4">
-                    <span className="text-[10px] font-black text-gray-500">10m</span>
-                    <input
-                      type="range"
-                      min="10"
-                      max="500"
-                      value={locationRadius}
-                      onChange={(e) => setLocationRadius(e.target.value)}
-                      className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-orange-500"
-                    />
-                    <span className="text-[10px] font-black text-gray-500">500m</span>
+                {/* Location-Based Ordering Control Card */}
+                <div className="glass-card-dark p-6 rounded-3xl border border-gray-850/80 bg-[#111] space-y-6 shadow-xl">
+                  <div className="flex items-center gap-3 pb-4 border-b border-gray-850">
+                    <div className="w-10 h-10 rounded-2xl bg-orange-500/10 flex items-center justify-center text-[var(--orange)]">
+                      <Sliders size={20} />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-black text-white">Location-Based Ordering</h2>
+                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">Toggle location requirements for customer orders</p>
+                    </div>
                   </div>
-                  <p className="text-[9px] text-gray-600 font-semibold">Customers must be within {locationRadius} meters of this hotel to place an order. Default is 30 meters.</p>
-                </div>
 
-                <div className="flex items-center justify-end pt-4 border-t border-gray-850">
-                  <button
-                    type="button"
-                    onClick={saveLocationSettings}
-                    disabled={saving}
-                    className="btn-orange px-6 py-3 rounded-xl text-xs font-black text-white cursor-pointer shadow-lg shadow-orange-500/10 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
-                  >
-                    {saving && <RefreshCw size={14} className="animate-spin" />}
-                    <span>Save Location & Geofence</span>
-                  </button>
+                  <div className="space-y-4">
+                    <p className="text-xs text-gray-400 font-semibold leading-relaxed">
+                      Require customers to be within the hotel&apos;s configured radius before placing an order.
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-gray-900/40 border border-gray-850 rounded-2xl">
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black text-gray-450 uppercase tracking-widest">Status:</span>
+                          {locationOrderingEnabled ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                              🟢 Enabled (Recommended)
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-500/15 border border-red-500/30 text-red-400">
+                              🔴 Disabled
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-gray-505 font-semibold">
+                          {locationOrderingEnabled 
+                            ? "Customers must be near the hotel to place orders." 
+                            : "Customers can place orders from any location."}
+                        </p>
+                      </div>
+
+                      {/* Premium Toggle Switch */}
+                      <label className="relative inline-flex items-center cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={locationOrderingEnabled}
+                          onChange={(e) => setLocationOrderingEnabled(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end pt-4 border-t border-gray-850">
+                    <button
+                      type="button"
+                      onClick={saveLocationOrderingSetting}
+                      disabled={saving}
+                      className="btn-orange px-6 py-3 rounded-xl text-xs font-black text-white cursor-pointer shadow-lg shadow-orange-500/10 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
+                    >
+                      {saving && <RefreshCw size={14} className="animate-spin" />}
+                      <span>Save Changes</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* TABS 5: ACCOUNT SECURITY & LOGIN AUDIT LOGS */}
+            {/* TABS 5: PAYMENT SETTINGS */}
+            {activeTab === "payment" && (
+              <div className="glass-card-dark p-6 rounded-3xl border border-gray-850/80 bg-[#111] space-y-6 shadow-xl">
+                <PaymentSettings />
+              </div>
+            )}
+
+            {/* TABS 6: ACCOUNT SECURITY & LOGIN AUDIT LOGS */}
             {activeTab === "security" && (
               <div className="space-y-8 animate-fade-in-up">
 
@@ -1854,7 +1979,7 @@ export default function AdminSettings() {
                   
                   {/* Circular Brand Logo */}
                   {showLogo && logoPreview ? (
-                    <div className="w-16 h-16 rounded-full bg-gray-900 border-3 border-gray-950 overflow-hidden flex items-center justify-center shrink-0 shadow-lg shadow-black/80">
+                    <div className="w-16 h-16 rounded-full bg-gray-900 border-[3px] border-gray-950 overflow-hidden flex items-center justify-center shrink-0 shadow-lg shadow-black/80">
                       <img src={logoPreview} alt="Logo" className="w-full h-full object-cover" />
                     </div>
                   ) : (

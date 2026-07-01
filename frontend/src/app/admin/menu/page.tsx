@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import "@/i18n";
@@ -16,9 +16,10 @@ import {
   FolderOpen,
   Leaf,
   X,
-  Upload,
 } from "lucide-react";
-import Swal from "sweetalert2";
+import { useNotification } from "@/context/NotificationContext";
+import { logger } from "@/lib/utils/logger";
+import ImageUpload from "@/components/ImageUpload";
 
 interface Category {
   category_id: number;
@@ -35,11 +36,13 @@ interface MenuItem {
   category_name: string;
   is_available: boolean;
   is_veg: boolean;
+  variants?: { id: number; variant_name: string; price: number }[];
 }
 
 export default function AdminMenu() {
   const router = useRouter();
   const { t } = useTranslation();
+  const notif = useNotification();
 
   const [activeTab, setActiveTab] = useState<"items" | "categories">("items");
   const [categories, setCategories] = useState<Category[]>([]);
@@ -58,8 +61,12 @@ export default function AdminMenu() {
   const [formDescription, setFormDescription] = useState("");
   const [formIsVeg, setFormIsVeg] = useState(true);
   const [formIsAvailable, setFormIsAvailable] = useState(true);
+  const formFilePreviewRef = useRef("");
   const [formFile, setFormFile] = useState<File | null>(null);
   const [formFilePreview, setFormFilePreview] = useState("");
+  const [portionType, setPortionType] = useState<"single" | "half_full">("single");
+  const [formHalfPrice, setFormHalfPrice] = useState("");
+  const [formFullPrice, setFormFullPrice] = useState("");
 
   const fetchSettingsData = async () => {
     try {
@@ -96,7 +103,7 @@ export default function AdminMenu() {
         setItems(itemsData.items);
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     } finally {
       setLoading(false);
     }
@@ -116,6 +123,9 @@ export default function AdminMenu() {
     setFormIsAvailable(true);
     setFormFile(null);
     setFormFilePreview("");
+    setPortionType("single");
+    setFormHalfPrice("");
+    setFormFullPrice("");
   };
 
   const handleOpenAddModal = () => {
@@ -140,38 +150,61 @@ export default function AdminMenu() {
     setFormIsAvailable(item.is_available);
     setFormFile(null);
     setFormFilePreview(item.image_url || "");
+    
+    if (item.variants && item.variants.length > 0) {
+      setPortionType("half_full");
+      const half = item.variants.find(v => v.variant_name === "Half");
+      const full = item.variants.find(v => v.variant_name === "Full");
+      setFormHalfPrice(half ? half.price.toString() : "");
+      setFormFullPrice(full ? full.price.toString() : "");
+    } else {
+      setPortionType("single");
+      setFormHalfPrice("");
+      setFormFullPrice("");
+    }
     setIsItemModalOpen(true);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setFormFile(file);
-      setFormFilePreview(URL.createObjectURL(file));
+  const handleFileChange = (file: File | null) => {
+    setFormFile(file);
+    if (formFilePreviewRef.current) { URL.revokeObjectURL(formFilePreviewRef.current); formFilePreviewRef.current = ""; }
+    if (file) {
+      const url = URL.createObjectURL(file);
+      formFilePreviewRef.current = url;
+      setFormFilePreview(url);
+    } else {
+      setFormFilePreview("");
     }
   };
 
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName.trim() || !formCategory || !formPrice) {
-      Swal.fire(t("admin.menu.requiredFields"), t("admin.menu.requiredFieldsMsg"), "warning");
+    const isSingle = portionType === "single";
+    const resolvedPrice = isSingle ? formPrice : formHalfPrice;
+    
+    if (!formName.trim() || !formCategory || (!isSingle && (!formHalfPrice || !formFullPrice)) || (isSingle && !formPrice)) {
+      notif.warning("Required Fields", "Please fill in all price and portion variant fields.");
       return;
     }
 
-    Swal.fire({
-      title: t("admin.menu.savingItem"),
-      text: t("admin.menu.savingItemMsg"),
-      allowOutsideClick: false,
-      didOpen: () => Swal.showLoading(),
-    });
+    notif.loading(t("admin.menu.savingItem"), t("admin.menu.savingItemMsg"));
 
     const formData = new FormData();
     formData.append("item_name", formName.trim());
     formData.append("category_id", formCategory);
-    formData.append("price", formPrice);
+    formData.append("price", resolvedPrice);
     formData.append("description", formDescription.trim());
     formData.append("is_veg", String(formIsVeg));
     formData.append("is_available", String(formIsAvailable));
+    if (portionType === "half_full") {
+      const variantsList = [
+        { variant_name: "Half", price: parseFloat(formHalfPrice) },
+        { variant_name: "Full", price: parseFloat(formFullPrice) }
+      ];
+      formData.append("variants", JSON.stringify(variantsList));
+    } else {
+      formData.append("variants", "[]");
+    }
     if (formFile) {
       formData.append("image", formFile);
     } else if (editingItem) {
@@ -184,26 +217,29 @@ export default function AdminMenu() {
         : "/api/admin/items";
       const method = editingItem ? "PUT" : "POST";
 
-      const res = await fetch(url, { method, body: formData });
+      const res = await fetch(url, { method, headers: { "x-csrf-token": getCsrfToken() || "" }, body: formData });
       const data = await res.json();
 
       if (data.success) {
-        Swal.fire({
-          title: t("admin.menu.saved"),
-          text: editingItem ? t("admin.menu.itemModified") : t("admin.menu.itemCreated"),
-          icon: "success",
-          timer: 1200,
-          showConfirmButton: false,
-        });
+        notif.close();
+        notif.success(t("admin.menu.saved"), editingItem ? t("admin.menu.itemModified") : t("admin.menu.itemCreated"));
         setIsItemModalOpen(false);
         resetItemForm();
         fetchSettingsData();
       } else {
-        Swal.fire(t("admin.menu.failure"), data.message || t("admin.menu.failedToCommit"), "error");
+        notif.close();
+        notif.error(t("admin.menu.failure"), data.message || t("admin.menu.failedToCommit"));
       }
     } catch (err) {
-      Swal.fire(t("admin.menu.networkError"), t("admin.menu.networkErrorMsg"), "error");
+      notif.close();
+      notif.error(t("admin.menu.networkError"), t("admin.menu.networkErrorMsg"));
     }
+  };
+
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return "";
+    const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : "";
   };
 
   const handleToggleAvailable = async (item: MenuItem) => {
@@ -219,6 +255,7 @@ export default function AdminMenu() {
 
       const res = await fetch(`/api/admin/items/${item.item_id}`, {
         method: "PUT",
+        headers: { "x-csrf-token": getCsrfToken() || "" },
         body: formData,
       });
       const data = await res.json();
@@ -226,134 +263,116 @@ export default function AdminMenu() {
         fetchSettingsData();
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     }
   };
 
   const handleDeleteItem = async (itemId: number) => {
-    const result = await Swal.fire({
-      title: t("admin.menu.deleteItemTitle2"),
-      text: t("admin.menu.deleteItemMsg"),
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonColor: "#EF4444",
-      cancelButtonColor: "#aaa",
-      confirmButtonText: t("admin.deleteItem"),
-    });
+    const { isConfirmed } = await notif.confirm(
+      t("admin.menu.deleteItemTitle2"),
+      t("admin.menu.deleteItemMsg"),
+      t("admin.deleteItem")
+    );
 
-    if (result.isConfirmed) {
+    if (isConfirmed) {
       try {
-        const res = await fetch(`/api/admin/items/${itemId}`, { method: "DELETE" });
+        const res = await fetch(`/api/admin/items/${itemId}`, {
+          method: "DELETE",
+          headers: { "x-csrf-token": getCsrfToken() || "" },
+        });
         const data = await res.json();
 
         if (data.success) {
-          Swal.fire(t("admin.menu.deleted"), t("admin.menu.itemDeleted"), "success");
+          notif.success(t("admin.menu.deleted"), t("admin.menu.itemDeleted"));
           fetchSettingsData();
         } else {
-          Swal.fire(t("admin.menu.failure"), data.message || t("admin.menu.couldNotDelete"), "error");
+          notif.error(t("admin.menu.failure"), data.message || t("admin.menu.couldNotDelete"));
         }
       } catch (err) {
-        Swal.fire(t("common.error"), t("admin.menu.serverOffline"), "error");
+        notif.error(t("common.error"), t("admin.menu.serverOffline"));
       }
     }
   };
 
   // Category Actions
   const handleAddCategory = async () => {
-    const { value: catName } = await Swal.fire({
-      title: t("admin.menu.addFoodCategory"),
-      input: "text",
-      inputLabel: t("admin.menu.categoryName"),
-      inputPlaceholder: t("admin.menu.categoryPlaceholder"),
-      showCancelButton: true,
-      confirmButtonColor: "#FF5A1F",
-      inputValidator: (value) => {
-        if (!value.trim()) {
-          return t("admin.menu.categoryRequired");
-        }
-      },
-    });
+    const catName = await notif.prompt(
+      t("admin.menu.addFoodCategory"),
+      t("admin.menu.categoryName")
+    );
 
     if (catName) {
       try {
         const res = await fetch("/api/admin/categories", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
           body: JSON.stringify({ category_name: catName }),
         });
         const data = await res.json();
 
         if (data.success) {
-          Swal.fire(t("admin.menu.categoryCreated"), t("admin.menu.categoryCreatedMsg"), "success");
+          notif.success(t("admin.menu.categoryCreated"), t("admin.menu.categoryCreatedMsg"));
           fetchSettingsData();
         } else {
-          Swal.fire(t("common.error"), data.message || t("admin.menu.categoryConflict"), "error");
+          notif.error(t("common.error"), data.message || t("admin.menu.categoryConflict"));
         }
       } catch (err) {
-        Swal.fire(t("common.error"), t("admin.menu.failedToAdd"), "error");
+        notif.error(t("common.error"), t("admin.menu.failedToAdd"));
       }
     }
   };
 
   const handleEditCategory = async (cat: Category) => {
-    const { value: catName } = await Swal.fire({
-      title: t("admin.menu.editCategoryTitle"),
-      input: "text",
-      inputValue: cat.category_name,
-      showCancelButton: true,
-      confirmButtonColor: "#FF5A1F",
-      inputValidator: (value) => {
-        if (!value.trim()) {
-          return t("admin.menu.categoryNameRequired");
-        }
-      },
-    });
+    const catName = await notif.prompt(
+      t("admin.menu.editCategoryTitle"),
+      t("admin.menu.categoryName"),
+      cat.category_name
+    );
 
     if (catName) {
       try {
         const res = await fetch(`/api/admin/categories/${cat.category_id}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
           body: JSON.stringify({ category_name: catName }),
         });
         const data = await res.json();
 
         if (data.success) {
-          Swal.fire(t("admin.menu.updated"), t("admin.menu.categoryUpdated"), "success");
+          notif.success(t("admin.menu.updated"), t("admin.menu.categoryUpdated"));
           fetchSettingsData();
         } else {
-          Swal.fire(t("common.error"), data.message || t("admin.menu.failed"), "error");
+          notif.error(t("common.error"), data.message || t("admin.menu.failed"));
         }
       } catch (err) {
-        Swal.fire(t("common.error"), t("admin.menu.networkOffline"), "error");
+        notif.error(t("common.error"), t("admin.menu.networkOffline"));
       }
     }
   };
 
   const handleDeleteCategory = async (catId: number) => {
-    const result = await Swal.fire({
-      title: t("admin.menu.deleteCategoryTitle"),
-      text: t("admin.menu.deleteCategoryMsg"),
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonColor: "#EF4444",
-      cancelButtonColor: "#aaa",
-      confirmButtonText: t("admin.deleteCategory"),
-    });
+    const { isConfirmed } = await notif.confirm(
+      t("admin.menu.deleteCategoryTitle"),
+      t("admin.menu.deleteCategoryMsg"),
+      t("admin.deleteCategory")
+    );
 
-    if (result.isConfirmed) {
+    if (isConfirmed) {
       try {
-        const res = await fetch(`/api/admin/categories/${catId}`, { method: "DELETE" });
+        const res = await fetch(`/api/admin/categories/${catId}`, {
+          method: "DELETE",
+          headers: { "x-csrf-token": getCsrfToken() || "" },
+        });
         const data = await res.json();
 
         if (data.success) {
-          Swal.fire(t("admin.menu.deleted"), t("admin.menu.categoryDeleted"), "success");
+          notif.success(t("admin.menu.deleted"), t("admin.menu.categoryDeleted"));
           fetchSettingsData();
         } else {
-          Swal.fire(t("common.warning"), data.message || t("admin.menu.removeItemsFirst"), "error");
+          notif.error(t("common.warning"), data.message || t("admin.menu.removeItemsFirst"));
         }
       } catch (err) {
-        Swal.fire(t("common.error"), t("admin.menu.operationFailed"), "error");
+        notif.error(t("common.error"), t("admin.menu.operationFailed"));
       }
     }
   };
@@ -490,8 +509,18 @@ export default function AdminMenu() {
                       </td>
 
                       {/* Price */}
-                      <td className="p-4 text-sm font-black text-white">
-                        ₹{item.price}
+                      <td className="p-4 text-xs font-bold text-white">
+                        {item.variants && item.variants.length > 0 ? (
+                          <div className="flex flex-col gap-0.5">
+                            {item.variants.map((v) => (
+                              <span key={v.id} className="text-gray-400 block whitespace-nowrap">
+                                {v.variant_name}: <span className="text-white font-black font-mono">₹{v.price}</span>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="font-black font-mono text-sm">₹{item.price}</span>
+                        )}
                       </td>
 
                       {/* Stock Switch */}
@@ -665,22 +694,71 @@ export default function AdminMenu() {
                   </select>
                 </div>
 
-                {/* Price */}
+                {/* Portion Type */}
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider block">
-                    {t("admin.menu.priceINR")}
+                    Portion Type
                   </label>
-                  <input
-                    type="number"
-                    required
-                    min="0"
-                    step="0.01"
-                    value={formPrice}
-                    onChange={(e) => setFormPrice(e.target.value)}
-                    placeholder={t("admin.menu.pricePlaceholder")}
-                    className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-xs font-bold text-white focus:border-orange-500 outline-none transition-all"
-                  />
+                  <select
+                    value={portionType}
+                    onChange={(e) => setPortionType(e.target.value as any)}
+                    className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-xs font-bold text-gray-300 focus:border-orange-500 outline-none cursor-pointer"
+                  >
+                    <option value="single">Single Price</option>
+                    <option value="half_full">Half & Full Price</option>
+                  </select>
                 </div>
+
+                {portionType === "single" ? (
+                  <div className="space-y-2 col-span-2">
+                    <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider block">
+                      {t("admin.menu.priceINR")}
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      step="0.01"
+                      value={formPrice}
+                      onChange={(e) => setFormPrice(e.target.value)}
+                      placeholder={t("admin.menu.pricePlaceholder")}
+                      className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-xs font-bold text-white focus:border-orange-500 outline-none transition-all"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2 col-span-1">
+                      <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider block">
+                        Half Price (₹)
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        step="0.01"
+                        value={formHalfPrice}
+                        onChange={(e) => setFormHalfPrice(e.target.value)}
+                        placeholder="Half portion price"
+                        className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-xs font-bold text-white focus:border-orange-500 outline-none transition-all"
+                      />
+                    </div>
+                    <div className="space-y-2 col-span-1">
+                      <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider block">
+                        Full Price (₹)
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        step="0.01"
+                        value={formFullPrice}
+                        onChange={(e) => setFormFullPrice(e.target.value)}
+                        placeholder="Full portion price"
+                        className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-xs font-bold text-white focus:border-orange-500 outline-none transition-all"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Description */}
@@ -696,40 +774,11 @@ export default function AdminMenu() {
                 ></textarea>
               </div>
 
-              {/* File Upload Selector */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider block">
-                  {t("admin.menu.dishPhoto")}
-                </label>
-                <div className="grid grid-cols-5 gap-4 items-center">
-                  <div className="col-span-3">
-                    <label className="flex flex-col items-center justify-center border border-dashed border-gray-800 hover:border-orange-500/50 rounded-xl p-4 cursor-pointer bg-gray-900/40 hover:bg-gray-900/60 transition-all text-center">
-                      <Upload size={18} className="text-gray-500 mb-1.5" />
-                      <span className="text-[10px] font-bold text-gray-400">{t("admin.menu.chooseImageFile")}</span>
-                      <span className="text-[8px] text-gray-650 mt-0.5">{t("admin.menu.imageHint")}</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileChange}
-                        className="hidden"
-                      />
-                    </label>
-                  </div>
-
-                  {/* Preview Container */}
-                  <div className="col-span-2 aspect-[4/3] rounded-xl bg-gray-900 border border-gray-850 overflow-hidden flex items-center justify-center text-gray-650">
-                    {formFilePreview ? (
-                      <img
-                        src={formFilePreview}
-                        alt="Upload Preview"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <ImageIcon size={20} />
-                    )}
-                  </div>
-                </div>
-              </div>
+              <ImageUpload
+                onFileSelect={handleFileChange}
+                preview={formFilePreview}
+                label={t("admin.menu.dishPhoto")}
+              />
 
               {/* Toggles */}
               <div className="grid grid-cols-2 gap-4 pt-2">

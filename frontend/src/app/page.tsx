@@ -3,12 +3,20 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Footer from "@/components/Footer";
 import {
   QrCode, Utensils, Play, ChevronDown, Check, ArrowRight, ShieldCheck,
   Sparkles, Star, Smartphone, ChefHat, BarChart3, Clock, Flame,
   HelpCircle, ShieldAlert, BadgeCheck, CheckCircle2, ChevronRight, Mail
 } from "lucide-react";
 import Swal from "sweetalert2";
+
+// ── Premium SaaS Landing Components ──
+import HeroBackground from "@/components/landing/HeroBackground";
+import FloatingElements from "@/components/landing/FloatingElements";
+import FishController from "@/components/landing/FishController";
+import { AnimateOnScroll, StaggerContainer, StaggerItem } from "@/components/landing/ScrollAnimations";
+import CountUp from "@/components/landing/CountUp";
 
 export default function Home() {
   const router = useRouter();
@@ -65,6 +73,43 @@ export default function Home() {
   ]);
   const [demoRevenue, setDemoRevenue] = useState(14850);
   const [demoOrderCount, setDemoOrderCount] = useState(48);
+  const getLiveOrdersCount = () => {
+    const START_TIME = new Date("2026-06-14T17:15:00Z").getTime();
+    const START_VAL = 1200;
+    const now = Date.now();
+    const elapsedSeconds = Math.max(0, Math.floor((now - START_TIME) / 1000));
+    
+    const cycleDuration = 34; // 5 + 3 + 3 + 10 + 10 + 3 seconds
+    const cycleOrders = 11; // 1 + 1 + 2 + 1 + 1 + 5 orders
+    
+    const fullCycles = Math.floor(elapsedSeconds / cycleDuration);
+    const remainder = elapsedSeconds % cycleDuration;
+    
+    let remainderOrders = 0;
+    if (remainder >= 31) {
+      remainderOrders = 6;
+    } else if (remainder >= 21) {
+      remainderOrders = 5;
+    } else if (remainder >= 11) {
+      remainderOrders = 4;
+    } else if (remainder >= 8) {
+      remainderOrders = 2;
+    } else if (remainder >= 5) {
+      remainderOrders = 1;
+    }
+    
+    return START_VAL + (fullCycles * cycleOrders) + remainderOrders;
+  };
+
+  const [liveOrders, setLiveOrders] = useState(1200);
+
+  useEffect(() => {
+    setLiveOrders(getLiveOrdersCount());
+    const timer = setInterval(() => {
+      setLiveOrders(getLiveOrdersCount());
+    }, 500);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     // Spawn Embers for splash
@@ -210,7 +255,7 @@ export default function Home() {
   const cartTotal = demoCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   return (
-    <div className="bg-[#050507] min-h-screen text-white font-sans selection:bg-orange-500/30 overflow-x-hidden antialiased">
+    <div className="relative z-0 bg-[#050507] min-h-screen text-white font-sans selection:bg-orange-500/30 overflow-x-hidden antialiased">
 
       {/* Splash Entrance Screen */}
       {splashState !== "hidden" && (
@@ -250,9 +295,12 @@ export default function Home() {
         </div>
       )}
 
-      {/* Floating Background Effects */}
-      <div className="fixed top-0 right-0 w-[600px] aspect-square rounded-full bg-orange-600/5 filter blur-[150px] pointer-events-none z-0" />
-      <div className="fixed bottom-0 left-0 w-[600px] aspect-square rounded-full bg-amber-600/5 filter blur-[150px] pointer-events-none z-0" />
+      {/* ── Interactive Animated Background ── */}
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        <HeroBackground />
+        <FloatingElements />
+        <FishController />
+      </div>
 
       {/* ── HEADER NAVIGATION ── */}
       <header className={`sticky top-0 z-40 transition-all duration-500 ${scrolled
@@ -302,55 +350,67 @@ export default function Home() {
       <section className="relative z-10 max-w-7xl mx-auto px-6 pt-20 pb-28 text-center space-y-8">
 
         {/* Glow pill */}
-        <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full border border-orange-500/20 bg-orange-500/5 text-orange-400 text-[10px] font-black uppercase tracking-widest shadow-inner shadow-orange-500/5 animate-pulse">
-          <Sparkles size={11} className="animate-spin-slow" />
-          <span>Next-Generation Dining Operations</span>
-        </div>
+        <AnimateOnScroll variant="scaleIn" delay={0.1}>
+          <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full border border-orange-500/20 bg-orange-500/5 text-orange-400 text-[10px] font-black uppercase tracking-widest shadow-inner shadow-orange-500/5 glow-badge">
+            <Sparkles size={11} className="animate-spin-slow" />
+            <span>Next-Generation Dining Operations</span>
+          </div>
+        </AnimateOnScroll>
 
-        <h1 className="text-4xl sm:text-5xl xl:text-6xl font-black leading-[1.1] tracking-tighter max-w-4xl mx-auto">
-          The Smartest Way to <br />
-          <span className="bg-gradient-to-r from-orange-400 via-amber-400 to-yellow-500 bg-clip-text text-transparent hover:scale-[1.03] hover:brightness-110 active:scale-[0.98] transition-all duration-300 cursor-default select-none inline-block py-1">
-            Serve & Scale Your Restaurant
-          </span>
-        </h1>
+        <AnimateOnScroll variant="fadeUp" delay={0.2} duration={0.8}>
+          <h1 className="text-4xl sm:text-5xl xl:text-7xl font-black leading-[1.05] tracking-tighter max-w-5xl mx-auto">
+            <span className="text-shimmer">The Smartest Way to</span> <br />
+            <span className="bg-gradient-to-r from-orange-400 via-amber-400 to-yellow-500 bg-clip-text text-transparent hover:scale-[1.03] hover:brightness-110 active:scale-[0.98] transition-all duration-300 cursor-default select-none inline-block py-1">
+              Serve & Scale Your Restaurant
+            </span>
+          </h1>
+        </AnimateOnScroll>
 
-        <p className="text-gray-400 text-sm md:text-base max-w-3xl mx-auto leading-relaxed font-semibold">
-          Empower your hotel with an integrated ecosystem — dynamic table QR menus, secure Razorpay checkout gateway, live kitchen display dashboards (KDS), and deep revenue statistics. Set up in less than 10 minutes.
-        </p>
+        <AnimateOnScroll variant="fadeUp" delay={0.35}>
+          <p className="text-gray-400 text-sm md:text-base max-w-3xl mx-auto leading-relaxed font-semibold">
+            Empower your hotel with an integrated ecosystem — dynamic table QR menus, secure Razorpay checkout gateway, live kitchen display dashboards (KDS), and deep revenue statistics. Set up in less than 10 minutes.
+          </p>
+        </AnimateOnScroll>
 
         {/* CTAs */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
-          <a
-            href="#pricing"
-            className="w-full sm:w-auto bg-gradient-to-r from-orange-500 via-orange-600 to-amber-600 text-white px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-3 shadow-2xl shadow-orange-500/20 hover:scale-[1.02] active:scale-95 transition-all group"
-          >
-            <Flame size={14} className="fill-white" />
-            <span>Start Free Trial</span>
-            <ArrowRight size={14} className="group-hover:translate-x-1.5 transition-transform" />
-          </a>
-          <a
-            href="#interactive-demo"
-            className="w-full sm:w-auto border border-gray-800 bg-gray-900/10 backdrop-blur-sm text-gray-300 hover:text-white px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-gray-900/40 transition-all hover:border-gray-700"
-          >
-            <Play size={12} className="text-orange-500 fill-orange-500 animate-pulse" />
-            <span>Interactive Demo</span>
-          </a>
-        </div>
+        <AnimateOnScroll variant="fadeUp" delay={0.5}>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
+            <a
+              href="#pricing"
+              className="cta-glow w-full sm:w-auto bg-gradient-to-r from-orange-500 via-orange-600 to-amber-600 text-white px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-3 shadow-2xl shadow-orange-500/20 hover:scale-[1.03] active:scale-95 transition-all group"
+            >
+              <Flame size={14} className="fill-white" />
+              <span>Start Free Trial</span>
+              <ArrowRight size={14} className="group-hover:translate-x-1.5 transition-transform" />
+            </a>
+            <a
+              href="#interactive-demo"
+              className="w-full sm:w-auto border border-gray-800 bg-gray-900/10 backdrop-blur-sm text-gray-300 hover:text-white px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-gray-900/40 transition-all hover:border-gray-700"
+            >
+              <Play size={12} className="text-orange-500 fill-orange-500 animate-pulse" />
+              <span>Interactive Demo</span>
+            </a>
+          </div>
+        </AnimateOnScroll>
 
         {/* Mini stats */}
-        <div className="pt-16 max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-4">
+        <StaggerContainer className="pt-16 max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-4" staggerDelay={0.1}>
           {[
             { value: "50+", label: "Hotels Live" },
-            { value: "10K+", label: "Orders Logged" },
-            { value: "99.99%", label: "System Uptime" },
-            { value: "₹45L+", label: "Revenue Processed" }
+            { value: `${liveOrders}+`, label: "Orders Logged" },
+            { value: "98.86%", label: "System Uptime" },
+            { value: "₹12L+", label: "Revenue Processed" }
           ].map((s, idx) => (
-            <div key={idx} className="glass-card-dark p-6 rounded-2xl border border-gray-900/50 text-center flex flex-col justify-center">
-              <div className="text-2xl md:text-3xl font-black text-white bg-gradient-to-r from-white via-white to-gray-400 bg-clip-text text-transparent">{s.value}</div>
-              <div className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mt-1">{s.label}</div>
-            </div>
+            <StaggerItem key={idx} variant="scaleIn">
+              <div className="glass-card-dark stat-card-glow p-6 rounded-2xl border border-gray-900/50 text-center flex flex-col justify-center">
+                <div className="text-2xl md:text-3xl font-black text-white bg-gradient-to-r from-white via-white to-gray-400 bg-clip-text text-transparent">
+                  <CountUp value={s.value} />
+                </div>
+                <div className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mt-1">{s.label}</div>
+              </div>
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerContainer>
       </section>
 
       {/* ── HOTEL BRAND CAROUSEL (Cool Infinite Loop) ── */}
@@ -362,10 +422,14 @@ export default function Home() {
           {[1, 2].map((loop) => (
             <div key={loop} className="flex gap-16 items-center">
               <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><Utensils size={14} className="text-orange-500" /> Grand Palace Resort</span>
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><QrCode size={14} className="text-yellow-500" /> Joshi Wadewale</span>
               <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><Star size={14} className="text-amber-500 fill-amber-500" /> Spicy Grill Restaurant</span>
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><Utensils size={14} className="text-orange-500" /> Conrad Pune</span>
               <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><QrCode size={14} className="text-yellow-500" /> Royal Feast Banquet</span>
               <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><Utensils size={14} className="text-orange-500" /> The Golden Crust Cafe</span>
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><Star size={14} className="text-amber-500 fill-amber-500" /> Hotel Radha</span>
               <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><Star size={14} className="text-amber-500 fill-amber-500" /> Midnight Food Hub</span>
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><QrCode size={14} className="text-yellow-500" /> O Hotel Pune</span>
               <span className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2"><QrCode size={14} className="text-yellow-500" /> Imperial Delicacies</span>
             </div>
           ))}
@@ -373,17 +437,20 @@ export default function Home() {
       </section>
 
       {/* ── HIGH-FIDELITY INTERACTIVE DEMO (THE WOW COMPONENT) ── */}
-      <section id="interactive-demo" className="relative z-10 max-w-7xl mx-auto px-6 py-28 space-y-12">
-        <div className="text-center space-y-3">
-          <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest">Experience HotByte</p>
-          <h2 className="text-3xl md:text-5xl font-black tracking-tight">Interactive Live App Simulator</h2>
-          <p className="text-xs md:text-sm text-gray-500 max-w-xl mx-auto font-semibold">
-            Click the tabs below to play with customer menus, active kitchen KDS pipelines, and metrics in real-time.
-          </p>
-        </div>
+      <section id="interactive-demo" className="relative z-10 max-w-7xl mx-auto px-6 py-28 space-y-12 section-glow-top">
+        <AnimateOnScroll variant="fadeUp">
+          <div className="text-center space-y-3">
+            <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest">Experience HotByte</p>
+            <h2 className="text-3xl md:text-5xl font-black tracking-tight">Interactive Live App Simulator</h2>
+            <p className="text-xs md:text-sm text-gray-500 max-w-xl mx-auto font-semibold">
+              Click the tabs below to play with customer menus, active kitchen KDS pipelines, and metrics in real-time.
+            </p>
+          </div>
+        </AnimateOnScroll>
 
         {/* Demo Core Wrapper */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch max-w-5xl mx-auto">
+        <AnimateOnScroll variant="fadeUp" delay={0.2}>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch max-w-5xl mx-auto">
 
           {/* Left Selector Tabs (L-Span-4) */}
           <div className="lg:col-span-4 flex flex-row lg:flex-col gap-3 overflow-x-auto lg:overflow-x-visible pb-3 lg:pb-0 scrollbar-none justify-between lg:justify-start">
@@ -612,23 +679,25 @@ export default function Home() {
             )}
 
           </div>
-
         </div>
-      </section>
+      </AnimateOnScroll>
+    </section>
 
       {/* ── CORE SAAS FEATURES SECTION ── */}
-      <section id="features" className="relative z-10 bg-white/[0.01] border-y border-gray-900 py-28">
+      <section id="features" className="relative z-10 bg-white/[0.01] border-y border-gray-900 py-28 section-glow-top">
         <div className="max-w-7xl mx-auto px-6">
 
-          <div className="text-center mb-20 space-y-3">
-            <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest">Architectural Pillars</p>
-            <h2 className="text-3xl md:text-5xl font-black tracking-tight">Engineered for Hospitality Excellence</h2>
-            <p className="text-xs md:text-sm text-gray-500 max-w-xl mx-auto font-semibold">
-              A comprehensive system built on PostgreSQL reliability and optimized Next.js speeds to transform guest ordering workflows.
-            </p>
-          </div>
+          <AnimateOnScroll variant="fadeUp">
+            <div className="text-center mb-20 space-y-3">
+              <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest">Architectural Pillars</p>
+              <h2 className="text-3xl md:text-5xl font-black tracking-tight">Engineered for Hospitality Excellence</h2>
+              <p className="text-xs md:text-sm text-gray-500 max-w-xl mx-auto font-semibold">
+                A comprehensive system built on PostgreSQL reliability and optimized Next.js speeds to transform guest ordering workflows.
+              </p>
+            </div>
+          </AnimateOnScroll>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <StaggerContainer className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" staggerDelay={0.1}>
             {[
               { icon: QrCode, color: "text-orange-400 bg-orange-400/10", title: "Dynamic QR Routing", desc: "Print unique QR codes per table. Guests scan, browse, and order instantly. No app installation or logins required." },
               { icon: ChefHat, color: "text-yellow-400 bg-yellow-400/10", title: "Kitchen Display Queue", desc: "Replace messy paper tickets. Real-time ticket queues for kitchen crews to prepare, timer count, and mark ready dynamically." },
@@ -639,19 +708,20 @@ export default function Home() {
             ].map((f, i) => {
               const IconComp = f.icon;
               return (
-                <div
-                  key={i}
-                  className="glass-card-dark p-8 rounded-3xl border border-gray-900/60 hover:border-orange-500/20 transition-all duration-300 group hover:scale-[1.01]"
-                >
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-105 transition-transform ${f.color}`}>
-                    <IconComp size={20} className="fill-transparent" />
+                <StaggerItem key={i} variant="fadeUp">
+                  <div
+                    className="glass-card-dark p-8 rounded-3xl border border-gray-900/60 hover:border-orange-500/20 transition-all duration-300 group hover:scale-[1.01] h-full"
+                  >
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-105 transition-transform ${f.color}`}>
+                      <IconComp size={20} className="fill-transparent" />
+                    </div>
+                    <h3 className="text-base font-extrabold text-white mb-2">{f.title}</h3>
+                    <p className="text-xs text-gray-500 font-semibold leading-relaxed">{f.desc}</p>
                   </div>
-                  <h3 className="text-base font-extrabold text-white mb-2">{f.title}</h3>
-                  <p className="text-xs text-gray-500 font-semibold leading-relaxed">{f.desc}</p>
-                </div>
+                </StaggerItem>
               );
             })}
-          </div>
+          </StaggerContainer>
 
         </div>
       </section>
@@ -659,12 +729,14 @@ export default function Home() {
       {/* ── ONBOARDING WORKFLOW (HOW IT WORKS) ── */}
       <section id="how-it-works" className="relative z-10 py-28">
         <div className="max-w-5xl mx-auto px-6 space-y-16">
-          <div className="text-center space-y-3">
-            <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest">Onboarding Workflow</p>
-            <h2 className="text-3xl md:text-5xl font-black tracking-tight">Active In 3 Steps</h2>
-          </div>
+          <AnimateOnScroll variant="fadeUp">
+            <div className="text-center space-y-3">
+              <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest">Onboarding Workflow</p>
+              <h2 className="text-3xl md:text-5xl font-black tracking-tight">Active In 3 Steps</h2>
+            </div>
+          </AnimateOnScroll>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+          <StaggerContainer className="grid grid-cols-1 md:grid-cols-3 gap-8 relative" staggerDelay={0.15}>
             {/* Connecting horizontal border */}
             <div className="hidden md:block absolute top-10 left-[12%] right-[12%] h-[1px] bg-gradient-to-r from-transparent via-gray-800 to-transparent z-0" />
 
@@ -673,60 +745,64 @@ export default function Home() {
               { step: "02", title: "Configure Menu & Tables", desc: "Log in to your hotel panel. Add dishes, categorize, host images securely, and set dynamic dining station tables count." },
               { step: "03", title: "Place QRs & Go Live", desc: "Print generated dynamic QR tables. Display them on dining tables. Customers browse and pay instantly!" }
             ].map((s, idx) => (
-              <div key={idx} className="glass-card-dark border border-gray-900/60 p-6 rounded-3xl flex flex-col items-center text-center gap-4 relative z-10 group hover:border-orange-500/20 transition-all duration-300">
-                <div className="w-14 h-14 rounded-full bg-[#0c0d12] border border-gray-800 flex items-center justify-center text-xl font-black text-orange-500 shadow-inner group-hover:scale-105 transition-transform">
-                  {s.step}
+              <StaggerItem key={idx} variant="fadeUp">
+                <div className="glass-card-dark border border-gray-900/60 p-6 rounded-3xl flex flex-col items-center text-center gap-4 relative z-10 group hover:border-orange-500/20 transition-all duration-300">
+                  <div className="w-14 h-14 rounded-full bg-[#0c0d12] border border-gray-800 flex items-center justify-center text-xl font-black text-orange-500 shadow-inner group-hover:scale-105 transition-transform">
+                    {s.step}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-white mb-2">{s.title}</h3>
+                    <p className="text-[11px] text-gray-500 font-semibold leading-relaxed">{s.desc}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-sm font-extrabold text-white mb-2">{s.title}</h3>
-                  <p className="text-[11px] text-gray-500 font-semibold leading-relaxed">{s.desc}</p>
-                </div>
-              </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerContainer>
 
         </div>
       </section>
 
       {/* ── PREMIUM PRICING SECTION ── */}
-      <section id="pricing" className="relative z-10 bg-white/[0.01] border-y border-gray-900 py-28">
+      <section id="pricing" className="relative z-10 bg-white/[0.01] border-y border-gray-900 py-28 section-glow-top">
         <div className="max-w-6xl mx-auto px-6 space-y-16">
 
-          <div className="text-center space-y-4">
-            <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest">Straightforward Pricing</p>
-            <h2 className="text-3xl md:text-5xl font-black tracking-tight">Flexible Subscriptions for High Margins</h2>
-            <p className="text-xs md:text-sm text-gray-500 max-w-lg mx-auto font-semibold">
-              Select monthly or annual billing cycles. Save up to 20% on all premium plans with full setup guidance.
-            </p>
+          <AnimateOnScroll variant="fadeUp">
+            <div className="text-center space-y-4">
+              <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest">Straightforward Pricing</p>
+              <h2 className="text-3xl md:text-5xl font-black tracking-tight">Flexible Subscriptions for High Margins</h2>
+              <p className="text-xs md:text-sm text-gray-500 max-w-lg mx-auto font-semibold">
+                Select monthly or annual billing cycles. Save up to 20% on all premium plans with full setup guidance.
+              </p>
 
-            {/* Billing cycle toggler */}
-            <div className="inline-flex items-center gap-1 bg-[#0c0d12] border border-gray-900 rounded-2xl p-1 mt-4">
-              <button
-                onClick={() => setBillingCycle("monthly")}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all ${billingCycle === "monthly" ? "bg-orange-500 text-white" : "text-gray-500 hover:text-gray-300"
-                  }`}
-              >
-                Monthly Plan
-              </button>
-              <button
-                onClick={() => setBillingCycle("yearly")}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all flex items-center gap-1.5 ${billingCycle === "yearly" ? "bg-orange-500 text-white" : "text-gray-500 hover:text-gray-300"
-                  }`}
-              >
-                <span>Yearly Saver</span>
-                <span className="px-1.5 py-0.5 bg-yellow-500/15 text-yellow-400 text-[8px] font-black rounded-md uppercase tracking-normal">Save 20%</span>
-              </button>
+              {/* Billing cycle toggler */}
+              <div className="inline-flex items-center gap-1 bg-[#0c0d12] border border-gray-900 rounded-2xl p-1 mt-4">
+                <button
+                  onClick={() => setBillingCycle("monthly")}
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all ${billingCycle === "monthly" ? "bg-orange-500 text-white" : "text-gray-500 hover:text-gray-300"
+                    }`}
+                >
+                  Monthly Plan
+                </button>
+                <button
+                  onClick={() => setBillingCycle("yearly")}
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all flex items-center gap-1.5 ${billingCycle === "yearly" ? "bg-orange-500 text-white" : "text-gray-500 hover:text-gray-300"
+                    }`}
+                >
+                  <span>Yearly Saver</span>
+                  <span className="px-1.5 py-0.5 bg-yellow-500/15 text-yellow-400 text-[8px] font-black rounded-md uppercase tracking-normal">Save 20%</span>
+                </button>
+              </div>
             </div>
-          </div>
+          </AnimateOnScroll>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+          <StaggerContainer className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch" staggerDelay={0.12}>
             {pricingPlans.map((plan, idx) => {
               const displayPrice = billingCycle === "yearly" && plan.yearlyPrice ? plan.yearlyPrice : plan.monthlyPrice;
               const hasOldPrice = billingCycle === "yearly" && plan.yearlyPrice;
 
               return (
+                <StaggerItem key={idx} variant="fadeUp">
                 <div
-                  key={idx}
                   className={`glass-card-dark p-8 rounded-[32px] border flex flex-col justify-between transition-all duration-300 ${idx === 1
                       ? "border-orange-500/40 bg-gradient-to-b from-orange-500/5 to-transparent scale-[1.01]"
                       : "border-gray-900/60"
@@ -773,24 +849,27 @@ export default function Home() {
                     </button>
                   </div>
                 </div>
+                </StaggerItem>
               );
             })}
-          </div>
+          </StaggerContainer>
 
         </div>
       </section>
 
       {/* ── ACCORDION FAQ SECTION ── */}
       <section className="relative z-10 max-w-4xl mx-auto px-6 py-28 space-y-12">
-        <div className="text-center space-y-3">
-          <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest">Platform FAQ</p>
-          <h2 className="text-3xl md:text-5xl font-black tracking-tight">Frequently Answered Queries</h2>
-        </div>
+        <AnimateOnScroll variant="fadeUp">
+          <div className="text-center space-y-3">
+            <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest">Platform FAQ</p>
+            <h2 className="text-3xl md:text-5xl font-black tracking-tight">Frequently Answered Queries</h2>
+          </div>
+        </AnimateOnScroll>
 
-        <div className="space-y-4">
+        <StaggerContainer className="space-y-4" staggerDelay={0.08}>
           {faqs.map((faq, idx) => (
+            <StaggerItem key={idx} variant="fadeUp">
             <div
-              key={idx}
               className="glass-card-dark border border-gray-900/60 rounded-2xl overflow-hidden transition-all duration-300"
             >
               <button
@@ -813,71 +892,74 @@ export default function Home() {
                 </div>
               )}
             </div>
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerContainer>
       </section>
 
       {/* ── CONVERTING STRIP (CTA BLOCK) ── */}
-      <section className="relative z-10 py-24 bg-gradient-to-t from-[#040406] to-transparent text-center space-y-8">
-        <div className="max-w-3xl mx-auto px-6 space-y-8">
-          <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center mx-auto shadow-2xl shadow-orange-500/20">
-            <Flame size={28} className="text-white fill-white animate-pulse" />
-          </div>
-          <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-none">
-            Ready to Digitalize Your Dining?
-          </h2>
-          <p className="text-gray-400 text-xs md:text-sm max-w-lg mx-auto font-semibold leading-relaxed">
-            Onboard your hotel and start serving immediately. Cancel or change plans at any time. Direct developer assistance included.
-          </p>
+      <section className="relative z-10 py-24 bg-gradient-to-t from-[#040406] to-transparent">
+        <AnimateOnScroll variant="scaleIn" className="max-w-4xl mx-auto px-6">
+          <div className="group relative bg-white/[0.03] border border-white/[0.06] rounded-3xl p-8 md:p-12 backdrop-blur-sm hover:bg-white/[0.05] hover:border-orange-500/20 transition-all duration-500">
+            {/* Hover glow orbs */}
+            <div className="absolute -inset-px rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none">
+              <div className="absolute top-0 right-0 w-72 h-72 bg-orange-500/10 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/2" />
+              <div className="absolute bottom-0 left-0 w-72 h-72 bg-amber-500/10 rounded-full blur-[120px] translate-y-1/2 -translate-x-1/2" />
+            </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center pt-2">
-            <a
-              href="mailto:admin@hotbyte.in?subject=I%20want%20to%20join%20HotByte"
-              className="bg-gradient-to-r from-orange-500 to-orange-600 hover:opacity-95 text-white px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-2xl shadow-orange-500/20 hover:scale-[1.01] active:scale-95 transition-all"
-            >
-              <Mail size={14} />
-              Onboard My Hotel
-            </a>
-            <a
-              href="https://instagram.com/hotbyte.in"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:brightness-110 text-white px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-95 shadow-xl shadow-pink-500/10 transition-all border-0"
-              style={{ background: "radial-gradient(circle at 30% 107%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285AEB 90%)" }}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white">
-                <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
-                <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-                <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
-              </svg>
-              Follow Us
-            </a>
+            <div className="relative text-center space-y-6">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[11px] font-bold uppercase tracking-wider group-hover:bg-orange-500/15 group-hover:border-orange-500/30 transition-all duration-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+                Start your free trial today — no credit card required
+              </div>
+
+              <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-none text-white">
+                Ready to Transform Your<br className="hidden sm:block" /> Restaurant Operations?
+              </h2>
+
+              <p className="text-gray-400 text-sm md:text-base max-w-2xl mx-auto font-medium leading-relaxed group-hover:text-gray-300 transition-colors duration-300">
+                From QR menus to real-time kitchen display and sales analytics — HotByte gives you everything you need to run a modern, contactless dining experience.
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
+                <a
+                  href="mailto:admin@hotbyte.in?subject=Onboard%20my%20hotel%20to%20HotByte"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.open(e.currentTarget.href, '_blank');
+                  }}
+                  className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-8 py-4 rounded-2xl font-bold text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40 hover:-translate-y-0.5 transition-all duration-300 active:scale-[0.97]"
+                >
+                  <Mail size={15} className="group-hover:scale-110 transition-transform duration-300" />
+                  <span className="relative">
+                    Get Started
+                    <span className="absolute inset-x-0 -bottom-0.5 h-[1.5px] bg-white/60 scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left" />
+                  </span>
+                  <ArrowRight size={14} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300" />
+                </a>
+                <a
+                  href="https://instagram.com/hotbyte.in"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group bg-white/[0.04] hover:bg-white/[0.09] text-white/80 hover:text-white px-8 py-4 rounded-2xl font-bold text-sm uppercase tracking-wider flex items-center justify-center gap-3 border border-white/[0.06] hover:border-white/20 hover:-translate-y-0.5 transition-all duration-300 active:scale-[0.97]"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 transition-transform duration-300"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+                  <span>Follow on Instagram</span>
+                </a>
+              </div>
+
+              <p className="text-[11px] text-gray-600 font-medium group-hover:text-gray-500 transition-colors duration-300">
+                Prefer email?{" "}
+                <a href="mailto:admin@hotbyte.in" className="text-orange-400 hover:text-orange-300 hover:underline font-bold transition-colors duration-200">admin@hotbyte.in</a>
+                {" "}— We respond within 2 hours
+              </p>
+            </div>
           </div>
-        </div>
+        </AnimateOnScroll>
       </section>
 
       {/* ── FOOTER ── */}
-      <footer className="relative z-10 border-t border-gray-900 bg-[#040406] py-12">
-        <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center">
-              <Flame size={14} className="text-white fill-white" />
-            </div>
-            <span className="text-sm font-black">Hot<span className="text-orange-500">Byte</span></span>
-          </div>
-
-          <nav className="flex items-center gap-6 text-[10px] text-gray-500 font-extrabold uppercase tracking-widest">
-            <a href="#features" className="hover:text-white transition-colors">Features</a>
-            <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
-            <a href="mailto:admin@hotbyte.in" className="hover:text-white transition-colors">Developer Contact</a>
-            <Link href="/admin/login" className="hover:text-white transition-colors">Partner Dashboard</Link>
-          </nav>
-
-          <p className="text-[9px] text-gray-600 font-bold uppercase tracking-widest">
-            &copy; 2026 HotByte Systems. All rights reserved.
-          </p>
-        </div>
-      </footer>
+      <Footer dark />
 
     </div>
   );

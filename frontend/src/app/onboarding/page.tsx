@@ -5,9 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { 
   Building2, UserCheck, ShieldCheck, Mail, Lock, Phone, MapPin, 
   ArrowRight, ArrowLeft, Loader2, Star, CheckCircle, Sparkles, Flame,
-  CreditCard, UploadCloud, Globe, Landmark
+  CreditCard, UploadCloud, Globe, Landmark, Eye, EyeOff
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { logger } from "@/lib/utils/logger";
 
 function OnboardingContent() {
   const router = useRouter();
@@ -17,6 +18,28 @@ function OnboardingContent() {
   const urlPlan = searchParams.get("plan") || "basic";
   const urlBilling = searchParams.get("billing") || "monthly";
   const urlToken = searchParams.get("token");
+
+  // CSRF token for API requests
+  const [csrfToken, setCsrfToken] = useState("");
+
+  // Helper to make state-changing API calls with CSRF protection
+  const apiPost = async (url: string, body: any) => {
+    let token = csrfToken;
+    if (!token) {
+      const res = await fetch("/api/auth/csrf-token");
+      const data = await res.json();
+      token = data.csrfToken;
+      if (token) setCsrfToken(token);
+    }
+    return fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-csrf-token": token,
+      },
+      body: JSON.stringify(body),
+    });
+  };
 
   // Onboarding wizard steps: 1 = Account, 2 = Payment, 3 = Hotel Details, 4 = Ready
   const [step, setStep] = useState(1);
@@ -29,6 +52,7 @@ function OnboardingContent() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [validatingAccount, setValidatingAccount] = useState(false);
 
   // --- Step 2: Payment State ---
@@ -52,6 +76,11 @@ function OnboardingContent() {
 
   // Pre-load session if returning with a token
   useEffect(() => {
+    // Fetch CSRF token on mount for all state-changing API calls
+    fetch("/api/auth/csrf-token")
+      .then((r) => r.json())
+      .then((d) => { if (d.csrfToken) setCsrfToken(d.csrfToken); })
+      .catch(() => {});
     if (urlToken) {
       const fetchSession = async () => {
         try {
@@ -68,7 +97,7 @@ function OnboardingContent() {
             }
           }
         } catch (err) {
-          console.error("Error pre-loading onboarding session:", err);
+          logger.error("Error pre-loading onboarding session:", err);
         } finally {
           setLoading(false);
         }
@@ -126,7 +155,7 @@ function OnboardingContent() {
         });
       },
       (error) => {
-        console.error("Geolocation error:", error);
+        logger.error("Geolocation error:", error);
         setDetectingLocation(false);
         // Fallback to randomized coordinates in major region
         setLatitude(22.5726 + (Math.random() - 0.5) * 0.1);
@@ -173,17 +202,13 @@ function OnboardingContent() {
       setValidatingAccount(true);
       
       // Pre-validate account uniqueness and create inactive session
-      const res = await fetch("/api/payments/create-inactive-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await apiPost("/api/payments/create-inactive-session", {
           plan: urlPlan,
           billing_cycle: urlBilling,
           username,
           email,
           password
-        })
-      });
+        });
 
       const data = await res.json();
       
@@ -191,14 +216,12 @@ function OnboardingContent() {
         setSessionToken(data.token);
         setPlanPrice(data.amount);
         setRazorpayOrderId(data.razorpay_order.id);
-        
-        // Advance to Step 2 checkout directly!
         setStep(2);
       } else {
         Swal.fire("Setup Blocked", data.message || "Username or email is already registered.", "error");
       }
     } catch (err) {
-      console.error("Account creation validation error:", err);
+      logger.error("Account creation validation error:", err);
       Swal.fire("Network Error", "Failed to connect to billing validator.", "error");
     } finally {
       setValidatingAccount(false);
@@ -249,16 +272,12 @@ function OnboardingContent() {
             }
           });
 
-          const verifyRes = await fetch("/api/payments/verify-onboarding-payment", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          const verifyRes = await apiPost("/api/payments/verify-onboarding-payment", {
               token: sessionToken,
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature
-            })
-          });
+            });
 
           const verifyData = await verifyRes.json();
 
@@ -296,7 +315,7 @@ function OnboardingContent() {
       rzp.open();
 
     } catch (err) {
-      console.error("Razorpay widget error:", err);
+      logger.error("Razorpay widget error:", err);
       Swal.fire("Payment Window Failed", "Unable to open billing gateway.", "error");
       setProcessingPayment(false);
     }
@@ -323,10 +342,7 @@ function OnboardingContent() {
         }
       });
 
-      const res = await fetch("/api/payments/complete-onboarding", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await apiPost("/api/payments/complete-onboarding", {
           token: sessionToken,
           hotelName,
           hotelSlug,
@@ -336,8 +352,7 @@ function OnboardingContent() {
           longitude,
           logoUrl,
           hotelType
-        })
-      });
+        });
 
       const data = await res.json();
 
@@ -356,7 +371,7 @@ function OnboardingContent() {
         Swal.fire("Onboarding Failed", data.message || "Failed to configure tenant. Check slug constraints.", "error");
       }
     } catch (err) {
-      console.error("Hotel onboarding submission error:", err);
+      logger.error("Hotel onboarding submission error:", err);
       Swal.fire("Network Error", "Failed to complete SaaS configurations.", "error");
     } finally {
       setProvisioning(false);
@@ -487,31 +502,52 @@ function OnboardingContent() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Password</label>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Password</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="text-[9px] font-black text-orange-500 hover:text-orange-400 uppercase tracking-wider flex items-center gap-1 cursor-pointer select-none"
+                    >
+                      {showPassword ? (
+                        <>
+                          <EyeOff size={11} />
+                          <span>Hide</span>
+                        </>
+                      ) : (
+                        <>
+                          <Eye size={11} />
+                          <span>Show</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 w-4 h-4" />
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Min 6 characters"
-                      className="w-full p-3.5 pl-11 bg-[#090b0e] border border-gray-900 rounded-xl outline-none focus:border-orange-500/50 text-sm font-bold text-white transition-colors"
+                      className="w-full p-3.5 pl-11 pr-11 bg-[#090b0e] border border-gray-900 rounded-xl outline-none focus:border-orange-500/50 text-sm font-bold text-white transition-colors"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Confirm Password</label>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Confirm Password</label>
+                  </div>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 w-4 h-4" />
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       required
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Repeat password"
-                      className="w-full p-3.5 pl-11 bg-[#090b0e] border border-gray-900 rounded-xl outline-none focus:border-orange-500/50 text-sm font-bold text-white transition-colors"
+                      className="w-full p-3.5 pl-11 pr-11 bg-[#090b0e] border border-gray-900 rounded-xl outline-none focus:border-orange-500/50 text-sm font-bold text-white transition-colors"
                     />
                   </div>
                 </div>

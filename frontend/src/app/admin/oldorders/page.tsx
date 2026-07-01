@@ -11,16 +11,19 @@ import {
   ShoppingBag,
   DollarSign,
 } from "lucide-react";
+import { logger } from "@/lib/utils/logger";
 
 interface OrderItem {
   order_item_id: number;
   item_name: string;
   quantity: number;
   price: number;
+  variant_name?: string;
 }
 
 interface HistoricOrder {
   order_id: number;
+  order_display_id?: string;
   customer_name: string;
   customer_phone: string;
   table_number: string;
@@ -28,7 +31,8 @@ interface HistoricOrder {
   status: "pending" | "preparing" | "ready" | "completed" | "cancelled";
   created_at: string;
   payment_status: "pending" | "completed";
-  payment_method: "cash" | "razorpay";
+  payment_method: "cash" | "razorpay" | "qr";
+  payment_reference?: string;
   items: OrderItem[];
 }
 
@@ -66,7 +70,7 @@ export default function OrderHistoryArchive() {
         setOrders(data.orders);
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     } finally {
       setLoading(false);
     }
@@ -238,7 +242,7 @@ export default function OrderHistoryArchive() {
                         <tr key={order.order_id} className="hover:bg-gray-900/20">
                           {/* ID */}
                           <td className="p-4 pl-6 font-extrabold text-white">
-                            #{order.order_id}
+                            {order.order_display_id || `#${order.order_id}`}
                           </td>
 
                           {/* Diner */}
@@ -249,16 +253,23 @@ export default function OrderHistoryArchive() {
                             <span className="text-[10px] text-gray-550 block mt-0.5">
                               +91 {order.customer_phone}
                             </span>
+                            {order.payment_reference && (
+                              <span className="text-[9px] font-mono font-bold text-orange-500 block mt-0.5">
+                                Ref: {order.payment_reference}
+                              </span>
+                            )}
                           </td>
 
                           {/* Table */}
-                          <td className="p-4 text-xs font-bold text-gray-400">
-                            Table {order.table_number.replace("T-", "")}
-                          </td>
+                          <td className="p-4">
+                             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-600/90 border border-orange-500/30 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm">
+                               🍽️ TABLE {order.table_number.replace("T-", "").padStart(2, "0")}
+                             </span>
+                           </td>
 
                           {/* Items Summary */}
                           <td className="p-4 max-w-xs truncate">
-                            {order.items.map((i) => `${i.item_name} (x${i.quantity})`).join(", ")}
+                            {order.items.map((i) => `${i.item_name}${i.variant_name ? ` (${i.variant_name})` : ""} (x${i.quantity})`).join(", ")}
                           </td>
 
                           {/* Gross Amount */}

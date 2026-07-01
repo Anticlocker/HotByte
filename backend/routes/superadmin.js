@@ -7,6 +7,7 @@ const { requireAdmin } = require("./auth");
 const { seedDefaultMenu } = require("./seedDefaultMenu");
 
 const bcrypt = require("bcrypt");
+const xss = require("xss");
 const SALT_ROUNDS = 12;
 
 // Hashing helper for password
@@ -49,6 +50,7 @@ router.get("/hotels", async (req, res) => {
         h.require_customer_auth,
         h.customer_auth_required,
         h.suspicious_activity_mode,
+        h.location_ordering_enabled,
         (SELECT COUNT(*) FROM admins a WHERE a.hotel_id = h.hotel_id) as manager_count,
         (SELECT COUNT(*) FROM menu_items m WHERE m.hotel_id = h.hotel_id) as item_count,
         (SELECT COUNT(*) FROM orders o WHERE o.hotel_id = h.hotel_id) as order_count,
@@ -77,6 +79,7 @@ router.get("/hotels", async (req, res) => {
         hotelType: row.hotel_type || 'both',
         requireCustomerAuth: row.customer_auth_required || row.require_customer_auth || false,
         suspiciousActivityMode: row.suspicious_activity_mode || false,
+        locationOrderingEnabled: row.location_ordering_enabled !== false,
         managerCount: parseInt(row.manager_count),
         itemCount: parseInt(row.item_count),
         orderCount: parseInt(row.order_count),
@@ -97,7 +100,7 @@ router.post("/hotels", async (req, res) => {
   const { 
     name, slug, phone, address, plan, tableCount,
     adminName, adminUsername, adminEmail, adminPassword,
-    latitude, longitude, orderRadius, hotelType
+    latitude, longitude, orderRadius, hotelType, locationOrderingEnabled
   } = req.body;
 
   if (!name || !slug) {
@@ -132,7 +135,11 @@ router.post("/hotels", async (req, res) => {
 
     // Check for existing admin email
     if (adminEmail && adminEmail.trim() !== "") {
-      const existingEmail = await db.query("SELECT admin_id FROM public.admins WHERE email = $1", [adminEmail.trim()]);
+      const cleanEmail = adminEmail.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) || cleanEmail.length > 254) {
+        return res.status(400).json({ success: false, message: "Invalid admin email address." });
+      }
+      const existingEmail = await db.query("SELECT admin_id FROM public.admins WHERE email = $1", [cleanEmail]);
       if (existingEmail.rows.length > 0) {
         return res.status(409).json({ success: false, message: "This email address is already registered." });
       }
@@ -154,9 +161,10 @@ router.post("/hotels", async (req, res) => {
       const validHotelTypes = ['veg', 'nonveg', 'both'];
       const safeHotelType = validHotelTypes.includes(hotelType) ? hotelType : 'both';
       const authReq = req.body.requireCustomerAuth === true || req.body.requireCustomerAuth === 'true';
+      const locOrdering = locationOrderingEnabled !== false && locationOrderingEnabled !== 'false';
       const hotelResult = await client.query(
-        "INSERT INTO public.hotels (name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, require_customer_auth, customer_auth_required) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING hotel_id, name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, require_customer_auth, customer_auth_required, created_at",
-        [name.trim(), cleanSlug, phone ? phone.trim() : null, address ? address.trim() : null, hotelPlan, trialEndsAt, tables, lat, lng, radius, safeHotelType, authReq, authReq]
+        "INSERT INTO public.hotels (name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, require_customer_auth, customer_auth_required, location_ordering_enabled) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING hotel_id, name, slug, phone, address, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, require_customer_auth, customer_auth_required, location_ordering_enabled, created_at",
+        [xss(name.trim()), cleanSlug, phone ? xss(phone.trim()) : null, address ? xss(address.trim()) : null, hotelPlan, trialEndsAt, tables, lat, lng, radius, safeHotelType, authReq, authReq, locOrdering]
       );
       const newHotel = hotelResult.rows[0];
 
@@ -164,7 +172,7 @@ router.post("/hotels", async (req, res) => {
       const hashedAdminPassword = await hashPassword(adminPassword);
       const adminResult = await client.query(
         "INSERT INTO public.admins (name, username, email, password, hotel_id, role) VALUES ($1, $2, $3, $4, $5, 'admin') RETURNING admin_id, name, username, email, hotel_id, role, created_at",
-        [adminName ? adminName.trim() : null, adminUsername.trim(), adminEmail && adminEmail.trim() !== "" ? adminEmail.trim() : null, hashedAdminPassword, newHotel.hotel_id]
+        [adminName ? xss(adminName.trim()) : null, adminUsername.trim(), adminEmail && adminEmail.trim() !== "" ? adminEmail.trim() : null, hashedAdminPassword, newHotel.hotel_id]
       );
       const newAdmin = adminResult.rows[0];
 
@@ -191,7 +199,7 @@ router.post("/hotels", async (req, res) => {
     }
   } catch (error) {
     logger.error("Superadmin register hotel error:", error);
-    return res.status(500).json({ success: false, message: "Failed to register hotel and admin: " + error.message });
+    return res.status(500).json({ success: false, message: "Failed to register hotel and admin." });
   }
 });
 
@@ -273,7 +281,7 @@ router.post("/admins", async (req, res) => {
     const hashedPassword = await hashPassword(password);
     const result = await db.query(
       "INSERT INTO public.admins (name, username, email, password, hotel_id, role) VALUES ($1, $2, $3, $4, $5, 'admin') RETURNING admin_id, name, username, email, hotel_id, role, created_at",
-      [name ? name.trim() : null, username.trim(), email ? email.trim() : null, hashedPassword, hotelId]
+      [name ? xss(name.trim()) : null, username.trim(), email ? email.trim() : null, hashedPassword, hotelId]
     );
 
     return res.json({
@@ -294,7 +302,7 @@ router.post("/admins", async (req, res) => {
 router.put("/hotels/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, slug, phone, address, isFrozen, plan, tableCount, latitude, longitude, orderRadius, hotel_type, requireCustomerAuth } = req.body;
+    const { name, slug, phone, address, isFrozen, plan, tableCount, latitude, longitude, orderRadius, hotel_type, requireCustomerAuth, locationOrderingEnabled } = req.body;
 
     if (!name || !slug) {
       return res.status(400).json({ success: false, message: "Hotel name and unique URL slug are required." });
@@ -324,7 +332,7 @@ router.put("/hotels/:id", async (req, res) => {
     const setClause = [
       'name = $1', 'slug = $2', 'phone = $3', 'address = $4', 'is_frozen = $5'
     ];
-    const params = [name.trim(), cleanSlug, phone ? phone.trim() : null, address ? address.trim() : null, isFrozen === true, id];
+    const params = [xss(name.trim()), cleanSlug, phone ? xss(phone.trim()) : null, address ? xss(address.trim()) : null, isFrozen === true, id];
     if (hotelPlan) { params.splice(params.length - 1, 0, hotelPlan); setClause.push(`plan = $${params.length - 1}`); }
     if (tables) { params.splice(params.length - 1, 0, tables); setClause.push(`table_count = $${params.length - 1}`); }
     if (lat !== undefined) { params.splice(params.length - 1, 0, lat); setClause.push(`latitude = $${params.length - 1}`); }
@@ -339,9 +347,14 @@ router.put("/hotels/:id", async (req, res) => {
       params.splice(params.length - 1, 0, val);
       setClause.push(`customer_auth_required = $${params.length - 1}`);
     }
+    if (locationOrderingEnabled !== undefined) {
+      const val = locationOrderingEnabled === true || locationOrderingEnabled === 'true';
+      params.splice(params.length - 1, 0, val);
+      setClause.push(`location_ordering_enabled = $${params.length - 1}`);
+    }
 
     const result = await db.query(
-      `UPDATE public.hotels SET ${setClause.join(', ')} WHERE hotel_id = $${params.length} RETURNING hotel_id, name, slug, phone, address, is_frozen, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, require_customer_auth, customer_auth_required, created_at`,
+      `UPDATE public.hotels SET ${setClause.join(', ')} WHERE hotel_id = $${params.length} RETURNING hotel_id, name, slug, phone, address, is_frozen, plan, trial_ends_at, table_count, latitude, longitude, order_radius, hotel_type, require_customer_auth, customer_auth_required, location_ordering_enabled, created_at`,
       params
     );
 
@@ -383,6 +396,7 @@ router.put("/hotels/:id", async (req, res) => {
         orderRadius: row.order_radius || 30,
         hotelType: row.hotel_type || 'both',
         requireCustomerAuth: row.customer_auth_required || row.require_customer_auth || false,
+        locationOrderingEnabled: row.location_ordering_enabled !== false,
         createdAt: row.created_at
       }
     });
@@ -430,6 +444,265 @@ router.put("/hotels/:id/plan", async (req, res) => {
   } catch (error) {
     logger.error("Superadmin update plan error:", error);
     return res.status(500).json({ success: false, message: "Failed to update subscription plan." });
+  }
+});
+
+/**
+ * POST /api/superadmin/hotels/:id/extend-trial
+ * Extends a hotel's trial by a specified number of days
+ */
+router.post("/hotels/:id/extend-trial", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { days = 14 } = req.body;
+
+    const hotelRes = await db.query("SELECT trial_ends_at, plan FROM public.hotels WHERE hotel_id = $1", [id]);
+    if (hotelRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found." });
+    }
+
+    const hotel = hotelRes.rows[0];
+    const now = new Date();
+    const currentEnd = hotel.trial_ends_at ? new Date(hotel.trial_ends_at) : now;
+    const newEnd = new Date(Math.max(currentEnd.getTime(), now.getTime()) + days * 24 * 60 * 60 * 1000);
+
+    const result = await db.query(
+      `UPDATE public.hotels 
+       SET trial_ends_at = $1, plan = 'trial', is_frozen = FALSE, plan_changed_at = NOW()
+       WHERE hotel_id = $2
+       RETURNING hotel_id, name, slug, plan, trial_ends_at, is_frozen`,
+      [newEnd, id]
+    );
+
+    // Log to expiry history
+    await db.query(
+      `INSERT INTO public.expiry_history (hotel_id, event_type, previous_plan, new_plan, previous_expiry, new_expiry, triggered_by, admin_id, notes)
+       VALUES ($1, 'trial_extended', $2, 'trial', $3, $4, 'super_admin', $5, $6)`,
+      [id, hotel.plan, hotel.trial_ends_at, newEnd, req.admin?.id || null, `Trial extended by ${days} days via super admin`]
+    );
+
+    logger.info(`Super admin extended trial for hotel ${id} by ${days} days`);
+
+    return res.json({
+      success: true,
+      message: `Trial extended by ${days} days successfully!`,
+      hotel: result.rows[0]
+    });
+  } catch (error) {
+    logger.error("Extend trial error:", error);
+    return res.status(500).json({ success: false, message: "Failed to extend trial." });
+  }
+});
+
+/**
+ * POST /api/superadmin/hotels/:id/reactivate
+ * Reactivates a frozen hotel by unfreezing and optionally resetting trial/subscription
+ */
+router.post("/hotels/:id/reactivate", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { plan, extendDays = 14 } = req.body;
+
+    const hotelRes = await db.query("SELECT plan, trial_ends_at, is_frozen FROM public.hotels WHERE hotel_id = $1", [id]);
+    if (hotelRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found." });
+    }
+
+    const hotel = hotelRes.rows[0];
+    const targetPlan = plan || hotel.plan || 'trial';
+    const newTrialEnd = targetPlan === 'trial' ? new Date(Date.now() + extendDays * 24 * 60 * 60 * 1000) : null;
+
+    const result = await db.query(
+      `UPDATE public.hotels 
+       SET is_frozen = FALSE, plan = $1, trial_ends_at = $2, plan_changed_at = NOW()
+       WHERE hotel_id = $3
+       RETURNING hotel_id, name, slug, plan, trial_ends_at, is_frozen`,
+      [targetPlan, newTrialEnd, id]
+    );
+
+    await db.query(
+      `INSERT INTO public.expiry_history (hotel_id, event_type, previous_plan, new_plan, previous_expiry, new_expiry, triggered_by, admin_id, notes)
+       VALUES ($1, 'reactivated', $2, $3, $4, $5, 'super_admin', $6, $7)`,
+      [id, hotel.plan, targetPlan, hotel.trial_ends_at, newTrialEnd, req.admin?.id || null,
+       `Hotel reactivated by super admin. Plan: ${targetPlan}`]
+    );
+
+    logger.info(`Super admin reactivated hotel ${id}`);
+
+    return res.json({
+      success: true,
+      message: `Hotel reactivated successfully on ${targetPlan} plan!`,
+      hotel: result.rows[0]
+    });
+  } catch (error) {
+    logger.error("Reactivate hotel error:", error);
+    return res.status(500).json({ success: false, message: "Failed to reactivate hotel." });
+  }
+});
+
+/**
+ * GET /api/superadmin/expiry-history
+ * Returns expiry/subscription event history, optionally filtered by hotel_id
+ */
+router.get("/expiry-history", async (req, res) => {
+  try {
+    const { hotel_id, limit = 50, offset = 0 } = req.query;
+
+    let query = `SELECT eh.*, h.name AS hotel_name, h.slug AS hotel_slug
+                 FROM public.expiry_history eh
+                 JOIN public.hotels h ON eh.hotel_id = h.hotel_id`;
+    const params = [];
+
+    if (hotel_id) {
+      query += " WHERE eh.hotel_id = $1";
+      params.push(hotel_id);
+    }
+
+    query += " ORDER BY eh.created_at DESC LIMIT $" + (params.length + 1) + " OFFSET $" + (params.length + 2);
+    params.push(parseInt(limit) || 50, parseInt(offset) || 0);
+
+    const result = await db.query(query, params);
+    return res.json({ success: true, history: result.rows });
+  } catch (error) {
+    logger.error("Fetch expiry history error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch expiry history." });
+  }
+});
+
+/**
+ * GET /api/superadmin/settings/grace-period
+ * Returns current grace period configuration
+ */
+router.get("/settings/grace-period", async (req, res) => {
+  try {
+    const result = await db.query("SELECT value FROM public.super_admin_settings WHERE key = 'grace_period_days'");
+    const graceDays = result.rows.length > 0 ? parseInt(result.rows[0].value) : 0;
+    return res.json({ success: true, gracePeriodDays: graceDays });
+  } catch (error) {
+    logger.error("Fetch grace period error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch grace period settings." });
+  }
+});
+
+/**
+ * PUT /api/superadmin/settings/grace-period
+ * Updates grace period configuration
+ */
+router.put("/settings/grace-period", async (req, res) => {
+  try {
+    const { days } = req.body;
+    const graceDays = [0, 3, 5, 7].includes(parseInt(days)) ? parseInt(days) : 0;
+
+    await db.query(
+      `INSERT INTO public.super_admin_settings (key, value, description, updated_at)
+       VALUES ('grace_period_days', $1, 'Grace period in days after subscription/trial expiry before freezing', NOW())
+       ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
+      [String(graceDays)]
+    );
+
+    logger.info(`Super admin updated grace period to ${graceDays} days`);
+
+    return res.json({
+      success: true,
+      message: `Grace period set to ${graceDays} days.`,
+      gracePeriodDays: graceDays
+    });
+  } catch (error) {
+    logger.error("Update grace period error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update grace period." });
+  }
+});
+
+/**
+ * GET /api/superadmin/expiry-notifications
+ * Returns hotels whose subscription/trial is about to expire or has expired
+ * Notification schedule: 7 days, 3 days, 1 day before, and expired
+ */
+router.get("/expiry-notifications", async (req, res) => {
+  try {
+    const now = new Date();
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const oneDayFromNow = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000);
+
+    const result = await db.query(
+      `SELECT h.hotel_id, h.name, h.slug, h.plan, h.trial_ends_at, h.is_frozen,
+              s.expiry_date AS subscription_expiry_date
+       FROM public.hotels h
+       LEFT JOIN public.subscriptions s ON s.hotel_id = h.hotel_id AND s.status = 'active'
+       WHERE (h.plan = 'trial' AND h.trial_ends_at IS NOT NULL)
+          OR (h.plan != 'trial' AND s.expiry_date IS NOT NULL)
+       ORDER BY h.name`
+    );
+
+    const notifications = [];
+    for (const hotel of result.rows) {
+      const expiryDate = hotel.plan === 'trial' ? hotel.trial_ends_at : hotel.subscription_expiry_date;
+      if (!expiryDate) continue;
+
+      const expDate = new Date(expiryDate);
+      const daysUntil = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (hotel.is_frozen) {
+        const daysSince = Math.floor((now.getTime() - expDate.getTime()) / (1000 * 60 * 60 * 24));
+        notifications.push({
+          hotelId: hotel.hotel_id,
+          name: hotel.name,
+          slug: hotel.slug,
+          plan: hotel.plan,
+          type: 'expired',
+          daysSince,
+          expiryDate,
+          severity: 'critical'
+        });
+      } else if (daysUntil <= 1 && daysUntil >= 0) {
+        notifications.push({
+          hotelId: hotel.hotel_id,
+          name: hotel.name,
+          slug: hotel.slug,
+          plan: hotel.plan,
+          type: '1_day',
+          daysUntil,
+          expiryDate,
+          severity: 'warning'
+        });
+      } else if (daysUntil <= 3 && daysUntil > 1) {
+        notifications.push({
+          hotelId: hotel.hotel_id,
+          name: hotel.name,
+          slug: hotel.slug,
+          plan: hotel.plan,
+          type: '3_days',
+          daysUntil,
+          expiryDate,
+          severity: 'info'
+        });
+      } else if (daysUntil <= 7 && daysUntil > 3) {
+        notifications.push({
+          hotelId: hotel.hotel_id,
+          name: hotel.name,
+          slug: hotel.slug,
+          plan: hotel.plan,
+          type: '7_days',
+          daysUntil,
+          expiryDate,
+          severity: 'info'
+        });
+      }
+    }
+
+    // Sort by severity then expiry date
+    notifications.sort((a, b) => {
+      const severityOrder = { critical: 0, warning: 1, info: 2 };
+      const sDiff = (severityOrder[a.severity] || 3) - (severityOrder[b.severity] || 3);
+      if (sDiff !== 0) return sDiff;
+      return new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime();
+    });
+
+    return res.json({ success: true, notifications, total: notifications.length });
+  } catch (error) {
+    logger.error("Expiry notifications error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch expiry notifications." });
   }
 });
 
@@ -486,7 +759,7 @@ router.put("/admins/:id", async (req, res) => {
         WHERE admin_id = $6 AND role <> 'super_admin'
         RETURNING admin_id, name, username, email, hotel_id, role, created_at
       `;
-      params = [name ? name.trim() : null, username.trim(), email ? email.trim() : null, hashedPassword, hotelId, id];
+      params = [name ? xss(name.trim()) : null, username.trim(), email ? email.trim() : null, hashedPassword, hotelId, id];
     } else {
       queryText = `
         UPDATE public.admins 
@@ -494,7 +767,7 @@ router.put("/admins/:id", async (req, res) => {
         WHERE admin_id = $5 AND role <> 'super_admin'
         RETURNING admin_id, name, username, email, hotel_id, role, created_at
       `;
-      params = [name ? name.trim() : null, username.trim(), email ? email.trim() : null, hotelId, id];
+      params = [name ? xss(name.trim()) : null, username.trim(), email ? email.trim() : null, hotelId, id];
     }
 
     const result = await db.query(queryText, params);
@@ -615,7 +888,7 @@ router.delete("/hotels/:id", async (req, res) => {
   } catch (error) {
     await client.query("ROLLBACK");
     logger.error("Superadmin delete hotel error:", error);
-    return res.status(500).json({ success: false, message: "Failed to delete hotel: " + error.message });
+    return res.status(500).json({ success: false, message: "Failed to delete hotel." });
   } finally {
     client.release();
   }
@@ -711,6 +984,32 @@ router.put("/hotels/:id/auth-settings", async (req, res) => {
   } catch (error) {
     logger.error("Superadmin override auth error:", error);
     return res.status(500).json({ success: false, message: "Failed to override auth settings." });
+  }
+});
+
+/**
+ * PUT /api/superadmin/hotels/:id/location-ordering
+ * Super Admin overrides location-based ordering for any hotel
+ */
+router.put("/hotels/:id/location-ordering", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { locationOrderingEnabled } = req.body;
+
+    const hotelCheck = await db.query("SELECT hotel_id FROM public.hotels WHERE hotel_id = $1", [id]);
+    if (hotelCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found." });
+    }
+
+    await db.query(
+      "UPDATE public.hotels SET location_ordering_enabled = $1 WHERE hotel_id = $2",
+      [locationOrderingEnabled === true, id]
+    );
+
+    return res.json({ success: true, message: "Location-based ordering setting overridden successfully." });
+  } catch (error) {
+    logger.error("Superadmin override location ordering error:", error);
+    return res.status(500).json({ success: false, message: "Failed to override location-based ordering settings." });
   }
 });
 

@@ -1,15 +1,19 @@
 "use client";
 
 import { useState, useEffect, useRef, Suspense } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import CustomerNavbar from "@/components/CustomerNavbar";
+import Footer from "@/components/Footer";
 import { KeyRound, ShieldCheck } from "lucide-react";
-import Swal from "sweetalert2";
 import { useTranslation } from 'react-i18next';
+import { useNotification } from "@/context/NotificationContext";
+import { logger } from "@/lib/utils/logger";
 import '@/i18n';
 
 function LoginContent() {
+  const notif = useNotification();
   const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -18,16 +22,8 @@ function LoginContent() {
   const [googleScriptLoaded, setGoogleScriptLoaded] = useState(false);
   const [clientId, setClientId] = useState<string>("");
   const [loading, setLoading] = useState(false);
-  const [isLocalDev, setIsLocalDev] = useState(false);
   const googleInitialized = useRef(false);
   const loginCallbackRef = useRef<any>(null);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setIsLocalDev(window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || process.env.NODE_ENV === "development");
-    }
-  }, []);
-
 
   useEffect(() => {
     // 1. Session check to redirect logged-in users to their correct menu
@@ -65,19 +61,13 @@ function LoginContent() {
       const data = await res.json();
 
       if (data.success) {
-        Swal.fire({
-          title: t('login.loggedIn'),
-          text: t('login.welcomeMsg'),
-          icon: "success",
-          timer: 1500,
-          showConfirmButton: false,
-        });
+        notif.success(t('login.loggedIn'), t('login.welcomeMsg'));
         router.push(`/${hotelSlug}/menu`);
       } else {
-        Swal.fire(t('login.verificationFailed'), data.message || "Google login failed.", "error");
+        notif.error(t('login.verificationFailed'), data.message || "Google login failed.");
       }
     } catch (err) {
-      Swal.fire(t('login.networkError'), t('login.networkErrorMsg'), "error");
+      notif.error(t('login.networkError'), t('login.networkErrorMsg'));
     } finally {
       setLoading(false);
     }
@@ -113,25 +103,28 @@ function LoginContent() {
         }
       );
 
-      // @ts-ignore
-      window.google?.accounts.id.prompt((_notification: any) => {
-        // One Tap prompt shown
-      });
+      // Only prompt One Tap in non-local environments to prevent FedCM origin mismatches
+      if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+        // @ts-ignore
+        window.google?.accounts.id.prompt((_notification: any) => {
+          // One Tap prompt shown
+        });
+      }
     } catch (err) {
       googleInitialized.current = false;
-      console.error("Failed to render Google Login button:", err);
+      logger.error("Failed to render Google Login button:", err);
     }
   }, [clientId, googleScriptLoaded]);
 
   return (
-    <div className="mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700 bg-white dark:bg-[#0b0d11] transition-colors duration-300">
+    <div className="mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700 bg-white dark:bg-[#0b0d11] transition-colors duration-300 pt-14">
       <CustomerNavbar />
       
       {/* Load Google Client Script Dynamically */}
       <Script
         src="https://accounts.google.com/gsi/client"
         onLoad={() => setGoogleScriptLoaded(true)}
-        onError={() => console.error("Google Sign-In SDK failed to load")}
+        onError={() => logger.error("Google Sign-In SDK failed to load")}
         strategy="afterInteractive"
       />
 
@@ -168,27 +161,30 @@ function LoginContent() {
           <div className="w-full flex flex-col items-center justify-center min-h-[50px] relative z-10 my-4 gap-4">
             {!clientId ? (
               <div className="flex flex-col items-center gap-2">
-                <div className="w-8 h-8 border-3 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-8 h-8 border-[3px] border-orange-500 border-t-transparent rounded-full animate-spin"></div>
                 <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider">{t('login.preparing')}</span>
               </div>
             ) : (
               <div id="google-login-btn" className="transition-all duration-300 hover:scale-103 active:scale-97"></div>
             )}
 
-            {/* Mock Google Login for Local Development */}
-            {isLocalDev && (
-              <button
-                onClick={() => handleGoogleLoginResponse({ credential: "mock_google_dev_token" })}
-                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gray-50 hover:bg-gray-100 dark:bg-zinc-800/40 dark:hover:bg-zinc-800/85 text-gray-700 dark:text-gray-200 border border-dashed border-gray-200 dark:border-zinc-750 rounded-xl text-[10px] font-extrabold uppercase tracking-widest transition-all duration-200 w-full max-w-[320px] cursor-pointer shadow-sm hover:shadow-md hover:scale-[1.01] active:scale-[0.99] select-none"
-              >
-                🛠️ Local Dev: Bypass Google SSO
-              </button>
-            )}
+            {/* Legal agreement text */}
+            <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 text-center leading-relaxed px-2">
+              By continuing, you agree to our{" "}
+              <Link href="/terms-and-conditions" className="text-orange-500 hover:underline font-bold">
+                Terms &amp; Conditions
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy-policy" className="text-orange-500 hover:underline font-bold">
+                Privacy Policy
+              </Link>.
+            </p>
           </div>
 
           {loading && (
             <div className="flex items-center justify-center gap-2.5 mt-6 text-sm font-bold text-orange-500 animate-pulse">
               <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+
               <span>{t('login.verifying')}</span>
             </div>
           )}
@@ -203,11 +199,7 @@ function LoginContent() {
         </div>
       </main>
 
-      <footer className="w-full py-4 border-t border-gray-150/40 dark:border-zinc-800/40 bg-white/60 dark:bg-zinc-950/20 text-center transition-colors">
-        <p className="text-[10px] font-bold text-gray-450 dark:text-gray-500 uppercase tracking-[0.2em]">
-          {t('common.copyright')}
-        </p>
-      </footer>
+      <Footer />
     </div>
   );
 }

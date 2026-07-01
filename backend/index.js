@@ -41,11 +41,18 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "checkout.razorpay.com", "accounts.google.com"],
       styleSrc: ["'self'", "'unsafe-inline'", "cdnjs.cloudflare.com", "fonts.googleapis.com"],
-      imgSrc: ["'self'", "data:", "*.b-cdn.net", "images.unsplash.com"],
-      connectSrc: ["'self'", "https://api.razorpay.com"],
+      imgSrc: ["'self'", "data:", "*.b-cdn.net", "images.unsplash.com", "lh3.googleusercontent.com"],
+      connectSrc: ["'self'", "https://api.razorpay.com", "https://accounts.google.com", "https://oauth2.googleapis.com"],
       frameSrc: ["checkout.razorpay.com", "accounts.google.com"],
       fontSrc: ["'self'", "fonts.gstatic.com", "cdnjs.cloudflare.com"],
+      formAction: ["'self'"],
+      baseUri: ["'self'"],
     }
+  },
+  strictTransportSecurity: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
   }
 }));
 
@@ -81,19 +88,25 @@ app.use(cors({
     // Allow server-to-server requests (no origin header)
     if (!origin) return callback(null, true);
     
-    // Check against configured origins, production domains, and local loopbacks
+    // Check against configured origins, production domains, local loopbacks, and private network IPs
+    const isLocalIP = /^http:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
     const isAllowed = allowedOrigins.includes(origin) ||
       origin === 'https://www.rav1.in' ||
       origin === 'https://rav1.in' ||
-      origin.startsWith('http://localhost:') ||
-      origin.startsWith('http://127.0.0.1:');
+      origin === 'https://www.hotbyte.in' ||
+      origin === 'https://hotbyte.in' ||
+      origin.endsWith('.vercel.app') ||
+      origin.endsWith('.onrender.com') ||
+      origin.endsWith('.hotbyte.in') ||
+      origin.endsWith('.rav1.in') ||
+      isLocalIP;
       
     if (isAllowed) {
       callback(null, true);
     } else {
-      // ✅ SECURITY FIX: Reject disallowed origins
+      // ✅ SECURITY FIX: Reject disallowed origins without throwing 500
       logger.warn('CORS blocked request from disallowed origin', { origin });
-      callback(new Error(`CORS policy: Origin '${origin}' is not allowed.`));
+      callback(null, false);
     }
   },
   credentials: true // Cookies aur authentication headers allow karta hai
@@ -116,23 +129,14 @@ const adminLoginLimiter = rateLimit({
 // 📱 OTP Send endpoints ke liye rate limiting
 // Koi bhi IP 15 minutes me sirf 5 baar OTP request kar sakta hai
 // Isse OTP spam aur SMS bombing attacks rukti hain
-const sendOtpLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes ka window
-  max: 5, // Maximum 5 requests per IP
+const otpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Max 5 OTP requests per 15 minutes per IP
   message: { success: false, message: 'Too many OTP requests. Please try again after 15 minutes.' },
-  standardHeaders: true, // Rate limit info headers me bhejta hai
-  legacyHeaders: false, // Purane headers disable karta hai
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
-// 📱 OTP Verification endpoints ke liye rate limiting
-// 5 attempts limits set karta hai user block/timer ke liye
-const verifyOtpLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes ka window
-  max: 5, // Maximum 5 requests per IP
-  message: { success: false, message: 'Too many incorrect verification attempts. Please try again after 15 minutes.' },
-  standardHeaders: true, // Rate limit info headers me bhejta hai
-  legacyHeaders: false, // Purane headers disable karta hai
-});
 
 // 💳 Payment endpoints ke liye rate limiting
 // 15 minutes me max 10 payment requests per IP
@@ -141,6 +145,51 @@ const paymentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes ka window
   max: 10, // Maximum 10 requests per IP
   message: { success: false, message: 'Too many payment requests. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 🔐 Google Login rate limiting — prevent SSO token hammering
+const googleLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Max 20 Google SSO attempts per IP
+  message: { success: false, message: 'Too many login attempts. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 👤 Guest check-in rate limiting — prevent anonymous identity farming
+const guestCheckinLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30, // Max 30 guest check-ins per IP
+  message: { success: false, message: 'Too many guest check-in attempts. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 🔐 Super Admin routes rate limiting — prevent brute force on admin-level operations
+const superAdminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { success: false, message: 'Too many requests. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 🔐 Admin signup/forgot-password/reset-password rate limiting
+const adminAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { success: false, message: 'Too many admin auth attempts. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 🌐 Public onboarding endpoints rate limiting — prevent account creation spam
+const onboardingLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // Max 5 onboarding attempts per IP per hour
+  message: { success: false, message: 'Too many onboarding attempts. Please try again after an hour.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -161,6 +210,46 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Secret key se cookies ko encrypt karta hai (security ke liye)
 app.use(cookieParser(process.env.COOKIE_SECRET));
 
+// ================= CSRF PROTECTION =================
+// Double-submit cookie pattern: all state-changing requests must include
+// x-csrf-token header matching the csrfToken cookie value.
+// Auth routes (login, csrf-token) are excluded — SameSite=Strict cookies
+// on the session itself provide CSRF protection for authenticated routes.
+// Routes that are exempt from CSRF: login endpoints have no session yet,
+// so no csrfToken cookie exists. SameSite=Strict on the session cookie
+// already protects authenticated state-changing routes.
+const CSRF_EXEMPT_PATHS = [
+  '/api/auth/admin/login',
+  '/api/auth/admin/logout',
+  '/api/auth/logout',
+  '/api/auth/csrf-token',
+  '/api/auth/google-login',
+  '/api/auth/guest-checkin',
+];
+
+const csrfProtection = (req, res, next) => {
+  if (process.env.NODE_ENV === 'test') {
+    return next();
+  }
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    return next();
+  }
+  // Exempt login and pre-auth routes — no session cookie exists yet
+  const reqPath = req.path || '';
+  const fullPath = `/api${reqPath}`;
+  if (CSRF_EXEMPT_PATHS.some(p => fullPath === p || fullPath.startsWith(p + '/'))) {
+    return next();
+  }
+  const headerToken = req.headers['x-csrf-token'];
+  const cookieToken = req.cookies?.csrfToken;
+  if (!headerToken || !cookieToken || headerToken !== cookieToken) {
+    logger.warn(`[CSRF] Mismatch for ${req.method} ${req.path}: header=${headerToken ? 'present' : 'none'}, cookie=${cookieToken ? 'present' : 'none'}`);
+    return res.status(403).json({ success: false, message: 'Invalid or missing CSRF token.' });
+  }
+  next();
+};
+app.use('/api', csrfProtection);
+
 // ================= SECURITY HEADERS =================
 // 🛡️ Security headers browser ko batate hain ki website ko kaise protect karna hai
 
@@ -173,13 +262,19 @@ app.use((req, res, next) => {
   // Browser ka built-in XSS protection enable karta hai
   res.setHeader('X-XSS-Protection', '1; mode=block');
 
+  // Referrer Policy: don't leak full URL to third-party domains
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  // Permissions Policy: disable browser features this app doesn't use, allow geolocation
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)');
+
   next(); // Agle middleware ko call karta hai
 });
 
 // 🔄 Cache Control - Logout ke baad back button issue fix karta hai
-// Browser ko pages cache nahi karne deta
+// Browser ko pages cache nahi karne deta (applied selectively to API endpoints)
 // Isse logout ke baad back button dabane par protected pages nahi khulte
-app.use((req, res, next) => {
+app.use('/api', (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
@@ -198,9 +293,10 @@ const validateHotelHeader = require('./middleware/validateHotelHeader');
 // 🔐 Subscription check: trial expiry auto-freeze + frozen hotel block karta hai
 const checkSubscription = require('./middleware/checkSubscription');
 
-// Apply to all public menu and order routes (customer-facing)
+// Apply to all public menu, order, and ratings routes (customer-facing)
 app.use('/api/menu', validateHotelHeader, checkSubscription);
 app.use('/api/orders', validateHotelHeader, checkSubscription);
+app.use('/api/ratings', validateHotelHeader, checkSubscription);
 
 // ================= HEALTH CHECK ENDPOINT =================
 // ✅ Server running hai ya nahi check karne ke liye
@@ -219,9 +315,20 @@ app.get('/health', (req, res) => {
 
 // Rate limiting apply karo specific endpoints pe
 app.use('/api/auth/admin/login', adminLoginLimiter); // Admin login limit
-app.use('/api/auth/send-otp', sendOtpLimiter); // OTP bhejne ki limit
-app.use('/api/auth/verify-otp', verifyOtpLimiter); // OTP verify karne ki limit
+app.use('/api/auth/admin/signup', adminAuthLimiter); // Admin signup limit
+app.use('/api/auth/admin/forgot-otp', otpLimiter); // Forgot password OTP limit specifically
+app.use('/api/auth/admin/reset-password', adminAuthLimiter); // Reset password limit
+
+app.use('/api/auth/google-login', googleLoginLimiter); // Google SSO login limit
+app.use('/api/auth/guest-checkin', guestCheckinLimiter); // Guest check-in limit
 app.use('/api/payments', paymentLimiter); // Payment requests ki limit
+// Public onboarding endpoints — strict per-IP limit to prevent account creation spam
+app.use('/api/payments/create-onboarding-order', onboardingLimiter);
+app.use('/api/payments/validate-account', onboardingLimiter);
+app.use('/api/payments/verify-onboarding-payment', onboardingLimiter);
+app.use('/api/payments/complete-onboarding', onboardingLimiter);
+// Super admin routes — moderate limit for admin-level operations
+app.use('/api/superadmin', superAdminLimiter);
 
 // Authentication routes (Login, Signup, OTP, Session)
 app.use('/api/auth', require('./routes/auth'));
@@ -234,6 +341,8 @@ app.use('/api/menu', require('./routes/menu'));
 
 // Admin panel routes (Admin authentication required)
 app.use('/api/admin', require('./routes/admin'));
+// Tables routes are mounted inside admin.js at '/api/admin/tables'
+
 
 // Super Admin panel routes (Super Admin privileges required)
 app.use('/api/superadmin', require('./routes/superadmin'));
@@ -249,6 +358,9 @@ app.use('/api/sales', require('./routes/sales'));
 
 // Customer ratings aur reviews
 app.use('/api/ratings', require('./routes/ratings'));
+
+// Table routes are mounted INSIDE admin.js at '/tables' -> /api/admin/tables
+// (Direct mount removed to avoid duplicate path exposure)
 
 // Resolve short map links (e.g. maps.app.goo.gl) to bypass CORS and extract coordinates
 app.get('/api/geocode/resolve-short-url', async (req, res) => {
@@ -385,6 +497,9 @@ if (process.env.NODE_ENV !== 'test') {
   server = app.listen(port, () => {
     logger.info(`Server running on port ${port}`, { port, env: process.env.NODE_ENV || 'development' });
   });
+  // Fix for Next.js proxy ECONNRESET (socket hang up) issue
+  server.keepAliveTimeout = 61000;
+  server.headersTimeout = 65000;
 }
 
 // ================= GRACEFUL SHUTDOWN =================

@@ -3,17 +3,20 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ChefHat, Flame, Bell, CheckCircle2, Clock, Check, Utensils } from "lucide-react";
-import Swal from "sweetalert2";
+import { useNotification } from "@/context/NotificationContext";
+import { logger } from "@/lib/utils/logger";
 import { useAdminSession } from "@/context/AdminSessionContext";
 
 interface OrderItem {
   order_item_id: number;
   item_name: string;
   quantity: number;
+  variant_name?: string;
 }
 
 interface Order {
   order_id: number;
+  order_display_id?: string;
   table_number: string;
   total_amount: number;
   status: "pending" | "preparing" | "ready";
@@ -25,6 +28,7 @@ export default function KitchenKDS() {
   const router = useRouter();
   const { admin } = useAdminSession();
 
+  const notif = useNotification();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const prevPendingCountRef = useRef(0);
@@ -51,7 +55,7 @@ export default function KitchenKDS() {
         prevPendingCountRef.current = currentPendingCount;
       }
     } catch (err) {
-      console.error("Failed to load kitchen display system orders", err);
+      logger.error("Failed to load kitchen display system orders", err);
     } finally {
       setLoading(false);
     }
@@ -69,25 +73,24 @@ export default function KitchenKDS() {
 
   const handleUpdateStatus = async (orderId: number, nextStatus: "preparing" | "ready") => {
     try {
+      const getCsrfToken = () => {
+        if (typeof document === "undefined") return "";
+        const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+        return match ? decodeURIComponent(match[1]) : "";
+      };
       const res = await fetch(`/api/admin/orders/${orderId}/status`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({ status: nextStatus }),
       });
       const data = await res.json();
 
       if (data.success) {
-        Swal.fire({
-          title: nextStatus === "preparing" ? "Cooking Started!" : "Dish Ready!",
-          text: `Order #${orderId} moved forward.`,
-          icon: "success",
-          timer: 1000,
-          showConfirmButton: false,
-        });
+        notif.success(nextStatus === "preparing" ? "Cooking Started!" : "Dish Ready!", `Order #${orderId} moved forward.`);
         fetchKitchenOrders();
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     }
   };
 
@@ -244,33 +247,32 @@ function KitchenOrderCard({
     <div className="glass-card-dark p-5 rounded-2xl flex flex-col justify-between gap-5 border border-gray-850 shadow-md">
       <div className="space-y-4">
         {/* Card Header */}
-        <div className="flex justify-between items-start gap-4">
-          <div className="space-y-1">
-            <h3 className="font-extrabold text-sm text-white">Order #{order.order_id}</h3>
-            <span className="px-2 py-0.5 bg-gray-900 border border-gray-800 text-gray-400 rounded text-[9px] font-extrabold uppercase tracking-wide">
-              Table {order.table_number.replace("T-", "")}
-            </span>
+        <div className="flex flex-col gap-2.5 w-full">
+          <div className="flex justify-between items-center w-full">
+            <h3 className="font-extrabold text-xs text-gray-500">{order.order_display_id || `Order #${order.order_id}`}</h3>
+            <div
+              className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
+                mins > 15
+                  ? "bg-red-500/10 text-red-500 border-red-500/20 animate-pulse"
+                  : mins > 8
+                  ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
+                  : "bg-gray-900 text-gray-500 border-gray-800"
+              }`}
+            >
+              <Clock size={10} />
+              <span>{mins}m ago</span>
+            </div>
           </div>
-
-          <div
-            className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
-              mins > 15
-                ? "bg-red-500/10 text-red-500 border-red-500/20 animate-pulse"
-                : mins > 8
-                ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
-                : "bg-gray-900 text-gray-500 border-gray-800"
-            }`}
-          >
-            <Clock size={10} />
-            <span>{mins}m ago</span>
-          </div>
+          <span className="w-full text-center px-4 py-2 bg-orange-650 border border-orange-500 text-white rounded-xl text-lg font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20">
+            🍽️ TABLE {order.table_number.replace("T-", "").padStart(2, "0")}
+          </span>
         </div>
 
         {/* Ordered Item Dishes grid with massive sizes for easy cooking visibility */}
         <div className="space-y-2 pt-2 border-t border-gray-900">
           {order.items.map((item, idx) => (
             <div key={idx} className="flex justify-between items-start gap-3">
-              <span className="font-black text-sm text-gray-200">{item.item_name}</span>
+              <span className="font-black text-sm text-gray-200">{item.item_name} {item.variant_name ? `(${item.variant_name})` : ""}</span>
               <span className="font-black text-base text-[var(--orange)] bg-orange-500/5 px-2 py-0.5 rounded border border-orange-500/15 whitespace-nowrap">
                 x {item.quantity}
               </span>

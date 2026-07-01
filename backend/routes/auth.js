@@ -13,14 +13,29 @@ const ADMIN_SESSION_EXPIRY_HOURS = 24;
 const SUPER_ADMIN_SESSION_EXPIRY_HOURS = 90 * 24;
 const OTP_EXPIRY_MINUTES = 10;
 const MAX_OTP_ATTEMPTS = 5;
-const otpStore = new Map();
+// DB-backed OTP helpers (replaces in-memory Map)
+const otpStoreGet = async (key) => {
+  const res = await db.query("SELECT data, expires_at FROM public.otp_store WHERE otp_key = $1 AND expires_at > NOW()", [key]);
+  if (res.rows.length === 0) return null;
+  const row = res.rows[0];
+  return { ...row.data, expiresAt: new Date(row.expires_at).getTime() };
+};
+const otpStoreSet = async (key, data) => {
+  const expiresAt = new Date(data.expiresAt).toISOString();
+  const jsonData = JSON.stringify(data);
+  await db.query(
+    `INSERT INTO public.otp_store (otp_key, data, expires_at) VALUES ($1, $2::jsonb, $3)
+     ON CONFLICT (otp_key) DO UPDATE SET data = $2::jsonb, expires_at = $3, created_at = CURRENT_TIMESTAMP`,
+    [key, jsonData, expiresAt]
+  );
+};
+const otpStoreDelete = async (key) => {
+  await db.query("DELETE FROM public.otp_store WHERE otp_key = $1", [key]);
+};
 
 if (process.env.NODE_ENV !== "test") {
-  setInterval(() => {
-    const now = Date.now();
-    for (const [key, data] of otpStore.entries()) {
-      if (now > data.expiresAt) otpStore.delete(key);
-    }
+  setInterval(async () => {
+    try { await db.query("DELETE FROM public.otp_store WHERE expires_at < NOW()"); } catch (_) {}
   }, 5 * 60 * 1000);
 }
 
@@ -32,6 +47,7 @@ const hashPassword = async (pwd) => await bcrypt.hash(pwd, SALT_ROUNDS);
 const validateMobile = (m) => /^[6-9]\d{9}$/.test(String(m).replace(/\D/g, ""));
 const validateName = (n) => typeof n === "string" && n.trim().length >= 2 && /^[A-Za-z\s]+$/.test(n.trim());
 const validateOTP = (o) => /^\d{6}$/.test(o);
+const validateEmail = (e) => typeof e === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim()) && e.trim().length <= 254;
 const generateSessionId = () => crypto.randomBytes(32).toString("hex");
 const getClientIp = (req) => req.headers["x-forwarded-for"]?.split(",")[0] || req.ip || "unknown";
 
@@ -172,10 +188,14 @@ const requireAdmin = async (req, res, next) => {
 
       const isFrozen = hotelRes.rows[0].is_frozen;
       if (isFrozen && ["POST", "PUT", "DELETE"].includes(req.method)) {
-        return res.status(403).json({
-          success: false,
-          message: "Your hotel account is temporarily frozen. Mutating operations are locked."
-        });
+        const fullPath = req.originalUrl || req.url;
+        const isPaymentRoute = /\/payments\/(create-subscription-order|verify-subscription|admin-razorpay-key)/.test(fullPath);
+        if (!isPaymentRoute) {
+          return res.status(403).json({
+            success: false,
+            message: "Your hotel account is temporarily frozen. Mutating operations are locked."
+          });
+        }
       }
     }
     
@@ -197,7 +217,7 @@ const getGoogleClientId = () => {
   try {
     const fs = require("fs");
     const path = require("path");
-    const credPath = path.join(__dirname, "../../google_auth_credentiol.json");
+    const credPath = path.join(__dirname, "../../google_auth_credentials.json");
     if (fs.existsSync(credPath)) {
       const creds = JSON.parse(fs.readFileSync(credPath, "utf8"));
       if (creds.web && creds.web.client_id) {
@@ -209,6 +229,18 @@ const getGoogleClientId = () => {
   }
   return null;
 };
+
+// CSRF token endpoint — sets csrfToken cookie (readable by JS for double-submit)
+router.get("/csrf-token", (req, res) => {
+  const token = crypto.randomBytes(32).toString("hex");
+  res.cookie("csrfToken", token, {
+    httpOnly: false,
+    sameSite: "strict",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 24 * 60 * 60 * 1000
+  });
+  return res.json({ success: true, csrfToken: token });
+});
 
 router.get("/google-config", (req, res) => {
   const clientId = getGoogleClientId();
@@ -230,34 +262,23 @@ router.post("/google-login", async (req, res) => {
     }
     
     let googleUser;
-    // Local dev mock SSO bypass helper
-    if (credential === "mock_google_dev_token" && process.env.NODE_ENV === "development") {
-      googleUser = {
-        email: "dev.user@hotbyte.co",
-        name: "Dev User",
-        sub: "mock-google-id-12345",
-        picture: "https://lh3.googleusercontent.com/a/default-user",
-        aud: getGoogleClientId() || "mock-client-id"
-      };
-    } else {
-      try {
-        const response = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
-        googleUser = response.data;
-      } catch (err) {
-        logger.error("Google token verification failed:", err.message);
-        return res.status(401).json({ success: false, message: "Invalid or expired Google token." });
-      }
-      
-      // Verify audience to prevent malicious token reuse from other Google projects
-      const allowedClientId = getGoogleClientId();
-      if (!allowedClientId) {
-        logger.error("Google Client ID is not configured on the server.");
-        return res.status(500).json({ success: false, message: "Google authentication is not configured on the server." });
-      }
-      if (googleUser.aud !== allowedClientId) {
-        logger.error("Google token audience mismatch. Expected:", allowedClientId, "Got:", googleUser.aud);
-        return res.status(401).json({ success: false, message: "Google token verification failed (audience mismatch)." });
-      }
+    try {
+      const response = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
+      googleUser = response.data;
+    } catch (err) {
+      logger.error("Google token verification failed:", err.message);
+      return res.status(401).json({ success: false, message: "Invalid or expired Google token." });
+    }
+    
+    // Verify audience to prevent malicious token reuse from other Google projects
+    const allowedClientId = getGoogleClientId();
+    if (!allowedClientId) {
+      logger.error("Google Client ID is not configured on the server.");
+      return res.status(500).json({ success: false, message: "Google authentication is not configured on the server." });
+    }
+    if (googleUser.aud !== allowedClientId) {
+      logger.error("Google token audience mismatch. Expected:", allowedClientId, "Got:", googleUser.aud);
+      return res.status(401).json({ success: false, message: "Google token verification failed (audience mismatch)." });
     }
     
     if (!googleUser.email) {
@@ -311,11 +332,21 @@ router.post("/google-login", async (req, res) => {
       path: "/"
     });
     
+    // Set CSRF token for subsequent mutation requests
+    const csrfToken = crypto.randomBytes(32).toString("hex");
+    res.cookie("csrfToken", csrfToken, {
+      httpOnly: false,
+      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 24 * 60 * 60 * 1000
+    });
+    
     const hasDob = customer.dob !== null && customer.dob !== undefined;
     
     return res.json({
       success: true,
       message: "Google login successful",
+      csrfToken,
       customer: {
         id: customer.customer_id,
         name: customer.name,
@@ -355,9 +386,19 @@ router.get("/session-check", async (req, res) => {
     const hotelSlug = hotelRes.rows.length > 0 ? hotelRes.rows[0].slug : null;
 
     const hasDob = session.dob !== null && session.dob !== undefined;
-    
+
+    // Refresh CSRF token on session check
+    const csrfToken = crypto.randomBytes(32).toString("hex");
+    res.cookie("csrfToken", csrfToken, {
+      httpOnly: false,
+      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 24 * 60 * 60 * 1000
+    });
+
     return res.json({
       authenticated: true,
+      csrfToken,
       customer: {
         id: session.customerId,
         name: session.name,
@@ -402,15 +443,27 @@ router.post("/admin/signup", requireAdmin, async (req, res) => {
       return res.status(400).json({ success: false, message: "Username and passwords required." });
     }
     
+    if (typeof username !== "string" || username.trim().length < 3 || username.trim().length > 50) {
+      return res.status(400).json({ success: false, message: "Username must be 3-50 characters." });
+    }
+    
+    if (name && (!validateName(name) || name.trim().length > 100)) {
+      return res.status(400).json({ success: false, message: "Invalid name (2-100 characters, letters only)." });
+    }
+    
+    if (email && !validateEmail(email)) {
+      return res.status(400).json({ success: false, message: "Invalid email address." });
+    }
+    
     if (password !== confirmPassword) {
       return res.status(400).json({ success: false, message: "Passwords do not match." });
     }
     
-    if (password.length < 6) {
-      return res.status(400).json({ success: false, message: "Password must be 6+ characters." });
+    if (password.length < 6 || password.length > 128) {
+      return res.status(400).json({ success: false, message: "Password must be 6-128 characters." });
     }
 
-    const existing = await db.query("SELECT admin_id FROM admins WHERE username = $1", [username]);
+    const existing = await db.query("SELECT admin_id FROM admins WHERE username = $1", [username.trim()]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ success: false, message: "Username exists." });
     }
@@ -441,10 +494,23 @@ router.post("/admin/signup", requireAdmin, async (req, res) => {
 
 router.post("/admin/login", async (req, res) => {
   try {
-    const { username, password, role } = req.body;
-    
-    if (!username || !password || !role) {
+    let { username, password, role } = req.body;
+
+    // If all three fields are missing, preserve original error message for backward compatibility
+    if (!username && !password && !role) {
       return res.status(400).json({ success: false, message: "Username, password, and role required." });
+    }
+
+    // Role is optional; default to 'admin' for standard admin logins when username/password are present
+    if (!role) role = 'admin';
+
+    if (!username || !password) {
+      return res.status(400).json({ success: false, message: "Username and password required." });
+    }
+
+    username = String(username).trim();
+    if (username.length < 3 || username.length > 50) {
+      return res.status(400).json({ success: false, message: "Invalid username length." });
     }
 
     if (role !== "admin" && role !== "super_admin") {
@@ -462,24 +528,18 @@ router.post("/admin/login", async (req, res) => {
 
     const admin = result.rows[0];
     
-    // Safe password verification handling standard bcrypt & fallback legacy/seeded SHA-256 hashes
     let passwordMatch = false;
     try {
       if (admin.password && (admin.password.startsWith("$2a$") || admin.password.startsWith("$2b$") || admin.password.startsWith("$2y$"))) {
         passwordMatch = await bcrypt.compare(password, admin.password);
-      } else {
-        // Fallback for seeded SHA-256 accounts (64-char hex strings)
-        const sha256 = crypto.createHash("sha256").update(password).digest("hex");
-        passwordMatch = (sha256 === admin.password);
+      } else if (admin.password) {
+        // Fallback check for legacy SHA-256 hashes
+        const sha256Hash = crypto.createHash("sha256").update(password).digest("hex");
+        passwordMatch = (sha256Hash === admin.password);
         if (passwordMatch) {
-          // Re-hash and migrate to bcrypt
-          try {
-            const hashedPassword = await bcrypt.hash(password, 12);
-            await db.query("UPDATE admins SET password = $1 WHERE admin_id = $2", [hashedPassword, admin.admin_id]);
-            logger.info(`Migrated admin password to bcrypt for admin_id: ${admin.admin_id}`);
-          } catch (migrateErr) {
-            logger.error(`Failed to migrate admin password to bcrypt for admin_id: ${admin.admin_id}`, migrateErr);
-          }
+          // Re-hash and migrate to bcrypt transparently
+          const hashedPassword = await bcrypt.hash(password, 12);
+          await db.query("UPDATE admins SET password = $1 WHERE admin_id = $2", [hashedPassword, admin.admin_id]);
         }
       }
     } catch (err) {
@@ -535,10 +595,19 @@ router.post("/admin/login", async (req, res) => {
         hotelSlug = hotelRes.rows[0].slug;
       }
     }
+
+    const csrfToken = crypto.randomBytes(32).toString("hex");
+    res.cookie("csrfToken", csrfToken, {
+      httpOnly: false,
+      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: hours * 60 * 60 * 1000
+    });
     
     return res.json({
       success: true,
       message: "Admin login successful",
+      csrfToken,
       admin: { id: admin.admin_id, username: admin.username, hotelId: admin.hotel_id, role: admin.role, hotelSlug }
     });
   } catch (error) {
@@ -579,18 +648,18 @@ router.post("/admin/forgot-otp", async (req, res) => {
     }
 
     const otpKey = `${mobile}_admin_forgot`;
-    const existingOtp = otpStore.get(otpKey);
+    const existingOtp = await otpStoreGet(otpKey);
     if (existingOtp && Date.now() - (existingOtp.expiresAt - OTP_EXPIRY_MINUTES * 60 * 1000) < 60000) {
       return res.status(429).json({ success: false, message: "Please wait 60 seconds before requesting another OTP." });
     }
-    otpStore.delete(otpKey);
+    await otpStoreDelete(otpKey);
 
     const smsResult = await messageCentral.sendOTP(mobile);
     if (!smsResult.success) {
       return res.status(500).json({ success: false, message: smsResult.error || "Failed to send OTP via Message Central." });
     }
 
-    otpStore.set(otpKey, {
+    await otpStoreSet(otpKey, {
       type: "admin_forgot",
       username: admin.username,
       attempts: 0,
@@ -648,7 +717,7 @@ router.post("/admin/reset-password", async (req, res) => {
     }
 
     const otpKey = `${mobile}_admin_forgot`;
-    const otpRecord = otpStore.get(otpKey);
+    const otpRecord = await otpStoreGet(otpKey);
 
     if (!otpRecord || otpRecord.verified) {
       return res.status(400).json({ success: false, message: "No active OTP request found. Please request a new OTP." });
@@ -659,12 +728,12 @@ router.post("/admin/reset-password", async (req, res) => {
     }
 
     if (Date.now() > otpRecord.expiresAt) {
-      otpStore.delete(otpKey);
+      await otpStoreDelete(otpKey);
       return res.status(400).json({ success: false, message: "OTP has expired. Please request a new OTP." });
     }
 
     if (otpRecord.attempts >= MAX_OTP_ATTEMPTS) {
-      otpStore.delete(otpKey);
+      await otpStoreDelete(otpKey);
       return res.status(429).json({ success: false, message: "Too many incorrect OTP attempts. Please try again." });
     }
 
@@ -672,6 +741,7 @@ router.post("/admin/reset-password", async (req, res) => {
 
     if (!verifyResult.success || !verifyResult.verified) {
       otpRecord.attempts++;
+      await otpStoreSet(otpKey, otpRecord);
       return res.status(401).json({
         success: false,
         message: "Invalid OTP code.",
@@ -689,7 +759,7 @@ router.post("/admin/reset-password", async (req, res) => {
     // Delete any active sessions for the super admin
     await db.query("DELETE FROM sessions WHERE admin_id = $1", [admin.admin_id]);
 
-    otpStore.delete(otpKey);
+    await otpStoreDelete(otpKey);
 
     return res.json({ success: true, message: "Super Admin passkey reset successful. Please login with your new passkey." });
   } catch (error) {
@@ -712,12 +782,49 @@ router.get("/admin/session-check", async (req, res) => {
     let isFrozen = false;
     let hotelSlug = null;
     let hotelName = null;
+    let plan = 'trial';
+    let trialEndsAt = null;
+    let subscriptionExpiryDate = null;
+    let daysSinceExpiry = 0;
+    let gracePeriodRemaining = null;
     if (session.hotelId) {
-      const hotelRes = await db.query("SELECT name, slug, is_frozen FROM public.hotels WHERE hotel_id = $1", [session.hotelId]);
+      const hotelRes = await db.query(
+        `SELECT h.name, h.slug, h.is_frozen, h.plan, h.trial_ends_at,
+                s.expiry_date AS subscription_expiry_date
+         FROM public.hotels h
+         LEFT JOIN public.subscriptions s ON s.hotel_id = h.hotel_id AND s.status = 'active'
+         WHERE h.hotel_id = $1`,
+        [session.hotelId]
+      );
       if (hotelRes.rows.length > 0) {
-        hotelSlug = hotelRes.rows[0].slug;
-        hotelName = hotelRes.rows[0].name;
-        if (hotelRes.rows[0].is_frozen && session.role !== 'super_admin') {
+        const h = hotelRes.rows[0];
+        hotelSlug = h.slug;
+        hotelName = h.name;
+        plan = h.plan || 'trial';
+        trialEndsAt = h.trial_ends_at;
+        subscriptionExpiryDate = h.subscription_expiry_date;
+
+        // Check if expired
+        const now = new Date();
+        let expired = false;
+        let expiryDate = null;
+        if (plan === 'trial' && trialEndsAt) {
+          const trialEnd = new Date(trialEndsAt);
+          if (now > trialEnd) { expired = true; expiryDate = trialEnd; }
+        } else if (plan !== 'trial' && subscriptionExpiryDate) {
+          const subEnd = new Date(subscriptionExpiryDate);
+          if (now > subEnd) { expired = true; expiryDate = subEnd; }
+        }
+        if (expired && expiryDate) {
+          daysSinceExpiry = Math.floor((now.getTime() - expiryDate.getTime()) / (1000 * 60 * 60 * 24));
+          const graceRows = await db.query("SELECT value FROM public.super_admin_settings WHERE key = 'grace_period_days'");
+          const graceDays = graceRows.rows.length > 0 ? parseInt(graceRows.rows[0].value) : 0;
+          if (graceDays > 0) {
+            gracePeriodRemaining = Math.max(0, graceDays - daysSinceExpiry);
+          }
+        }
+
+        if (h.is_frozen && session.role !== 'super_admin') {
           isFrozen = true;
         }
       }
@@ -726,7 +833,12 @@ router.get("/admin/session-check", async (req, res) => {
     return res.json({
       authenticated: true,
       admin: { id: session.adminId, username: session.username, hotelId: session.hotelId, role: session.role, hotelSlug, hotelName, locale: session.locale },
-      isFrozen
+      isFrozen,
+      plan,
+      trialEndsAt,
+      subscriptionExpiryDate,
+      daysSinceExpiry,
+      gracePeriodRemaining
     });
   } catch (error) {
     logger.error("Admin session check error:", error);
@@ -764,12 +876,16 @@ router.post("/guest-checkin", async (req, res) => {
       return res.status(400).json({ success: false, message: "Please provide a valid name (at least 2 characters)." });
     }
 
+    if (!hotel_slug) {
+      return res.status(400).json({ success: false, message: "hotel_slug is required." });
+    }
+
     const cleanName = name.trim().replace(/\s+/g, " ").substring(0, 60);
 
     // Resolve hotel
     const hotelResult = await db.query(
       "SELECT hotel_id, customer_auth_required, is_frozen FROM public.hotels WHERE slug = $1",
-      [hotel_slug || "hotbyte"]
+      [hotel_slug]
     );
 
     if (hotelResult.rows.length === 0) {
@@ -823,9 +939,19 @@ router.post("/guest-checkin", async (req, res) => {
       path: "/"
     });
 
+    // Set CSRF token for subsequent mutation requests
+    const csrfToken = crypto.randomBytes(32).toString("hex");
+    res.cookie("csrfToken", csrfToken, {
+      httpOnly: false,
+      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 24 * 60 * 60 * 1000
+    });
+
     return res.json({
       success: true,
       message: "Guest check-in successful.",
+      csrfToken,
       customer: {
         id: customer.customer_id,
         name: customer.name,

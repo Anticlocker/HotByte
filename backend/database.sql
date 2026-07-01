@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS public.hotels (
     merchant_name   varchar(200),
     qr_code_url     text,
     hotel_type      VARCHAR(10)  DEFAULT 'both',
+    location_ordering_enabled BOOLEAN DEFAULT TRUE,
     settings_json   jsonb        DEFAULT '{}',
+    subscription_expiry_date timestamp,
     created_at      timestamp    DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT hotels_hotel_type_check CHECK (hotel_type IN ('veg', 'nonveg', 'both'))
 );
@@ -116,11 +118,24 @@ CREATE TABLE IF NOT EXISTS public.menu_items
 
 CREATE INDEX IF NOT EXISTS idx_menu_items_hotel_id ON public.menu_items(hotel_id);
 
+CREATE TABLE IF NOT EXISTS public.menu_item_variants
+(
+    id serial PRIMARY KEY,
+    menu_item_id integer REFERENCES public.menu_items(item_id) ON DELETE CASCADE,
+    variant_name character varying(100) NOT NULL,
+    price numeric(10, 2) NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_menu_item_variants_item_id ON public.menu_item_variants(menu_item_id);
+
 CREATE TABLE IF NOT EXISTS public.order_items
 (
     order_item_id serial NOT NULL,
     order_id integer,
     item_id integer,
+    variant_id integer REFERENCES public.menu_item_variants(id) ON DELETE SET NULL,
+    variant_name character varying(100),
     quantity integer NOT NULL,
     price numeric(10, 2) NOT NULL,
     CONSTRAINT order_items_pkey PRIMARY KEY (order_item_id)
@@ -134,11 +149,14 @@ CREATE TABLE IF NOT EXISTS public.orders
     total_amount numeric(10, 2) DEFAULT 0,
     status character varying(20) COLLATE pg_catalog."default" DEFAULT 'pending'::character varying,
     hotel_id integer REFERENCES public.hotels(hotel_id) ON DELETE CASCADE,
+    customer_name character varying(100) COLLATE pg_catalog."default",
+    order_display_id character varying(20) COLLATE pg_catalog."default",
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT orders_pkey PRIMARY KEY (order_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_orders_hotel_id ON public.orders(hotel_id);
+CREATE INDEX IF NOT EXISTS idx_orders_order_display_id ON public.orders(order_display_id);
 
 CREATE TABLE IF NOT EXISTS public.payments
 (
@@ -148,29 +166,30 @@ CREATE TABLE IF NOT EXISTS public.payments
     payment_status character varying(20) COLLATE pg_catalog."default",
     payment_method character varying(50) COLLATE pg_catalog."default",
     razorpay_payment_id character varying(200) COLLATE pg_catalog."default" UNIQUE,
+    payment_reference character varying(200) COLLATE pg_catalog."default",
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT payments_pkey PRIMARY KEY (payment_id)
 );
 
 -- Payment Sessions Table for Onboarding Flow
 CREATE TABLE IF NOT EXISTS public.payment_sessions (
-  id serial PRIMARY KEY,
-  session_token varchar(64) UNIQUE NOT NULL,
-  razorpay_order_id varchar(100),
-  razorpay_payment_id varchar(100),
-  plan varchar(20) NOT NULL,
-  billing_cycle varchar(10) DEFAULT 'monthly',
-  status varchar(30) DEFAULT 'pending_payment',
-  username varchar(50),
-  email varchar(100),
-  password varchar(200),
-  hotel_name varchar(200),
-  hotel_slug varchar(100),
-  hotel_phone varchar(20),
-  hotel_address text,
-  admin_name varchar(100),
-  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
-  expires_at timestamp DEFAULT (CURRENT_TIMESTAMP + INTERVAL '2 hours')
+  session_token VARCHAR(255) PRIMARY KEY,
+  razorpay_order_id VARCHAR(200) UNIQUE,
+  razorpay_payment_id VARCHAR(200) UNIQUE,
+  plan VARCHAR(50) NOT NULL,
+  billing_cycle VARCHAR(50) NOT NULL,
+  status VARCHAR(20) DEFAULT 'pending',
+  username VARCHAR(50),
+  email VARCHAR(100),
+  password VARCHAR(200),
+  name VARCHAR(100),
+  hotel_name VARCHAR(200),
+  hotel_slug VARCHAR(100),
+  hotel_phone VARCHAR(20),
+  hotel_address TEXT,
+  admin_name VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '2 hours')
 );
 
 CREATE INDEX IF NOT EXISTS idx_payment_sessions_token ON public.payment_sessions(session_token);
@@ -266,6 +285,8 @@ ALTER TABLE IF EXISTS public.payments
     ON DELETE NO ACTION;
 CREATE INDEX IF NOT EXISTS idx_payments_order_id
     ON public.payments(order_id);
+CREATE INDEX IF NOT EXISTS idx_payments_payment_reference
+    ON public.payments(payment_reference);
 
 
 ALTER TABLE IF EXISTS public.ratings
@@ -345,7 +366,7 @@ INSERT INTO public.subscription_plans (name, price_monthly, price_yearly, featur
 
 -- Data Seeding
 INSERT INTO public.admins (username, password, name, email) 
-VALUES ('ravi', '8ff9538e65e6781d654b811f88161d12455935ffb8f470815063b6ab6cb7fdff', 'Ravi Admin', 'ravi@HotByte.in')
+VALUES ('ravi', '$2b$12$YgdTOQYGthrOrPqYwFX.W.f/xzVfJK7nHopcr9VNMCKDG./3pX28K', 'Ravi Admin', 'ravi@HotByte.in')
 ON CONFLICT (username) DO UPDATE SET password = EXCLUDED.password;
 
 INSERT INTO public.menu_category (category_id, category_name) VALUES

@@ -3,22 +3,39 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, User, ShieldAlert, ArrowRight } from "lucide-react";
-import Swal from "sweetalert2";
+import { useNotification } from "@/context/NotificationContext";
+
+const getCsrfToken = () => {
+  if (typeof document === "undefined") return "";
+  const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : "";
+};
 
 function AdminLoginContent() {
+  const notif = useNotification();
   const router = useRouter();
   const searchParams = useSearchParams();
   const hotelSlug = searchParams?.get("hotel") ?? null;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [csrfToken, setCsrfToken] = useState("");
 
   useEffect(() => {
-    // Redirect if already logged in as admin
+    fetch("/api/auth/csrf-token")
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to fetch CSRF token");
+        return r.json();
+      })
+      .then((d) => { if (d && d.csrfToken) setCsrfToken(d.csrfToken); })
+      .catch(() => {});
     fetch("/api/auth/admin/session-check")
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Session check failed");
+        return res.json();
+      })
       .then((data) => {
-        if (data.authenticated && data.admin.role === "admin") {
+        if (data && data.authenticated && data.admin && data.admin.role === "admin") {
           const target = data.admin.hotelSlug ? `/admin?hotel=${data.admin.hotelSlug}` : "/admin";
           router.push(target);
         }
@@ -29,34 +46,29 @@ function AdminLoginContent() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) {
-      Swal.fire("Inputs Required", "Please enter both username and password.", "warning");
+      notif.warning("Inputs Required", "Please enter both username and password.");
       return;
     }
 
     setLoading(true);
     try {
+      const token = csrfToken || getCsrfToken();
       const res = await fetch("/api/auth/admin/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": token },
         body: JSON.stringify({ username, password, role: "admin", hotelSlug }),
       });
       const data = await res.json();
 
       if (data.success) {
-        Swal.fire({
-          title: "Access Granted!",
-          text: "Authorized session established.",
-          icon: "success",
-          timer: 1200,
-          showConfirmButton: false,
-        });
+        notif.success("Access Granted!", "Authorized session established.");
         const target = data.admin.hotelSlug ? `/admin?hotel=${data.admin.hotelSlug}` : "/admin";
         router.push(target);
       } else {
-        Swal.fire("Access Denied", data.message || "Invalid administrative credentials.", "error");
+        notif.error("Access Denied", data.message || "Invalid administrative credentials.");
       }
     } catch (err) {
-      Swal.fire("Connection Error", "Failed to communicate with authorization server.", "error");
+      notif.error("Connection Error", "Failed to communicate with authorization server.");
     } finally {
       setLoading(false);
     }

@@ -1,209 +1,314 @@
-// src/components/SubscriptionCard.tsx
-import React, { useMemo, useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { CheckCircle, Clock } from 'lucide-react';
-import Swal from 'sweetalert2';
+"use client"
+import React, { useState, useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
+import { Check, Crown, Star, Sparkles } from 'lucide-react';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface Plan {
+  plan_id: number;
+  name: string;
+  price_monthly: number;
+  price_yearly: number;
+  features: any; // may be string | string[] | object from API
+}
+
+interface CurrentSubscription {
+  plan_id: number;
+  expiry_date: string;
+  status: string;
+  start_date?: string;
+}
 
 interface Props {
-  plan: {
-    plan_id: number;
-    name: string;
-    price_monthly: number;
-    price_yearly: number;
-    features: any;
-  };
-  currentSubscription?: {
-    plan_id: number;
-    expiry_date: string;
-    status: string;
-    start_date?: string;
-  };
+  plan: Plan;
+  currentSubscription?: CurrentSubscription;
   onRenew: (planId: number) => void;
   onUpgrade: (planId: number) => void;
   isRecommended?: boolean;
 }
 
-const badgeColors: Record<string, string> = {
-  trial: 'bg-teal-500',
-  basic: 'bg-amber-500',
-  pro: 'bg-yellow-500',
+// ─── Hardcoded fallback feature lists (matches backend PLAN_FEATURES) ─────────
+const FALLBACK_FEATURES: Record<string, string[]> = {
+  trial: [
+    '14-Day Free Trial',
+    '1 Restaurant',
+    'Unlimited Categories',
+    'Unlimited Menu Items',
+    'QR Digital Menu',
+    'Table Wise QR Ordering',
+    'Hotel QR Payment',
+    'Google Customer Login',
+    'Customer Auth Toggle',
+    'Location Based Ordering',
+    'Order Management',
+    'Ratings & Reviews',
+    'Basic Analytics',
+    'Email Support',
+  ],
+  basic: [
+    'Everything in Trial',
+    'Unlimited Orders',
+    'Up to 3 Admin Managers',
+    'Sales Dashboard',
+    'Customer Logs',
+    'Restaurant Branding',
+    'Daily Sales Reports',
+    'Restaurant Settings',
+    'Priority Email Support',
+    'Monthly Database Backup',
+    'Performance Optimizations',
+  ],
+  pro: [
+    'Everything in Basic',
+    'Unlimited Admin Managers',
+    'Unlimited Staff Accounts',
+    'Kitchen Display System (KDS)',
+    'Advanced Analytics',
+    'Peak Hour Reports',
+    'Table Management',
+    'Premium QR Payment Verification',
+    'Restaurant Insights',
+    'Premium Dashboard',
+    'Dedicated Priority Support',
+    'Early Access Features',
+    'Future Enterprise Features',
+  ],
 };
 
-export const SubscriptionCard: React.FC<Props> = ({ plan, currentSubscription, onRenew, onUpgrade, isRecommended }) => {
-  const [now, setNow] = useState<number | null>(null);
+// ─── Normalize features from any shape into string[] ─────────────────────────
+function normalizeFeatures(features: any): string[] {
+  if (!features) return [];
 
-  useEffect(() => {
-    setNow(Date.now());
-  }, []);
+  // Already a proper string array
+  if (Array.isArray(features)) {
+    const strings = features.filter((f) => typeof f === 'string' && f.trim().length > 0);
+    // Guard: if we got character-level iteration (e.g. from a stringified JSON),
+    // all items will be 1-2 chars long — treat as broken
+    if (strings.length > 0 && strings.every((s) => s.length <= 2)) return [];
+    return strings;
+  }
+
+  // Plain string — attempt JSON.parse
+  if (typeof features === 'string') {
+    try {
+      const parsed = JSON.parse(features);
+      return normalizeFeatures(parsed); // recurse
+    } catch {
+      return [];
+    }
+  }
+
+  // Key-value object (old format: {"QR Menu": true, "Tables": "Unlimited"})
+  if (typeof features === 'object') {
+    return Object.entries(features)
+      .filter(([, v]) => v === true || (typeof v === 'string' && v !== '0' && v !== 'false'))
+      .map(([k, v]) => (typeof v === 'string' && v !== 'true' ? `${k}: ${v}` : k));
+  }
+
+  return [];
+}
+
+// ─── Plan visual config ───────────────────────────────────────────────────────
+const planConfig: Record<string, { icon: any; badgeClass: string; checkColor: string; glowClass: string }> = {
+  trial: {
+    icon: Sparkles,
+    badgeClass: 'bg-gray-700/60 border-gray-600/40 text-gray-300',
+    checkColor: 'text-orange-400',
+    glowClass: '',
+  },
+  basic: {
+    icon: Star,
+    badgeClass: 'bg-blue-500/15 border-blue-500/30 text-blue-300',
+    checkColor: 'text-orange-400',
+    glowClass: '',
+  },
+  pro: {
+    icon: Crown,
+    badgeClass: 'bg-amber-500/15 border-amber-500/30 text-amber-300',
+    checkColor: 'text-orange-400',
+    glowClass: 'shadow-[0_0_40px_rgba(245,158,11,0.12)]',
+  },
+};
+
+// ─── Component ────────────────────────────────────────────────────────────────
+export const SubscriptionCard: React.FC<Props> = ({
+  plan,
+  currentSubscription,
+  onRenew,
+  onUpgrade,
+  isRecommended,
+}) => {
+  const key = plan.name.toLowerCase();
+  const config = planConfig[key] || planConfig.basic;
+  const Icon = config.icon;
 
   const isCurrent = currentSubscription?.plan_id === plan.plan_id;
-  const daysRemaining = currentSubscription && now !== null
-    ? Math.max(0, Math.ceil((new Date(currentSubscription.expiry_date).getTime() - now) / (1000 * 60 * 60 * 24)))
-    : null;
-  const expired = currentSubscription && currentSubscription.status === 'expired';
+  const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
 
-  const progress = daysRemaining !== null && currentSubscription?.expiry_date && now !== null
-    ? Math.min(100, Math.max(0, Math.round(((new Date(currentSubscription.expiry_date).getTime() - now) / (new Date(currentSubscription.expiry_date).getTime() - new Date(currentSubscription.start_date ?? new Date().toISOString()).getTime())) * 100)))
-    : 0;
+  useEffect(() => {
+    if (currentSubscription) {
+      const diff = new Date(currentSubscription.expiry_date).getTime() - Date.now();
+      setDaysRemaining(Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24))));
+    } else {
+      setDaysRemaining(null);
+    }
+  }, [currentSubscription]);
 
-  const cardClasses = `bg-gray-900/70 backdrop-blur-xl rounded-xl border border-gray-800 p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-1 hover:scale-105 transition-all duration-300 ${isRecommended ? 'border-2 border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.3)]' : ''}`;
+  const expired = currentSubscription?.status === 'expired';
+  const isFree = plan.price_monthly === 0 || plan.price_monthly === 1;
 
-  const showBenefits = () => {
-    const featureList = Object.entries(plan.features || {})
-      .map(([key, val]) => {
-        const formattedKey = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-        const formattedVal = typeof val === 'boolean' ? (val ? 'Yes' : 'No') : val;
-        return `<li style="margin-bottom: 8px; font-size: 13px; color: #4b5563;"><strong>${formattedKey}:</strong> ${formattedVal}</li>`;
-      })
-      .join('');
+  // ── Feature list resolution ──────────────────────────────────────────────
+  const featuresList = useMemo(() => {
+    const normalized = normalizeFeatures(plan.features);
+    // Fallback to hardcoded list if normalization returns < 3 items (corrupted data)
+    if (normalized.length < 3 && FALLBACK_FEATURES[key]) return FALLBACK_FEATURES[key];
+    return normalized;
+  }, [plan.features, key]);
 
-    Swal.fire({
-      title: `${plan.name.charAt(0).toUpperCase() + plan.name.slice(1)} Plan Features`,
-      html: `
-        <div style="text-align: left; padding: 10px; background: #f9fafb; border-radius: 12px; border: 1px solid #e5e7eb;">
-          <p style="margin-bottom: 12px; font-weight: bold; color: #111827;">Included System Privileges:</p>
-          <ul style="list-style-type: disc; margin-left: 20px; padding-left: 5px;">
-            ${featureList || '<li>No specific features listed.</li>'}
-          </ul>
-        </div>
-      `,
-      confirmButtonText: 'Great!',
-      confirmButtonColor: '#FF5A1F',
-    });
+  // ── CTA ──────────────────────────────────────────────────────────────────
+  const handleCTA = () => {
+    if (isCurrent && !expired) onRenew(plan.plan_id);
+    else onUpgrade(plan.plan_id);
   };
 
-  const showBillingHistory = () => {
-    if (!isCurrent) {
-      Swal.fire({
-        title: 'Billing Access',
-        text: 'You can only view billing history for your active subscription plan.',
-        icon: 'warning',
-        confirmButtonColor: '#FF5A1F',
-      });
-      return;
-    }
+  const isTrial = plan.name.toLowerCase() === 'trial';
 
-    if (plan.name.toLowerCase() === 'trial') {
-      Swal.fire({
-        title: 'No Billing Transactions',
-        text: 'Your hotel is currently on a Free Trial. No payments have occurred.',
-        icon: 'info',
-        confirmButtonColor: '#FF5A1F',
-      });
-      return;
-    }
+  const ctaLabel = isTrial
+    ? (isCurrent && !expired ? 'Trial Active' : 'Trial Used')
+    : isFree && !isCurrent
+    ? 'Get Started Free'
+    : isCurrent && !expired
+    ? 'Renew Plan'
+    : isCurrent && expired
+    ? 'Reactivate'
+    : 'Upgrade Now';
 
-    Swal.fire({
-      title: 'Subscription Ledger',
-      html: `
-        <div style="text-align: left; font-size: 13px; background: #f9fafb; padding: 12px; border-radius: 12px; border: 1px solid #e5e7eb;">
-          <table style="width: 100%; border-collapse: collapse;">
-            <thead>
-              <tr style="border-bottom: 2px solid #e5e7eb; font-weight: bold; color: #374151;">
-                <th style="padding: 8px 0; text-align: left;">Billing Date</th>
-                <th style="padding: 8px 0; text-align: left;">Scope</th>
-                <th style="padding: 8px 0; text-align: right;">Amount Charged</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style="color: #4b5563;">
-                <td style="padding: 8px 0;">${new Date(currentSubscription?.start_date ?? Date.now()).toLocaleDateString()}</td>
-                <td style="padding: 8px 0; font-weight: 500;">${plan.name.toUpperCase()} Monthly</td>
-                <td style="padding: 8px 0; text-align: right; font-weight: bold; color: #10b981;">₹${plan.price_monthly}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      `,
-      confirmButtonColor: '#FF5A1F',
-    });
-  };
-
-  const downloadInvoice = () => {
-    if (!isCurrent) {
-      Swal.fire({
-        title: 'Invoice Access',
-        text: 'You can only retrieve invoices for your active subscription plan.',
-        icon: 'warning',
-        confirmButtonColor: '#FF5A1F',
-      });
-      return;
-    }
-
-    if (plan.name.toLowerCase() === 'trial') {
-      Swal.fire({
-        title: 'Invoice Unavailable',
-        text: 'No invoices are generated for Free Trial accounts.',
-        icon: 'info',
-        confirmButtonColor: '#FF5A1F',
-      });
-      return;
-    }
-
-    Swal.fire({
-      title: 'Compiling Invoice 📄',
-      text: 'Creating secure PDF transaction summary...',
-      timer: 1500,
-      showConfirmButton: false,
-      didOpen: () => {
-        Swal.showLoading();
-      }
-    }).then(() => {
-      Swal.fire({
-        title: 'Invoice Downloaded',
-        text: `Your billing statement for the ${plan.name.toUpperCase()} tier (amounting to ₹${plan.price_monthly}) was downloaded successfully in Sandbox mode.`,
-        icon: 'success',
-        confirmButtonColor: '#FF5A1F',
-      });
-    });
-  };
+  const isDisabled = isTrial;
 
   return (
-    <div className={cardClasses}>
-      <div className={`inline-block px-3 py-1 rounded-full text-sm font-medium text-white ${badgeColors[plan.name.toLowerCase()] || 'bg-gray-600'}`}>
-        {plan.name.charAt(0).toUpperCase() + plan.name.slice(1)}
+    <motion.div
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      className={`group relative flex flex-col bg-[#0e0e0e]/90 backdrop-blur-2xl border rounded-2xl p-6 transition-all duration-500 ${
+        isRecommended
+          ? `border-amber-500/40 ${config.glowClass}`
+          : 'border-gray-800/60 hover:border-gray-700/80'
+      } hover:-translate-y-1 hover:shadow-2xl`}
+    >
+      {/* Recommended badge */}
+      {isRecommended && (
+        <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 bg-gradient-to-r from-amber-500 to-yellow-400 rounded-full text-[9px] font-black uppercase tracking-widest text-black shadow-lg shadow-amber-500/30 z-10 whitespace-nowrap">
+          ✦ Best Value
+        </div>
+      )}
+
+      {/* Header: badge + active status */}
+      <div className="flex items-center justify-between mb-5">
+        <div
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-wider ${config.badgeClass}`}
+        >
+          <Icon size={11} />
+          {plan.name}
+        </div>
+        {isCurrent && (
+          <span
+            className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+              expired
+                ? 'text-red-400 border-red-500/30 bg-red-500/10'
+                : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
+            }`}
+          >
+            {expired ? '● Expired' : '● Active'}
+          </span>
+        )}
       </div>
-      <h2 className="text-xl font-semibold mt-2 mb-1 text-white">{plan.name}</h2>
-      <p className="text-sm text-gray-400 mb-3">
-        {plan.price_monthly === 0 ? 'Free Trial' : `₹${plan.price_monthly}/mo`}
-      </p>
-      {isCurrent && currentSubscription && (
-        <div className="mb-3">
-          <div className="flex items-center space-x-2 text-sm">
-            <CheckCircle className="text-green-400 w-4 h-4" />
-            <span className="text-green-400">Active</span>
+
+      {/* Pricing */}
+      <div className="mb-5">
+        {isFree ? (
+          <div className="flex items-baseline gap-2">
+            <span className="text-4xl font-black text-white">₹1</span>
+            <div className="flex flex-col">
+              <span className="text-xs text-gray-500 font-semibold leading-tight">14 Days</span>
+              <span className="text-[10px] text-orange-400/80 font-bold leading-tight">Free Trial</span>
+            </div>
           </div>
-          <div className="flex items-center space-x-2 text-sm mt-1">
-            <Clock className="text-yellow-400 w-4 h-4" />
-            <span>{daysRemaining !== null ? `${daysRemaining} days remaining` : 'Calculating remaining days...'}</span>
+        ) : (
+          <div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-4xl font-black text-white">
+                ₹{plan.price_monthly.toLocaleString('en-IN')}
+              </span>
+              <span className="text-xs text-gray-500 font-semibold">/mo</span>
+            </div>
+            <p className="text-[10px] text-gray-600 font-semibold mt-1">
+              ₹{plan.price_yearly.toLocaleString('en-IN')} billed yearly
+            </p>
           </div>
-          <div className="w-full bg-gray-700 rounded-full h-1.5 mt-2">
-            <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${progress}%` }} />
+        )}
+      </div>
+
+      {/* Days remaining progress */}
+      {isCurrent && currentSubscription && daysRemaining !== null && (
+        <div className="mb-5 p-3 bg-white/[0.03] border border-gray-800/60 rounded-xl">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+              Days Remaining
+            </span>
+            <span
+              className={`text-xs font-black ${
+                daysRemaining <= 3 && !expired ? 'text-red-400' : 'text-gray-300'
+              }`}
+            >
+              {expired ? 'Expired' : `${daysRemaining}d`}
+            </span>
+          </div>
+          <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{
+                width: `${daysRemaining <= 0 ? 100 : Math.max(3, (daysRemaining / 30) * 100)}%`,
+              }}
+              transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+              className={`h-full rounded-full ${expired ? 'bg-red-500' : 'bg-emerald-500'}`}
+            />
           </div>
         </div>
       )}
-      <div className="flex flex-col gap-2 mt-4">
-        {isCurrent && !expired ? (
-          <Button
-            variant="outline"
-            disabled={expired}
-            onClick={() => onRenew(plan.plan_id)}
-            className={`text-white border-gray-700 bg-transparent hover:bg-gray-800 ${expired ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            Renew Membership
-          </Button>
+
+      {/* Features list — renders a clean string array */}
+      <div className="flex-1 space-y-2 mb-6">
+        {featuresList.length > 0 ? (
+          featuresList.map((feature, idx) => (
+            <div key={idx} className="flex items-start gap-2.5">
+              <div className="w-4 h-4 mt-0.5 rounded-full bg-orange-500/10 border border-orange-500/25 flex items-center justify-center flex-shrink-0">
+                <Check size={9} className="text-orange-400" />
+              </div>
+              <span className="text-[11px] text-gray-300 font-medium leading-snug">{feature}</span>
+            </div>
+          ))
         ) : (
-          <Button variant="default" onClick={() => onUpgrade(plan.plan_id)} className="bg-orange-500 text-white hover:bg-orange-600">
-            Upgrade to {plan.name}
-          </Button>
+          <p className="text-[11px] text-gray-600 italic">No features listed.</p>
         )}
-        <Button variant="ghost" onClick={showBenefits} className="text-gray-400 hover:text-white hover:bg-gray-800">
-          View Benefits
-        </Button>
-        <Button variant="ghost" onClick={showBillingHistory} className="text-gray-400 hover:text-white hover:bg-gray-800">Billing History</Button>
-        <Button variant="ghost" onClick={downloadInvoice} className="text-gray-400 hover:text-white hover:bg-gray-800">Download Invoice</Button>
       </div>
-    </div>
+
+      {/* CTA Button */}
+      <button
+        onClick={handleCTA}
+        disabled={isDisabled}
+        id={`cta-${key}-plan`}
+        className={`w-full py-3 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-300 ${
+          isDisabled
+            ? 'bg-gray-800/50 text-gray-500 cursor-not-allowed border border-gray-700/50'
+            : isCurrent && !expired
+            ? 'bg-white/5 border border-gray-700 text-gray-300 hover:bg-white/10 hover:border-gray-600 cursor-pointer active:scale-[0.98]'
+            : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white shadow-lg shadow-orange-500/20 hover:shadow-orange-500/35 hover:-translate-y-0.5 cursor-pointer active:scale-[0.98]'
+        }`}
+      >
+        {ctaLabel}
+      </button>
+    </motion.div>
   );
 };
 

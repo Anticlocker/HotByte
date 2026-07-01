@@ -10,8 +10,8 @@ export const metadata: Metadata = {
 
 export default function Contact() {
   return (
-    <div className="mesh-gradient min-h-screen flex flex-col justify-between selection:bg-orange-100 selection:text-orange-700 bg-white dark:bg-[#0b0d11] transition-colors duration-300">
-      <CustomerNavbar />
+    <div className="relative z-0 bg-[#050507] min-h-screen flex flex-col justify-between text-white font-sans selection:bg-orange-500/30 overflow-x-hidden antialiased">
+      <CustomerNavbar hideActions />
 
       <main className="flex-grow max-w-[900px] mx-auto w-full px-6 py-12 relative overflow-hidden">
         {/* Glow elements */}
@@ -20,34 +20,34 @@ export default function Contact() {
 
         {/* Header */}
         <div className="text-center mb-10">
-          <div className="inline-flex w-14 h-14 rounded-2xl bg-orange-50 dark:bg-orange-950/20 text-orange-500 items-center justify-center shadow-inner mb-4">
+          <div className="inline-flex w-14 h-14 rounded-2xl bg-orange-500/10 text-orange-400 items-center justify-center shadow-inner mb-4">
             <MessageSquare size={24} />
           </div>
-          <h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white tracking-tight">
+          <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight">
             Contact HotByte
           </h1>
-          <p className="mt-2 text-sm font-semibold text-gray-500 dark:text-gray-400">
+          <p className="mt-2 text-sm font-semibold text-gray-400">
             We&apos;re here to help. Reach out for support, partnerships, or general queries.
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Contact Info Card */}
-          <div className="bg-white/70 dark:bg-zinc-900/60 border border-gray-150/40 dark:border-zinc-800/40 shadow-2xl backdrop-blur-xl p-8 rounded-[28px] animate-fade-in-up space-y-6">
-            <h2 className="text-lg font-black text-gray-900 dark:text-white tracking-tight">
+          <div className="glass-card-dark rounded-3xl border border-gray-900/60 p-8 animate-fade-in-up space-y-6">
+            <h2 className="text-lg font-black text-white tracking-tight">
               Business Information
             </h2>
 
             <div className="space-y-4">
               <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-xl bg-orange-50 dark:bg-orange-950/20 text-orange-500 flex items-center justify-center flex-shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-orange-500/10 text-orange-400 flex items-center justify-center flex-shrink-0">
                   <Mail size={16} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Support Email</p>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Support Email</p>
                   <a
                     href="mailto:support@hotbyte.in"
-                    className="text-sm font-bold text-orange-500 hover:underline"
+                    className="text-sm font-bold text-orange-400 hover:underline"
                   >
                     support@hotbyte.in
                   </a>
@@ -55,42 +55,42 @@ export default function Contact() {
               </div>
 
               <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-xl bg-orange-50 dark:bg-orange-950/20 text-orange-500 flex items-center justify-center flex-shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-orange-500/10 text-orange-400 flex items-center justify-center flex-shrink-0">
                   <Phone size={16} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Business Contact</p>
-                  <p className="text-sm font-bold text-gray-700 dark:text-gray-300">+91 98765 43210</p>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Business Contact</p>
+                  <p className="text-sm font-bold text-gray-300">+91 93569 18260</p>
                 </div>
               </div>
 
               <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-xl bg-orange-50 dark:bg-orange-950/20 text-orange-500 flex items-center justify-center flex-shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-orange-500/10 text-orange-400 flex items-center justify-center flex-shrink-0">
                   <MapPin size={16} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Registered Address</p>
-                  <p className="text-sm font-bold text-gray-700 dark:text-gray-300">
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Registered Address</p>
+                  <p className="text-sm font-bold text-gray-300">
                     HotByte Technologies<br />
-                    Sector-5, Salt Lake, Kolkata<br />
-                    West Bengal – 700091, India
+                    Mental Corner, Vishrantwadi, Pune<br />
+                    Maharashtra – 411015, India
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="h-px bg-gray-100 dark:bg-zinc-800/50" />
+            <div className="h-px bg-gray-900/50" />
 
             <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 leading-relaxed">
-                Our team typically responds within <span className="font-black text-orange-500">24 hours</span> on business days. For urgent issues, please email us directly.
+              <p className="text-xs font-semibold text-gray-400 leading-relaxed">
+                Our team typically responds within <span className="font-black text-orange-400">24 hours</span> on business days. For urgent issues, please email us directly.
               </p>
             </div>
           </div>
 
           {/* Contact Form Card */}
-          <div className="bg-white/70 dark:bg-zinc-900/60 border border-gray-150/40 dark:border-zinc-800/40 shadow-2xl backdrop-blur-xl p-8 rounded-[28px] animate-fade-in-up">
-            <h2 className="text-lg font-black text-gray-900 dark:text-white tracking-tight mb-6">
+          <div className="glass-card-dark rounded-3xl border border-gray-900/60 p-8 animate-fade-in-up">
+            <h2 className="text-lg font-black text-white tracking-tight mb-6">
               Send a Message
             </h2>
 
@@ -103,7 +103,7 @@ export default function Contact() {
               <div>
                 <label
                   htmlFor="contact-name"
-                  className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5"
+                  className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5"
                 >
                   Your Name
                 </label>
@@ -113,14 +113,14 @@ export default function Contact() {
                   type="text"
                   required
                   placeholder="e.g. Rahul Sharma"
-                  className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 text-sm font-semibold text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400 transition-all"
+                  className="w-full px-4 py-3 rounded-xl bg-[#0c0d12] border border-gray-800 text-sm font-semibold text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400 transition-all"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="contact-email"
-                  className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5"
+                  className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5"
                 >
                   Email Address
                 </label>
@@ -130,14 +130,14 @@ export default function Contact() {
                   type="email"
                   required
                   placeholder="e.g. you@example.com"
-                  className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 text-sm font-semibold text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400 transition-all"
+                  className="w-full px-4 py-3 rounded-xl bg-[#0c0d12] border border-gray-800 text-sm font-semibold text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400 transition-all"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="contact-message"
-                  className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5"
+                  className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5"
                 >
                   Message
                 </label>
@@ -147,7 +147,7 @@ export default function Contact() {
                   required
                   rows={5}
                   placeholder="Describe your query or issue..."
-                  className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 text-sm font-semibold text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400 transition-all resize-none"
+                  className="w-full px-4 py-3 rounded-xl bg-[#0c0d12] border border-gray-800 text-sm font-semibold text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400 transition-all resize-none"
                 />
               </div>
 
@@ -164,7 +164,7 @@ export default function Contact() {
         </div>
       </main>
 
-      <Footer />
+      <Footer dark />
     </div>
   );
 }

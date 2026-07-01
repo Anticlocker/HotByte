@@ -29,8 +29,8 @@ class MessageCentralOTP {
       // Mobile number clean karo (sirf digits rakho)
       const cleanedMobile = String(mobileNumber).replace(/\D/g, "");
 
-      // 🔓 Development bypass - Testing ke liye (ONLY in non-production)
-      if (process.env.NODE_ENV !== 'production' && cleanedMobile === "9356918260") {
+      // 🔓 Development bypass - Testing ke liye (ONLY when DEV_BYPASS_ENABLED=true)
+      if (process.env.DEV_BYPASS_ENABLED === 'true' && cleanedMobile === "9356918260") {
         logger.info("ℹ️  Message Central: Local development bypass triggered for", cleanedMobile);
         return {
           success: true,
@@ -116,9 +116,9 @@ class MessageCentralOTP {
     try {
       const cleanedMobile = String(mobileNumber).replace(/\D/g, "");
       
-      // 🔓 Development bypass - Testing ke liye (ONLY in non-production)
+      // 🔓 Development bypass - Testing ke liye (ONLY when DEV_BYPASS_ENABLED=true)
       // Specific number aur OTP se direct login ho jaye
-      if (process.env.NODE_ENV !== 'production' && cleanedMobile === "9356918260" && otp === "935691") {
+      if (process.env.DEV_BYPASS_ENABLED === 'true' && cleanedMobile === "9356918260" && otp === "935691") {
         return {
           success: true,
           verified: true,

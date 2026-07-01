@@ -22,13 +22,13 @@ router.get("/", requireAuth, async (req, res) => {
     const customer = customerResult.rows[0];
 
     const ordersCountResult = await db.query(
-      "SELECT COUNT(*) as total FROM orders WHERE customer_id = $1",
-      [customerId]
+      "SELECT COUNT(*) as total FROM orders WHERE customer_id = $1 AND hotel_id = $2",
+      [customerId, req.customer.hotelId]
     );
 
     const totalSpentResult = await db.query(
-      "SELECT COALESCE(SUM(total_amount), 0) as total FROM orders WHERE customer_id = $1 AND status = 'completed'",
-      [customerId]
+      "SELECT COALESCE(SUM(total_amount), 0) as total FROM orders WHERE customer_id = $1 AND status = 'completed' AND hotel_id = $2",
+      [customerId, req.customer.hotelId]
     );
 
     return res.json({
@@ -71,7 +71,8 @@ router.get("/orders", requireAuth, async (req, res) => {
               'quantity', oi.quantity,
               'price', oi.price,
               'item_name', mi.item_name,
-              'image_url', mi.image_url
+              'image_url', mi.image_url,
+              'variant_name', oi.variant_name
             ) ORDER BY mi.item_name
           ) FILTER (WHERE oi.order_item_id IS NOT NULL),
           '[]'::json
@@ -98,6 +99,7 @@ router.get("/orders", requireAuth, async (req, res) => {
       paymentMethod: order.payment_method,
       items: (order.items || []).map((item) => ({
         name: item.item_name,
+        variantName: item.variant_name,
         quantity: item.quantity,
         price: parseFloat(item.price),
         imageUrl: item.image_url,

@@ -4,16 +4,7 @@ const logger = require("../utils/logger");
 const router = express.Router();
 const db = require("./database");
 const { requireAdmin } = require("./auth");
-
-// ─── Helper: resolve hotel_slug → hotel_id for super_admin scoped queries ───────
-const resolveHotelSlug = async (req) => {
-  if (req.admin.role !== 'super_admin') return req.admin.hotelId;
-  const slug = req.query.hotel_slug || req.body?.hotel_slug;
-  if (!slug) return null;
-  const result = await db.query('SELECT hotel_id FROM public.hotels WHERE slug = $1', [slug]);
-  if (result.rows.length === 0) return -1;
-  return result.rows[0].hotel_id;
-};
+const { resolveHotelSlug } = require("../utils/hotelUtils");
 
 // Overview statistics
 router.get("/stats/overview", requireAdmin, async (req, res) => {
@@ -53,10 +44,10 @@ router.get("/stats/overview", requireAdmin, async (req, res) => {
       ${dateFilter} ${hotelFilter}
     `, params);
 
-    res.json({ success: true, stats: result.rows[0] });
+    return res.json({ success: true, stats: result.rows[0] });
   } catch (error) {
     logger.error("Overview stats error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -108,10 +99,10 @@ router.get("/stats/best-sellers", requireAdmin, async (req, res) => {
       LIMIT $1
     `, params);
 
-    res.json({ success: true, items: result.rows });
+    return res.json({ success: true, items: result.rows });
   } catch (error) {
     logger.error("Best sellers error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -163,10 +154,10 @@ router.get("/stats/worst-sellers", requireAdmin, async (req, res) => {
       LIMIT $1
     `, params);
 
-    res.json({ success: true, items: result.rows });
+    return res.json({ success: true, items: result.rows });
   } catch (error) {
     logger.error("Worst sellers error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -190,10 +181,11 @@ router.get("/stats/by-category", requireAdmin, async (req, res) => {
       hotelFilter = "AND o.hotel_id = $1";
       params.push(req.admin.hotelId);
     } else {
-      const queryHotelId = req.query.hotel_id ? parseInt(req.query.hotel_id) : null;
-      if (queryHotelId) {
+      const hotelId = await resolveHotelSlug(req);
+      if (hotelId === -1) return res.status(404).json({ success: false, message: 'Hotel slug not found.' });
+      if (hotelId) {
         hotelFilter = "AND o.hotel_id = $1";
-        params.push(queryHotelId);
+        params.push(hotelId);
       }
     }
 
@@ -210,10 +202,10 @@ router.get("/stats/by-category", requireAdmin, async (req, res) => {
       ORDER BY total_revenue DESC
     `, params);
 
-    res.json({ success: true, categories: result.rows });
+    return res.json({ success: true, categories: result.rows });
   } catch (error) {
     logger.error("Category stats error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -246,10 +238,10 @@ router.get("/stats/revenue-trend", requireAdmin, async (req, res) => {
       ORDER BY date ASC
     `, params);
 
-    res.json({ success: true, trend: result.rows });
+    return res.json({ success: true, trend: result.rows });
   } catch (error) {
     logger.error("Revenue trend error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -291,10 +283,10 @@ router.get("/stats/payment-methods", requireAdmin, async (req, res) => {
       ORDER BY total_amount DESC
     `, params);
 
-    res.json({ success: true, payment_methods: result.rows });
+    return res.json({ success: true, payment_methods: result.rows });
   } catch (error) {
     logger.error("Payment methods error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -336,10 +328,10 @@ router.get("/stats/peak-hours", requireAdmin, async (req, res) => {
       ORDER BY hour ASC
     `, params);
 
-    res.json({ success: true, peak_hours: result.rows });
+    return res.json({ success: true, peak_hours: result.rows });
   } catch (error) {
     logger.error("Peak hours error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -386,10 +378,10 @@ router.get("/stats/customers", requireAdmin, async (req, res) => {
       LIMIT 20
     `, params);
 
-    res.json({ success: true, top_customers: result.rows });
+    return res.json({ success: true, top_customers: result.rows });
   } catch (error) {
     logger.error("Top customers error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 });
 

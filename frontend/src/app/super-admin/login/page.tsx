@@ -3,10 +3,18 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, User, ShieldCheck, ArrowRight } from "lucide-react";
-import Swal from "sweetalert2";
+import { useNotification } from "@/context/NotificationContext";
+
+const getCsrfToken = () => {
+  if (typeof document === "undefined") return "";
+  const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : "";
+};
 
 export default function SuperAdminLogin() {
+  const notif = useNotification();
   const router = useRouter();
+  const [csrfToken, setCsrfToken] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -21,21 +29,32 @@ export default function SuperAdminLogin() {
   const [forgotLoading, setForgotLoading] = useState(false);
 
   useEffect(() => {
-    // Redirect if already logged in as super admin
+    fetch("/api/auth/csrf-token")
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to fetch CSRF token");
+        return r.json();
+      })
+      .then((d) => { if (d && d.csrfToken) setCsrfToken(d.csrfToken); })
+      .catch(() => {});
     fetch("/api/auth/admin/session-check")
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Session check failed");
+        return res.json();
+      })
       .then((data) => {
-        if (data.authenticated && data.admin.role === "super_admin") {
+        if (data && data.authenticated && data.admin && data.admin.role === "super_admin") {
           router.push("/super-admin/dashboard");
         }
       })
       .catch(() => {});
   }, [router]);
 
+  const csrfHeader = () => ({ "Content-Type": "application/json", "x-csrf-token": csrfToken || getCsrfToken() });
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) {
-      Swal.fire("Inputs Required", "Please enter both username and password.", "warning");
+      notif.warning("Inputs Required", "Please enter both username and password.");
       return;
     }
 
@@ -43,64 +62,55 @@ export default function SuperAdminLogin() {
     try {
       const res = await fetch("/api/auth/admin/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeader(),
         body: JSON.stringify({ username, password, role: "super_admin" }),
       });
       const data = await res.json();
 
       if (data.success) {
         if (data.admin.role !== "super_admin") {
-          // Log out immediately if not super admin
-          await fetch("/api/auth/admin/logout", { method: "POST" });
-          Swal.fire("Access Denied", "Unauthorized. You are not a global Super Admin.", "error");
+          await fetch("/api/auth/admin/logout", { method: "POST", headers: { "x-csrf-token": csrfToken || getCsrfToken() } });
+          notif.error("Access Denied", "Unauthorized. You are not a global Super Admin.");
           setLoading(false);
           return;
         }
 
-        Swal.fire({
-          title: "Super Access Granted!",
-          text: "Global SaaS Control session established.",
-          icon: "success",
-          timer: 1200,
-          showConfirmButton: false,
-        });
+        notif.success("Super Access Granted!", "Global SaaS Control session established.");
         router.push("/super-admin/dashboard");
       } else {
-        Swal.fire("Access Denied", data.message || "Invalid administrative credentials.", "error");
+        notif.error("Access Denied", data.message || "Invalid administrative credentials.");
       }
     } catch (err) {
-      Swal.fire("Connection Error", "Failed to communicate with authorization server.", "error");
+      notif.error("Connection Error", "Failed to communicate with authorization server.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleForgotRequest = async () => {
+    if (!forgotPhone.trim()) {
+      notif.warning("Phone Required", "Please enter your registered phone number.");
+      return;
+    }
     setForgotLoading(true);
     setIsForgotOpen(true);
     setForgotStep(1);
     try {
       const res = await fetch("/api/auth/admin/forgot-otp", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: "Admin", phone: "9356918260" }),
+        headers: csrfHeader(),
+        body: JSON.stringify({ username: "Admin", phone: forgotPhone }),
       });
       const data = await res.json();
       if (data.success) {
-        Swal.fire({
-          title: "OTP Dispatched!",
-          text: "Verification code sent to 9356918260.",
-          icon: "success",
-          timer: 1500,
-          showConfirmButton: false,
-        });
+        notif.success("OTP Dispatched!", `Verification code sent to ${forgotPhone}.`);
         setForgotStep(2);
       } else {
-        Swal.fire("Request Failed", data.message || "Failed to send OTP.", "error");
+        notif.error("Request Failed", data.message || "Failed to send OTP.");
         setIsForgotOpen(false);
       }
     } catch (err) {
-      Swal.fire("Connection Error", "Could not reach the authorization server.", "error");
+      notif.error("Connection Error", "Could not reach the authorization server.");
       setIsForgotOpen(false);
     } finally {
       setForgotLoading(false);
@@ -216,21 +226,49 @@ export default function SuperAdminLogin() {
       {isForgotOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md transition-all duration-300">
           <div className="w-full max-w-sm glass-card-dark p-8 rounded-3xl border border-yellow-500/10 relative overflow-hidden animate-in fade-in zoom-in duration-300">
-            {/* Ambient Modal Glow */}
             <div className="absolute -top-[10%] -left-[10%] w-[120px] aspect-square rounded-full bg-yellow-500/5 filter blur-[30px] pointer-events-none"></div>
             
             <div className="text-center space-y-2 mb-6">
               <h3 className="text-lg font-black text-white tracking-tight">Forgot Passkey</h3>
               <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest text-yellow-500">
-                {forgotStep === 1 ? "Sending OTP..." : "Enter OTP & New Passkey"}
+                {forgotLoading ? "Sending OTP..." : forgotStep === 1 ? "Enter Your Phone" : "Enter OTP & New Passkey"}
               </p>
             </div>
 
-            {forgotStep === 1 ? (
-              <div className="flex flex-col items-center justify-center py-10 space-y-4">
+            {forgotStep === 1 && !forgotLoading ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 tracking-wide block uppercase">Registered Phone</label>
+                  <input
+                    type="tel"
+                    required
+                    value={forgotPhone}
+                    onChange={(e) => setForgotPhone(e.target.value)}
+                    placeholder="+91 XXXXX XXXXX"
+                    className="w-full px-4 py-3 rounded-2xl bg-gray-900 border border-gray-800 text-sm font-semibold text-gray-200 placeholder-gray-600 focus:border-yellow-500 outline-none transition-all"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleForgotRequest}
+                  disabled={forgotLoading}
+                  className="w-full bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700 py-3 rounded-2xl font-bold text-white text-sm cursor-pointer disabled:opacity-60 transition-all"
+                >
+                  Send OTP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setIsForgotOpen(false); setForgotStep(1); }}
+                  className="w-full bg-gray-900 hover:bg-gray-800 border border-gray-800 py-3 rounded-2xl font-bold text-gray-400 text-sm cursor-pointer transition-all"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : forgotStep === 1 && forgotLoading ? (
+              <div className="flex flex-col items-center justify-center py-4 space-y-4">
                 <div className="w-10 h-10 rounded-full border-4 border-yellow-500 border-t-transparent animate-spin"></div>
                 <p className="text-xs text-gray-400 font-semibold tracking-wide animate-pulse">
-                  Dispatching OTP to 9356918260...
+                  Dispatching OTP to {forgotPhone}...
                 </p>
               </div>
             ) : (
@@ -238,37 +276,37 @@ export default function SuperAdminLogin() {
                 onSubmit={async (e) => {
                   e.preventDefault();
                   if (!forgotOtp.trim() || !forgotNewPassword.trim()) {
-                    Swal.fire("Required Fields", "Please enter OTP and your new passkey.", "warning");
+                    notif.warning("Required Fields", "Please enter OTP and your new passkey.");
                     return;
                   }
                   if (forgotNewPassword.length < 6) {
-                    Swal.fire("Weak Passkey", "New passkey must be at least 6 characters.", "warning");
+                    notif.warning("Weak Passkey", "New passkey must be at least 6 characters.");
                     return;
                   }
                   setForgotLoading(true);
                   try {
                     const res = await fetch("/api/auth/admin/reset-password", {
                       method: "POST",
-                      headers: { "Content-Type": "application/json" },
+                      headers: csrfHeader(),
                       body: JSON.stringify({
                         username: "Admin",
-                        phone: "9356918260",
+                        phone: forgotPhone,
                         otp: forgotOtp,
                         password: forgotNewPassword,
                       }),
                     });
                     const data = await res.json();
                     if (data.success) {
-                      Swal.fire("Passkey Reset!", data.message || "Your passkey has been reset successfully.", "success");
+                      notif.success("Passkey Reset!", data.message || "Your passkey has been reset successfully.");
                       setIsForgotOpen(false);
                       setForgotStep(1);
                       setForgotOtp("");
                       setForgotNewPassword("");
                     } else {
-                      Swal.fire("Reset Failed", data.message || "Failed to reset passkey.", "error");
+                      notif.error("Reset Failed", data.message || "Failed to reset passkey.");
                     }
                   } catch (err) {
-                    Swal.fire("Connection Error", "Could not reach the authentication server.", "error");
+                    notif.error("Connection Error", "Could not reach the authentication server.");
                   } finally {
                     setForgotLoading(false);
                   }

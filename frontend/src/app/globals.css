@@ -9,11 +9,474 @@
   --font-sans: var(--font-plus-jakarta), ui-sans-serif, system-ui, sans-serif;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
-  overflow-x: hidden;
-  max-width: 100vw;
+  overflow-x: clip;
+  width: 100%;
   box-sizing: border-box;
   font-family: var(--font-sans);
+  scrollbar-gutter: stable;
+}
+
+/* ==========================================================================
+   PREMIUM HERO BACKGROUND SYSTEM
+   ========================================================================== */
+
+.hero-bg-container {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+}
+
+/* ── Gradient Blobs ── */
+.hero-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  will-change: transform;
+  pointer-events: none;
+}
+
+.hero-blob-1 {
+  width: 600px;
+  height: 600px;
+  top: -15%;
+  left: -10%;
+  background: radial-gradient(circle, rgba(255, 90, 31, 0.22) 0%, rgba(255, 120, 50, 0.08) 50%, transparent 80%);
+  animation: blobDrift1 25s ease-in-out infinite;
+}
+
+.hero-blob-2 {
+  width: 500px;
+  height: 500px;
+  top: 40%;
+  right: -12%;
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.18) 0%, rgba(255, 200, 50, 0.06) 50%, transparent 80%);
+  animation: blobDrift2 30s ease-in-out infinite;
+}
+
+.hero-blob-3 {
+  width: 450px;
+  height: 450px;
+  bottom: -10%;
+  left: 30%;
+  background: radial-gradient(circle, rgba(239, 68, 68, 0.14) 0%, rgba(255, 90, 31, 0.04) 50%, transparent 80%);
+  animation: blobDrift3 35s ease-in-out infinite;
+}
+
+@keyframes blobDrift1 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(60px, 40px, 0) scale(1.08); }
+  66% { transform: translate3d(-30px, 60px, 0) scale(0.95); }
+}
+
+@keyframes blobDrift2 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(-50px, -30px, 0) scale(1.05); }
+  66% { transform: translate3d(40px, -50px, 0) scale(0.92); }
+}
+
+@keyframes blobDrift3 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(40px, -40px, 0) scale(1.1); }
+  66% { transform: translate3d(-60px, 20px, 0) scale(0.96); }
+}
+
+/* ── Mouse-reactive glow ── */
+.hero-mouse-glow {
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  pointer-events: none;
+  left: var(--mouse-x, 50%);
+  top: var(--mouse-y, 50%);
+  transform: translate3d(-50%, -50%, 0);
+  background: radial-gradient(circle, rgba(255, 90, 31, 0.15) 0%, rgba(255, 90, 31, 0.04) 40%, transparent 70%);
+  transition: left 0.3s ease-out, top 0.3s ease-out;
+  will-change: left, top;
+}
+
+@media (max-width: 640px) {
+  .hero-blob-1 {
+    width: 300px;
+    height: 300px;
+  }
+  .hero-blob-2 {
+    width: 250px;
+    height: 250px;
+  }
+  .hero-blob-3 {
+    width: 200px;
+    height: 200px;
+  }
+  .hero-mouse-glow {
+    display: none;
+  }
+}
+
+/* ── Light Beams ── */
+.hero-beam {
+  position: absolute;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.hero-beam-1 {
+  width: 2px;
+  height: 300%;
+  top: -50%;
+  left: 25%;
+  background: linear-gradient(180deg, transparent 0%, rgba(255, 90, 31, 0.14) 30%, rgba(255, 90, 31, 0.06) 50%, transparent 100%);
+  transform: rotate(25deg);
+  animation: beamSweep1 12s ease-in-out infinite;
+}
+
+.hero-beam-2 {
+  width: 1.5px;
+  height: 300%;
+  top: -50%;
+  right: 30%;
+  background: linear-gradient(180deg, transparent 0%, rgba(245, 158, 11, 0.12) 30%, rgba(245, 158, 11, 0.04) 50%, transparent 100%);
+  transform: rotate(-20deg);
+  animation: beamSweep2 16s ease-in-out infinite;
+  animation-delay: -4s;
+}
+
+@keyframes beamSweep1 {
+  0%, 100% { transform: rotate(25deg) translateX(0); opacity: 0; }
+  10% { opacity: 1; }
+  50% { transform: rotate(25deg) translateX(200px); opacity: 0.8; }
+  90% { opacity: 1; }
+}
+
+@keyframes beamSweep2 {
+  0%, 100% { transform: rotate(-20deg) translateX(0); opacity: 0; }
+  10% { opacity: 1; }
+  50% { transform: rotate(-20deg) translateX(-180px); opacity: 0.7; }
+  90% { opacity: 1; }
+}
+
+/* ── Mesh gradient overlay ── */
+.hero-mesh-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(255, 90, 31, 0.09) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(245, 158, 11, 0.07) 0%, transparent 40%),
+    radial-gradient(ellipse at 50% 80%, rgba(239, 68, 68, 0.05) 0%, transparent 45%);
+  pointer-events: none;
+}
+
+/* ── Floating particles ── */
+.hero-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hero-particle {
+  position: absolute;
+  left: var(--p-x);
+  top: var(--p-y);
+  width: var(--p-size);
+  height: var(--p-size);
+  border-radius: 50%;
+  background: rgba(255, 140, 50, var(--p-opacity));
+  box-shadow: 0 0 6px rgba(255, 90, 31, calc(var(--p-opacity) * 0.5));
+  will-change: transform;
+  animation: particleFloat var(--p-duration) ease-in-out var(--p-delay) infinite;
+}
+
+@keyframes particleFloat {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: var(--p-opacity);
+  }
+  25% {
+    transform: translate3d(30px, -40px, 0) scale(1.2);
+    opacity: calc(var(--p-opacity) * 1.3);
+  }
+  50% {
+    transform: translate3d(-20px, -60px, 0) scale(0.8);
+    opacity: calc(var(--p-opacity) * 0.7);
+  }
+  75% {
+    transform: translate3d(15px, -20px, 0) scale(1.1);
+    opacity: calc(var(--p-opacity) * 1.1);
+  }
+}
+
+/* ── Noise texture ── */
+.hero-noise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 128px 128px;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+/* ==========================================================================
+   FLOATING ELEMENTS SYSTEM
+   ========================================================================== */
+
+.floating-elements-container {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.floating-element {
+  position: absolute;
+  left: var(--fe-x);
+  top: var(--fe-y);
+  width: var(--fe-size);
+  height: var(--fe-size);
+  color: rgba(255, 140, 60, 0.06);
+  will-change: transform;
+  animation: floatingDrift var(--fe-duration) ease-in-out var(--fe-delay) infinite;
+  transform: rotate(var(--fe-rotation));
+}
+
+.floating-element svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Depth layers — parallax via mouse position CSS vars */
+.floating-depth-1 {
+  color: rgba(255, 140, 60, 0.15);
+  transform:
+    rotate(var(--fe-rotation))
+    translate3d(
+      calc((var(--mouse-x, 50%) - 50%) * 0.04),
+      calc((var(--mouse-y, 50%) - 50%) * 0.04),
+      0
+    );
+}
+
+.floating-depth-2 {
+  color: rgba(255, 140, 60, 0.11);
+  transform:
+    rotate(var(--fe-rotation))
+    translate3d(
+      calc((var(--mouse-x, 50%) - 50%) * 0.02),
+      calc((var(--mouse-y, 50%) - 50%) * 0.02),
+      0
+    );
+}
+
+.floating-depth-3 {
+  color: rgba(255, 140, 60, 0.08);
+  transform:
+    rotate(var(--fe-rotation))
+    translate3d(
+      calc((var(--mouse-x, 50%) - 50%) * 0.01),
+      calc((var(--mouse-y, 50%) - 50%) * 0.01),
+      0
+    );
+}
+
+@keyframes floatingDrift {
+  0%, 100% {
+    transform: rotate(var(--fe-rotation)) translate3d(0, 0, 0);
+  }
+  25% {
+    transform: rotate(calc(var(--fe-rotation) + 3deg)) translate3d(12px, -18px, 0);
+  }
+  50% {
+    transform: rotate(calc(var(--fe-rotation) - 2deg)) translate3d(-8px, -30px, 0);
+  }
+  75% {
+    transform: rotate(calc(var(--fe-rotation) + 1deg)) translate3d(6px, -12px, 0);
+  }
+}
+
+/* ==========================================================================
+   PREMIUM GLASSMORPHISM & VISUAL ENHANCEMENTS
+   ========================================================================== */
+
+/* Upgraded premium glass card */
+.glass-card-premium {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card-premium:hover {
+  border-color: rgba(255, 90, 31, 0.15);
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.4),
+    0 0 40px rgba(255, 90, 31, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* ── Text shimmer effect ── */
+.text-shimmer {
+  background: linear-gradient(
+    110deg,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 255, 255, 1) 40%,
+    rgba(255, 90, 31, 0.8) 50%,
+    rgba(255, 255, 255, 1) 60%,
+    rgba(255, 255, 255, 1) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: textShimmer 4s ease-in-out infinite;
+}
+
+@keyframes textShimmer {
+  0%, 100% { background-position: 200% center; }
+  50% { background-position: -200% center; }
+}
+
+/* ── Gradient text glow on hover ── */
+.hero-gradient-text {
+  background: linear-gradient(135deg, #ff8a3d 0%, #f59e0b 50%, #fbbf24 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  position: relative;
+}
+
+/* ── CTA glow pulse ── */
+.cta-glow {
+  position: relative;
+}
+
+.cta-glow::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255, 90, 31, 0.4), rgba(245, 158, 11, 0.4));
+  filter: blur(12px);
+  opacity: 0;
+  z-index: -1;
+  transition: opacity 0.4s ease;
+}
+
+.cta-glow:hover::before {
+  opacity: 1;
+}
+
+/* ── Section glow accents ── */
+.section-glow-top {
+  position: relative;
+}
+
+.section-glow-top::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 90, 31, 0.3) 50%, transparent 100%);
+  pointer-events: none;
+}
+
+/* ── Stat card hover glow ── */
+.stat-card-glow {
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 0%, rgba(255, 90, 31, 0.06) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.stat-card-glow:hover::after {
+  opacity: 1;
+}
+
+/* ── Premium glow badge animation ── */
+.glow-badge {
+  position: relative;
+  overflow: hidden;
+}
+
+.glow-badge::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    45deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.08) 50%,
+    transparent 60%
+  );
+  animation: badgeShine 3s ease-in-out infinite;
+}
+
+@keyframes badgeShine {
+  0%, 100% { transform: translateX(-100%) rotate(45deg); }
+  50% { transform: translateX(100%) rotate(45deg); }
+}
+
+/* ==========================================================================
+   REDUCED MOTION — Disable all premium animations
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .hero-blob,
+  .hero-beam,
+  .hero-particle,
+  .floating-element,
+  .text-shimmer,
+  .glow-badge::after,
+  .cta-glow::before {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .hero-mouse-glow {
+    display: none;
+  }
+
+  .hero-noise {
+    display: none;
+  }
+
+  .glass-card-dark:hover {
+    transform: none;
+  }
+
+  .glass-card-premium:hover {
+    transform: none;
+  }
 }
 
 /* Mesh gradient background */
@@ -1098,13 +1561,26 @@ body {
 .menu-card-img-wrap {
   position: relative;
   width: 100%;
-  padding-top: 75%; /* 4:3 ratio */
+  padding-top: 75%;
   overflow: hidden;
   background-color: #f3f4f6;
 }
 .dark .menu-card-img-wrap {
   background-color: #27272a;
 }
+
+/* Mobile: compact 5:3 ratio for better card density */
+@media (max-width: 639px) {
+  .menu-card-img-wrap {
+    padding-top: 60% !important;
+  }
+}
+@media (min-width: 640px) {
+  .menu-card-img-wrap {
+    padding-top: 70% !important;
+  }
+}
+
 .menu-card-img-wrap img,
 .menu-card-img-wrap .menu-card-img-placeholder {
   position: absolute;
@@ -1187,11 +1663,16 @@ button, a, [role="button"] {
   touch-action: manipulation;
 }
 
-/* Global horizontal scroll prevention */
-html, body {
-  max-width: 100vw;
-  overflow-x: hidden;
-  position: relative;
+/* Ensure icon-only buttons and small interactive elements have adequate touch targets */
+button:where(:not(.text-\[0\])):where(:empty),
+[role="button"]:where(:not(.text-\[0\])):where(:empty),
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.touch-action-manipulation {
+  touch-action: manipulation;
 }
 
 /* Single-column grid on extremely tiny devices (e.g. Galaxy Fold folded screen < 320px) */
@@ -1213,3 +1694,199 @@ html, body {
     gap: 6px !important;
   }
 }
+
+/* ==========================================================================
+   HERO FISH ANIMATION SYSTEM — Realistic Goldfish
+   ========================================================================== */
+
+/* ── Fish Container ── */
+.hero-fish-container {
+  contain: layout style;
+}
+
+/* ── Fish Body ── */
+.hero-fish {
+  position: relative;
+  transition: filter 0.3s ease;
+}
+
+/* ── Tail Wag (multi-phase wave propagation) ── */
+.hero-fish-tail {
+  transform-origin: 22px 55px;
+  animation: fishTailWag var(--tail-wag-duration, 1.0s) ease-in-out infinite alternate;
+}
+
+@keyframes fishTailWag {
+  0% { transform: rotate(-14deg) scaleX(0.9); }
+  30% { transform: rotate(-5deg) scaleX(0.96); }
+  50% { transform: rotate(0deg) scaleX(1); }
+  70% { transform: rotate(5deg) scaleX(0.96); }
+  100% { transform: rotate(14deg) scaleX(0.9); }
+}
+
+/* ── Body Sway (breathing rhythm) ── */
+.hero-fish-body {
+  transform-origin: 115px 60px;
+  animation: fishBodySway 3.0s ease-in-out infinite alternate;
+}
+
+@keyframes fishBodySway {
+  0% { transform: translateX(-1.2px) scaleY(0.975); }
+  40% { transform: translateX(0px) scaleY(1); }
+  100% { transform: translateX(1.2px) scaleY(1.015); }
+}
+
+/* ── Scale Shimmer Sweep ── */
+.hero-fish-shimmer {
+  animation: fishShimmerSweep 4s ease-in-out infinite;
+}
+
+@keyframes fishShimmerSweep {
+  0% { transform: translateX(-80px); opacity: 0; }
+  30% { opacity: 0.35; }
+  50% { transform: translateX(0px); opacity: 0.4; }
+  70% { opacity: 0.35; }
+  100% { transform: translateX(80px); opacity: 0; }
+}
+
+/* ── Dorsal Fin (flowing wave) ── */
+.hero-fish-dorsal {
+  transform-origin: 112px 18px;
+  animation: fishDorsalWave 2.2s ease-in-out infinite alternate;
+}
+
+@keyframes fishDorsalWave {
+  0% { transform: rotate(-4deg) scaleY(0.92) skewX(2deg); }
+  50% { transform: rotate(0deg) scaleY(1) skewX(0deg); }
+  100% { transform: rotate(4deg) scaleY(1.06) skewX(-2deg); }
+}
+
+/* ── Pectoral Fin (rhythmic paddle) ── */
+.hero-fish-pectoral {
+  transform-origin: 105px 78px;
+  animation: fishPectoralFlutter var(--fin-flutter-duration, 1.8s) ease-in-out infinite alternate;
+  animation-delay: -0.4s;
+}
+
+@keyframes fishPectoralFlutter {
+  0% { transform: rotate(-10deg) scaleX(0.95); }
+  50% { transform: rotate(0deg) scaleX(1); }
+  100% { transform: rotate(10deg) scaleX(1.05); }
+}
+
+/* ── Anal Fin ── */
+.hero-fish-anal {
+  transform-origin: 55px 92px;
+  animation: fishAnalWave 2.5s ease-in-out infinite alternate;
+  animation-delay: -1s;
+}
+
+@keyframes fishAnalWave {
+  0% { transform: rotate(-5deg); }
+  100% { transform: rotate(5deg); }
+}
+
+/* ── Gill Breathing Flare ── */
+.hero-fish-gill-flare {
+  animation: fishGillBreathe 2.8s ease-in-out infinite;
+}
+
+@keyframes fishGillBreathe {
+  0%, 100% { rx: 3px; opacity: 0.06; }
+  40% { rx: 5px; opacity: 0.12; }
+  60% { rx: 4px; opacity: 0.09; }
+}
+
+/* ── Mouth (subtle open/close) ── */
+.hero-fish-mouth {
+  animation: fishMouthMove 5s ease-in-out infinite;
+}
+
+@keyframes fishMouthMove {
+  0%, 85%, 100% { transform: scaleY(1); }
+  90% { transform: scaleY(1.15); }
+  95% { transform: scaleY(0.9); }
+}
+
+/* ── Eyelid Blink ── */
+.hero-fish-eyelid {
+  animation: fishBlink 4.5s ease-in-out infinite;
+}
+
+@keyframes fishBlink {
+  0%, 90%, 100% { ry: 0; }
+  93%, 96% { ry: 10px; }
+}
+
+/* ── Golden Glow Pulse ── */
+.hero-fish-glow {
+  animation: fishGlowPulse 3.5s ease-in-out infinite alternate;
+}
+
+@keyframes fishGlowPulse {
+  0% { opacity: 0.4; transform: translate(-50%, -50%) scale(0.85); }
+  50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.0); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+}
+
+/* ── Bubble (with wobble) ── */
+.hero-fish-bubble {
+  position: fixed;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(255, 220, 160, 0.55),
+    rgba(255, 180, 80, 0.2) 50%,
+    transparent 100%
+  );
+  border: 0.5px solid rgba(255, 200, 120, 0.18);
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.hero-fish-bubble-animate {
+  animation: fishBubbleFloat var(--bubble-duration, 2.5s) ease-out forwards;
+}
+
+@keyframes fishBubbleFloat {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: var(--bubble-opacity, 0.2);
+  }
+  25% {
+    transform: translate3d(var(--bubble-wobble, 3px), -25px, 0) scale(0.9);
+  }
+  50% {
+    transform: translate3d(calc(var(--bubble-drift, 5px) * 0.5), -50px, 0) scale(0.75);
+    opacity: var(--bubble-opacity, 0.2);
+  }
+  75% {
+    transform: translate3d(calc(var(--bubble-wobble, 3px) * -1), -70px, 0) scale(0.5);
+  }
+  100% {
+    transform: translate3d(var(--bubble-drift, 5px), -100px, 0) scale(0.2);
+    opacity: 0;
+  }
+}
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .hero-fish-tail,
+  .hero-fish-body,
+  .hero-fish-dorsal,
+  .hero-fish-pectoral,
+  .hero-fish-anal,
+  .hero-fish-eyelid,
+  .hero-fish-glow,
+  .hero-fish-shimmer,
+  .hero-fish-gill-flare,
+  .hero-fish-mouth,
+  .hero-fish-bubble-animate {
+    animation: none !important;
+  }
+
+  .hero-fish-container {
+    display: none !important;
+  }
+}
+

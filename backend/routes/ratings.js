@@ -40,7 +40,7 @@ router.post("/submit-item", requireAuth, async (req, res) => {
       });
     }
 
-    // Check if customer has ordered this item
+    // Check if customer has ordered this item from their hotel
     const hasOrdered = await db.query(
       `SELECT EXISTS (
         SELECT 1
@@ -49,8 +49,9 @@ router.post("/submit-item", requireAuth, async (req, res) => {
         WHERE o.customer_id = $1
         AND oi.item_id = $2
         AND o.status = 'completed'
+        AND o.hotel_id = $3
       ) as has_ordered`,
-      [customerId, item_id]
+      [customerId, item_id, req.customer.hotelId]
     );
 
     if (!hasOrdered.rows[0].has_ordered) {
@@ -75,10 +76,10 @@ router.post("/submit-item", requireAuth, async (req, res) => {
 
     // Insert rating
     const result = await db.query(
-      `INSERT INTO ratings (customer_id, rating_value, review_text, item_id) 
-       VALUES ($1, $2, $3, $4) 
+      `INSERT INTO ratings (customer_id, rating_value, review_text, item_id, hotel_id) 
+       VALUES ($1, $2, $3, $4, $5) 
        RETURNING rating_id, customer_id, rating_value, review_text, item_id, created_at`,
-      [customerId, rating, safeReviewText, item_id]
+      [customerId, rating, safeReviewText, item_id, req.customer.hotelId]
     );
 
     return res.json({
@@ -161,10 +162,10 @@ router.post("/submit-order", requireAuth, async (req, res) => {
 
     // Insert order rating
     const result = await db.query(
-      `INSERT INTO ratings (customer_id, rating_value, review_text, order_id) 
-       VALUES ($1, $2, $3, $4) 
+      `INSERT INTO ratings (customer_id, rating_value, review_text, order_id, hotel_id) 
+       VALUES ($1, $2, $3, $4, $5) 
        RETURNING rating_id, customer_id, rating_value, review_text, order_id, created_at`,
-      [customerId, rating, safeReviewText, order_id]
+      [customerId, rating, safeReviewText, order_id, req.customer.hotelId]
     );
 
     return res.json({
@@ -207,9 +208,9 @@ router.get("/my-ratings", requireAuth, async (req, res) => {
         mi.image_url as item_image
        FROM ratings r
        LEFT JOIN menu_items mi ON r.item_id = mi.item_id
-       WHERE r.customer_id = $1
+       WHERE r.customer_id = $1 AND r.hotel_id = $2
        ORDER BY r.created_at DESC`,
-      [customerId]
+      [customerId, req.customer.hotelId]
     );
 
     return res.json({
@@ -253,9 +254,10 @@ router.get("/ordered-items", requireAuth, async (req, res) => {
       LEFT JOIN menu_category mc ON mi.category_id = mc.category_id
       WHERE o.customer_id = $1
       AND o.status = 'completed'
+      AND o.hotel_id = $2
       GROUP BY oi.item_id, mi.item_name, mi.price, mi.image_url, mi.description, mc.category_name
       ORDER BY last_ordered DESC`,
-      [customerId]
+      [customerId, req.customer.hotelId]
     );
 
     return res.json({
@@ -275,7 +277,10 @@ router.get("/ordered-items", requireAuth, async (req, res) => {
 // Get average rating (PUBLIC)
 router.get("/average", async (req, res) => {
   try {
-    const hotelSlug = req.query.hotel_slug || "hotbyte";
+    const hotelSlug = req.query.hotel_slug;
+    if (!hotelSlug) {
+      return res.status(400).json({ success: false, message: "hotel_slug is required." });
+    }
     const hotelResult = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [hotelSlug]);
     if (hotelResult.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Hotel not found" });
@@ -292,8 +297,7 @@ router.get("/average", async (req, res) => {
         COUNT(CASE WHEN rating_value = 2 THEN 1 END) as two_star,
         COUNT(CASE WHEN rating_value = 1 THEN 1 END) as one_star
        FROM ratings r
-       INNER JOIN customers c ON r.customer_id = c.customer_id
-       WHERE c.hotel_id = $1`,
+       WHERE r.hotel_id = $1`,
       [hotelId]
     );
 
@@ -328,7 +332,10 @@ router.get("/recent", async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 10, 50);
     const offset = Math.max(parseInt(req.query.offset) || 0, 0);
     const item_id = req.query.item_id;
-    const hotelSlug = req.query.hotel_slug || "hotbyte";
+    const hotelSlug = req.query.hotel_slug;
+    if (!hotelSlug) {
+      return res.status(400).json({ success: false, message: "hotel_slug is required." });
+    }
 
     const hotelResult = await db.query("SELECT hotel_id FROM public.hotels WHERE slug = $1", [hotelSlug]);
     if (hotelResult.rows.length === 0) {
@@ -351,7 +358,7 @@ router.get("/recent", async (req, res) => {
        FROM ratings r
        INNER JOIN customers c ON r.customer_id = c.customer_id
        LEFT JOIN menu_items mi ON r.item_id = mi.item_id
-       WHERE r.review_text IS NOT NULL AND r.review_text != '' AND c.hotel_id = $1
+       WHERE r.review_text IS NOT NULL AND r.review_text != '' AND r.hotel_id = $1
     `;
 
     const params = [hotelId];

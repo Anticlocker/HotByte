@@ -9,17 +9,11 @@ const { requireAdmin } = require("./auth");
 const bunnyCDN = require("./bunnyCDN");
 const crypto = require("crypto");
 const xss = require("xss");
+const { resolveHotelSlug } = require("../utils/hotelUtils");
 
-// ─── Helper: resolve hotel_slug → hotel_id for super_admin scoped queries ───────
-// Usage: const hotelId = await resolveHotelSlug(req) || req.admin.hotelId
-const resolveHotelSlug = async (req) => {
-  if (req.admin.role !== 'super_admin') return req.admin.hotelId;
-  const slug = req.query.hotel_slug || req.body?.hotel_slug;
-  if (!slug) return null; // super_admin with no filter = all hotels
-  const result = await db.query('SELECT hotel_id FROM public.hotels WHERE slug = $1', [slug]);
-  if (result.rows.length === 0) return -1; // sentinel: slug not found
-  return result.rows[0].hotel_id;
-};
+// Tables routes (mounted at /api/admin/tables)
+const tablesRouter = require('./tables');
+router.use('/tables', tablesRouter);
 
 const bcrypt = require("bcrypt");
 const SALT_ROUNDS = 12;
@@ -28,20 +22,23 @@ const hashPassword = async (password) => {
   return await bcrypt.hash(password, SALT_ROUNDS);
 };
 
+const { validateImageUpload } = require("../middleware/validateImageUpload");
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 300 * 1024, // 300KB limit (covers both 200KB logo & 300KB banner)
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const allowedTypes = /jpeg|jpg|png|webp/;
+    const allowedMimetypes = /image\/(jpeg|jpg|png|webp)/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
+    const mimetype = allowedMimetypes.test(file.mimetype);
 
     if (mimetype && extname) {
       return cb(null, true);
     } else {
-      cb(new Error("Only image files are allowed (jpeg, jpg, png, gif, webp)"));
+      cb(new Error("Invalid image format. Only JPG, JPEG, PNG and WEBP are allowed."));
     }
   },
 });
@@ -94,14 +91,14 @@ router.post("/categories", requireAdmin, async (req, res) => {
       [name, hotelId]
     );
 
-    res.json({ success: true, category: rows[0] });
+    return res.json({ success: true, category: rows[0] });
 
   } catch (error) {
     if (error.code === "23505")
       return res.status(409).json({ success: false, message: "Category already exists" });
 
     logger.error("Create category error:", error);
-    res.status(500).json({ success: false, message: "Failed to create category" });
+    return res.status(500).json({ success: false, message: "Failed to create category" });
   }
 });
 
@@ -198,7 +195,29 @@ router.get("/items", requireAdmin, async (req, res) => {
     }
     query += " ORDER BY mc.category_name, mi.item_name";
     const result = await db.query(query, params);
-    return res.json({ success: true, items: result.rows });
+    const items = result.rows;
+    if (items.length > 0) {
+      const itemIds = items.map(it => it.item_id);
+      const variantsResult = await db.query(
+        "SELECT id, menu_item_id, variant_name, price FROM public.menu_item_variants WHERE menu_item_id = ANY($1) ORDER BY id",
+        [itemIds]
+      );
+      const variantsMap = {};
+      variantsResult.rows.forEach(v => {
+        if (!variantsMap[v.menu_item_id]) {
+          variantsMap[v.menu_item_id] = [];
+        }
+        variantsMap[v.menu_item_id].push({
+          id: v.id,
+          variant_name: v.variant_name,
+          price: parseFloat(v.price)
+        });
+      });
+      items.forEach(it => {
+        it.variants = variantsMap[it.item_id] || [];
+      });
+    }
+    return res.json({ success: true, items });
   } catch (error) {
     logger.error("Get items error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch items" });
@@ -210,7 +229,7 @@ router.post("/items", requireAdmin, (req, res, next) => {
   upload.single("image")(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ success: false, message: "Image file is too large. Maximum size is 10MB." });
+        return res.status(400).json({ success: false, message: "Image size exceeds the maximum limit." });
       }
       return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
     } else if (err) {
@@ -218,9 +237,17 @@ router.post("/items", requireAdmin, (req, res, next) => {
     }
     next();
   });
-}, async (req, res) => {
+}, validateImageUpload, async (req, res) => {
   try {
-    const { item_name, category_id, price, description, is_available, is_veg } = req.body;
+    const { item_name, category_id, price, description, is_available, is_veg, variants } = req.body;
+    let parsedVariants = null;
+    if (variants) {
+      try {
+        parsedVariants = typeof variants === 'string' ? JSON.parse(variants) : variants;
+      } catch (e) {
+        logger.error("Error parsing variants:", e);
+      }
+    }
     let image_url = null;
 
     if (!item_name || !category_id || !price) {
@@ -313,7 +340,19 @@ router.post("/items", requireAdmin, (req, res, next) => {
       [safeItemName, category_id, parseFloat(price), image_url, safeDescription, isAvailableBool, isVegBool, hotelId]
     );
 
-    return res.json({ success: true, item: result.rows[0] });
+    const newItem = result.rows[0];
+
+    if (parsedVariants && parsedVariants.length > 0) {
+      for (const v of parsedVariants) {
+        await db.query(
+          "INSERT INTO public.menu_item_variants (menu_item_id, variant_name, price) VALUES ($1, $2, $3)",
+          [newItem.item_id, v.variant_name.trim(), parseFloat(v.price)]
+        );
+      }
+      newItem.variants = parsedVariants;
+    }
+
+    return res.json({ success: true, item: newItem });
   } catch (error) {
     logger.error("Create item error:", error);
     return res.status(500).json({ success: false, message: "Failed to create item" });
@@ -325,7 +364,7 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
   upload.single("image")(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ success: false, message: "Image file is too large. Maximum size is 10MB." });
+        return res.status(400).json({ success: false, message: "Image size exceeds the maximum limit." });
       }
       return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
     } else if (err) {
@@ -333,10 +372,18 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
     }
     next();
   });
-}, async (req, res) => {
+}, validateImageUpload, async (req, res) => {
   try {
     const { id } = req.params;
-    const { item_name, category_id, price, description, is_available, is_veg, existing_image_url } = req.body;
+    const { item_name, category_id, price, description, is_available, is_veg, existing_image_url, variants } = req.body;
+    let parsedVariants = null;
+    if (variants) {
+      try {
+        parsedVariants = typeof variants === 'string' ? JSON.parse(variants) : variants;
+      } catch (e) {
+        logger.error("Error parsing variants:", e);
+      }
+    }
 
     if (!item_name || !category_id || !price) {
       return res.status(400).json({ success: false, message: "Item name, category, and price are required" });
@@ -461,7 +508,23 @@ router.put("/items/:id", requireAdmin, (req, res, next) => {
       return res.status(404).json({ success: false, message: "Item not found" });
     }
 
-    return res.json({ success: true, item: result.rows[0] });
+    const updatedItem = result.rows[0];
+
+    // Clear old variants and insert new ones
+    await db.query("DELETE FROM public.menu_item_variants WHERE menu_item_id = $1", [id]);
+    if (parsedVariants && parsedVariants.length > 0) {
+      for (const v of parsedVariants) {
+        await db.query(
+          "INSERT INTO public.menu_item_variants (menu_item_id, variant_name, price) VALUES ($1, $2, $3)",
+          [id, v.variant_name.trim(), parseFloat(v.price)]
+        );
+      }
+      updatedItem.variants = parsedVariants;
+    } else {
+      updatedItem.variants = [];
+    }
+
+    return res.json({ success: true, item: updatedItem });
   } catch (error) {
     logger.error("Update item error:", error);
     return res.status(500).json({ success: false, message: "Failed to update item" });
@@ -559,7 +622,8 @@ router.get("/orders", requireAdmin, async (req, res) => {
       SELECT 
         o.order_id,
         o.customer_id,
-        c.name AS customer_name,
+        o.order_display_id,
+        COALESCE(NULLIF(o.customer_name, ''), c.name) AS customer_name,
         c.phone AS customer_phone,
         o.table_number,
         o.total_amount,
@@ -568,13 +632,15 @@ router.get("/orders", requireAdmin, async (req, res) => {
         p.payment_status,
         p.payment_method,
         p.razorpay_payment_id,
+        p.payment_reference,
         COALESCE(
           json_agg(
             json_build_object(
               'order_item_id', oi.order_item_id,
               'quantity', oi.quantity,
               'price', oi.price,
-              'item_name', mi.item_name
+              'item_name', mi.item_name,
+              'variant_name', oi.variant_name
             )
           ) FILTER (WHERE oi.order_item_id IS NOT NULL),
           '[]'::json
@@ -625,8 +691,8 @@ router.get("/orders", requireAdmin, async (req, res) => {
     // ✅ Grouping + Pagination
     query += `
       GROUP BY 
-        o.order_id, c.name, c.phone,
-        p.payment_status, p.payment_method, p.razorpay_payment_id
+        o.order_id, o.order_display_id, o.customer_name, c.name, c.phone,
+        p.payment_status, p.payment_method, p.razorpay_payment_id, p.payment_reference
       ORDER BY o.created_at DESC
       LIMIT $${params.length + 1}
       OFFSET $${params.length + 2}
@@ -643,7 +709,7 @@ router.get("/orders", requireAdmin, async (req, res) => {
 
   } catch (error) {
     logger.error("Get orders error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to fetch orders"
     });
@@ -718,7 +784,7 @@ router.put("/orders/:id/status", requireAdmin, async (req, res) => {
     }
 
     const result = await db.query(
-      "UPDATE orders SET status = $1 WHERE order_id = $2 RETURNING order_id, status",
+      "UPDATE orders SET status = $1 WHERE order_id = $2 RETURNING order_id, customer_id, status",
       [status, id]
     );
 
@@ -726,7 +792,21 @@ router.put("/orders/:id/status", requireAdmin, async (req, res) => {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
 
-    return res.json({ success: true, order: result.rows[0] });
+    const updatedOrder = result.rows[0];
+
+    // Emit real-time status update to SSE clients
+    try {
+      const { sseEmitter } = require("../utils/sse");
+      sseEmitter.emit("orderStatusUpdate", {
+        customerId: updatedOrder.customer_id,
+        orderId: updatedOrder.order_id,
+        status: updatedOrder.status,
+      });
+    } catch (sseErr) {
+      logger.error("SSE emit status update failed:", sseErr);
+    }
+
+    return res.json({ success: true, order: { order_id: updatedOrder.order_id, status: updatedOrder.status } });
   } catch (error) {
     logger.error("Update order status error:", error);
     return res.status(500).json({ success: false, message: "Failed to update order status" });
@@ -796,6 +876,54 @@ router.put("/orders/:id/mark-paid", requireAdmin, async (req, res) => {
   } catch (error) {
     logger.error("Mark order as paid error:", error);
     return res.status(500).json({ success: false, message: "Failed to mark order as paid" });
+  }
+});
+
+// Verify or reject QR payment
+router.put("/orders/:id/verify-qr-payment", requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action } = req.body;
+
+    if (!['verify', 'reject'].includes(action)) {
+      return res.status(400).json({ success: false, message: "Action must be 'verify' or 'reject'." });
+    }
+
+    if (req.admin.role !== 'super_admin') {
+      const orderCheck = await db.query("SELECT hotel_id FROM orders WHERE order_id = $1", [id]);
+      if (orderCheck.rows.length === 0 || orderCheck.rows[0].hotel_id !== req.admin.hotelId) {
+        return res.status(403).json({ success: false, message: "Unauthorized: Order belongs to another hotel." });
+      }
+    }
+
+    const paymentCheck = await db.query(
+      `SELECT p.payment_id, p.payment_status, p.payment_method
+       FROM payments p JOIN orders o ON o.order_id = p.order_id WHERE p.order_id = $1`,
+      [id]
+    );
+
+    if (paymentCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Payment record not found." });
+    }
+
+    const payment = paymentCheck.rows[0];
+    if (payment.payment_method !== 'qr') {
+      return res.status(400).json({ success: false, message: "Not a QR payment order." });
+    }
+    if (payment.payment_status !== 'submitted') {
+      return res.status(400).json({ success: false, message: "Payment not in submitted state." });
+    }
+
+    const newStatus = action === 'verify' ? 'completed' : 'rejected';
+    await db.query("UPDATE payments SET payment_status = $1 WHERE order_id = $2", [newStatus, id]);
+
+    return res.json({
+      success: true,
+      message: action === 'verify' ? "QR payment verified successfully." : "QR payment rejected."
+    });
+  } catch (error) {
+    logger.error("Verify QR payment error:", error);
+    return res.status(500).json({ success: false, message: "Failed to verify QR payment." });
   }
 });
 
@@ -887,11 +1015,14 @@ router.get("/customer-stats", requireAdmin, async (req, res) => {
     const totalParams = [];
     const todayParams = [];
 
-    if (req.admin.role !== 'super_admin') {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req).then(id => { if (id === -1) throw new Error('Hotel slug not found'); return id; })
+      : req.admin.hotelId;
+    if (hotelId) {
       totalCustomersQuery += " WHERE hotel_id = $1";
       todayCustomersQuery += " AND hotel_id = $1";
-      totalParams.push(req.admin.hotelId);
-      todayParams.push(req.admin.hotelId);
+      totalParams.push(hotelId);
+      todayParams.push(hotelId);
     }
 
     const [totalCustomers, todayCustomers] = await Promise.all([
@@ -988,7 +1119,8 @@ router.get("/users/:id", requireAdmin, async (req, res) => {
               'order_item_id', oi.order_item_id,
               'quantity', oi.quantity,
               'price', oi.price,
-              'item_name', mi.item_name
+              'item_name', mi.item_name,
+              'variant_name', oi.variant_name
             ) ORDER BY mi.item_name
           ) FILTER (WHERE oi.order_item_id IS NOT NULL),
           '[]'::json
@@ -1567,7 +1699,7 @@ router.get("/settings", requireAdmin, async (req, res) => {
     const hotelResult = await db.query(
       `SELECT hotel_id, name, slug, phone, address, email, logo_url, banner_url, description, tagline, 
               show_logo, show_banner, primary_color, secondary_color, enable_online_orders, enable_qr_ordering, 
-              settings_json, is_open, table_count, hotel_type 
+              settings_json, is_open, table_count, hotel_type, location_ordering_enabled 
        FROM public.hotels WHERE hotel_id = $1`,
       [hotelId]
     );
@@ -1637,7 +1769,9 @@ router.post("/settings", requireAdmin, async (req, res) => {
            hotel_type = $15
        WHERE hotel_id = $16`,
       [
-        name.trim(), description || null, address || null, phone || null, email || null, tagline || 'Served with Love ❤️',
+        xss(name.trim()), description ? xss(description) : null,
+        address ? xss(address) : null, phone ? xss(phone) : null,
+        email ? xss(email) : null, xss(tagline || 'Served with Love ❤️'),
         show_logo !== false, show_banner !== false, primary_color || '#FF5A1F', secondary_color || '#FF5A1F',
         enable_online_orders !== false, enable_qr_ordering !== false, parseInt(table_count) || 5, settings_json || {},
         safeHotelType, hotelId
@@ -1725,14 +1859,14 @@ router.post("/settings/account", requireAdmin, async (req, res) => {
         `UPDATE public.admins 
          SET name = $1, email = $2, phone = $3, password = $4
          WHERE admin_id = $5`,
-        [name?.trim() || null, email.trim().toLowerCase(), phone?.trim() || null, hashedNewPassword, req.admin.id]
+        [name ? xss(name.trim()) : null, email.trim().toLowerCase(), phone?.trim() || null, hashedNewPassword, req.admin.id]
       );
     } else {
       await db.query(
         `UPDATE public.admins 
          SET name = $1, email = $2, phone = $3
          WHERE admin_id = $4`,
-        [name?.trim() || null, email.trim().toLowerCase(), phone?.trim() || null, req.admin.id]
+        [name ? xss(name.trim()) : null, email.trim().toLowerCase(), phone?.trim() || null, req.admin.id]
       );
     }
 
@@ -1764,7 +1898,19 @@ router.post("/settings/logout-devices", requireAdmin, async (req, res) => {
 });
 
 // ─── Settings: POST /settings/upload ───────────────────────────────
-router.post("/settings/upload", requireAdmin, upload.single("image"), async (req, res) => {
+router.post("/settings/upload", requireAdmin, (req, res, next) => {
+  upload.single("image")(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ success: false, message: "Image size exceeds 200 KB limit." });
+      }
+      return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
+    } else if (err) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    next();
+  });
+}, validateImageUpload, async (req, res) => {
   try {
     const { type } = req.body; // 'logo' or 'banner'
     const file = req.file;
@@ -1775,24 +1921,6 @@ router.post("/settings/upload", requireAdmin, upload.single("image"), async (req
 
     if (type !== "logo" && type !== "banner") {
       return res.status(400).json({ success: false, message: "Invalid upload type. Must be 'logo' or 'banner'" });
-    }
-
-    // Image size check (logo: 2MB, banner: 5MB)
-    const maxSize = type === "logo" ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
-    if (file.size > maxSize) {
-      return res.status(400).json({
-        success: false,
-        message: `${type === 'logo' ? 'Logo' : 'Banner'} file size must be less than ${type === 'logo' ? '2MB' : '5MB'}`
-      });
-    }
-
-    // Verify MIME types
-    const allowedMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
-    if (!allowedMimeTypes.includes(file.mimetype)) {
-      return res.status(400).json({
-        success: false,
-        message: "Only JPEG, PNG, or WEBP image files are allowed"
-      });
     }
 
     // Generate unique name — resolve hotel ID for super_admin
@@ -1855,15 +1983,71 @@ router.post("/settings/upload", requireAdmin, upload.single("image"), async (req
   }
 });
 
+// Helper to normalize plan features to a clean string array
+function normalizePlanFeatures(features) {
+  if (!features) return [];
+  // Already an array (jsonb array from postgres)
+  if (Array.isArray(features)) return features.filter(f => typeof f === 'string' && f.trim());
+  // It's a plain string — try JSON.parse
+  if (typeof features === 'string') {
+    try {
+      const parsed = JSON.parse(features);
+      if (Array.isArray(parsed)) return parsed.filter(f => typeof f === 'string' && f.trim());
+      // It's a key-value object string — convert to readable labels
+      return Object.entries(parsed)
+        .filter(([, v]) => v === true || (typeof v === 'string' && v !== '0' && v !== 'false'))
+        .map(([k, v]) => (typeof v === 'string' && v !== 'true' ? `${k}: ${v}` : k));
+    } catch {
+      return [];
+    }
+  }
+  // It's a key-value object (postgres jsonb object)
+  if (typeof features === 'object') {
+    return Object.entries(features)
+      .filter(([, v]) => v === true || (typeof v === 'string' && v !== '0' && v !== 'false'))
+      .map(([k, v]) => (typeof v === 'string' && v !== 'true' ? `${k}: ${v}` : k));
+  }
+  return [];
+}
+
+const PLAN_FEATURES = {
+  trial: [
+    '14-Day Free Trial', '1 Restaurant', 'Unlimited Categories', 'Unlimited Menu Items',
+    'QR Digital Menu', 'Table Wise QR Ordering', 'Hotel QR Payment', 'Google Customer Login',
+    'Customer Auth Toggle', 'Location Based Ordering', 'Order Management',
+    'Ratings & Reviews', 'Basic Analytics', 'Email Support'
+  ],
+  basic: [
+    'Everything in Trial', 'Unlimited Orders', 'Up to 3 Admin Managers',
+    'Sales Dashboard', 'Customer Logs', 'Restaurant Branding', 'Daily Sales Reports',
+    'Restaurant Settings', 'Priority Email Support', 'Monthly Database Backup',
+    'Performance Optimizations'
+  ],
+  pro: [
+    'Everything in Basic', 'Unlimited Admin Managers', 'Unlimited Staff Accounts',
+    'Kitchen Display System (KDS)', 'Advanced Analytics', 'Peak Hour Reports',
+    'Table Management', 'Premium QR Payment Verification', 'Restaurant Insights',
+    'Premium Dashboard', 'Dedicated Priority Support', 'Early Access Features',
+    'Future Enterprise Features'
+  ]
+};
 
 router.get('/subscription-plans', requireAdmin, async (req, res) => {
   try {
-    // Subscription plans are global; no hotel scoping needed
     const result = await db.query('SELECT plan_id, name, price_monthly, price_yearly, features FROM public.subscription_plans ORDER BY plan_id');
-    return res.json({ success: true, plans: result.rows });
+    const plans = result.rows.map(plan => ({
+      ...plan,
+      features: (() => {
+        const normalized = normalizePlanFeatures(plan.features);
+        // If DB features look like characters or are empty, fall back to hardcoded list
+        const key = plan.name?.toLowerCase();
+        if (normalized.length < 3 && PLAN_FEATURES[key]) return PLAN_FEATURES[key];
+        return normalized;
+      })()
+    }));
+    return res.json({ success: true, plans });
   } catch (error) {
     logger.error('Fetch subscription plans error:', error);
-    // If the table does not exist, create it and seed default plans
     if (error.code === '42P01') {
       try {
         await db.query(`
@@ -1876,19 +2060,25 @@ router.get('/subscription-plans', requireAdmin, async (req, res) => {
             trial_days integer DEFAULT 14
           );
         `);
-        // Seed default plans if table empty
         const seedCheck = await db.query('SELECT COUNT(*) FROM public.subscription_plans');
         if (parseInt(seedCheck.rows[0].count) === 0) {
           await db.query(`
             INSERT INTO public.subscription_plans (name, price_monthly, price_yearly, features) VALUES
-              ('trial', 1, 1, '{"all_basic":true,"unlimited_staff":true,"advanced_analytics":true,"occupancy_tracking":true,"priority_support":true,"menu_assistant":true,"is_trial_pro":true}'),
-              ('basic', 999, 11988, '{"menu_items":"unlimited","admin_managers":3,"razorpay":true,"kds":true,"dynamic_qr":true,"pdf_reports":true}'),
-              ('pro', 2499, 29988, '{"all_basic":true,"unlimited_staff":true,"advanced_analytics":true,"occupancy_tracking":true,"priority_support":true,"menu_assistant":true}');
-          `);
+              ('trial', 1, 1, $1::jsonb),
+              ('basic', 999, 11988, $2::jsonb),
+              ('pro', 2499, 29988, $3::jsonb);
+          `, [
+            JSON.stringify(PLAN_FEATURES.trial),
+            JSON.stringify(PLAN_FEATURES.basic),
+            JSON.stringify(PLAN_FEATURES.pro)
+          ]);
         }
-        // Re-run the original query now that table exists
         const retryResult = await db.query('SELECT plan_id, name, price_monthly, price_yearly, features FROM public.subscription_plans ORDER BY plan_id');
-        return res.json({ success: true, plans: retryResult.rows });
+        const plans = retryResult.rows.map(plan => ({
+          ...plan,
+          features: normalizePlanFeatures(plan.features)
+        }));
+        return res.json({ success: true, plans });
       } catch (creationError) {
         logger.error('Error creating subscription_plans table:', creationError);
         return res.status(500).json({ success: false, message: 'Failed to fetch subscription plans' });
@@ -1951,6 +2141,28 @@ router.put("/settings/location", requireAdmin, async (req, res) => {
   } catch (error) {
     logger.error("Update location error:", error);
     return res.status(500).json({ success: false, message: "Failed to update hotel location." });
+  }
+});
+
+// ─── Settings: PUT /settings/location-ordering ────────────────────────
+router.put("/settings/location-ordering", requireAdmin, async (req, res) => {
+  try {
+    const { locationOrderingEnabled } = req.body;
+    const hotelId = req.admin.role === 'super_admin' ? (await resolveHotelSlug(req)) : req.admin.hotelId;
+
+    if (!hotelId || hotelId === -1) {
+      return res.status(403).json({ success: false, message: "Authorized hotel context required." });
+    }
+
+    await db.query(
+      "UPDATE public.hotels SET location_ordering_enabled = $1 WHERE hotel_id = $2",
+      [locationOrderingEnabled === true, hotelId]
+    );
+
+    return res.json({ success: true, message: "Location-based ordering preferences updated successfully." });
+  } catch (error) {
+    logger.error("Update location ordering error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update location-based ordering settings." });
   }
 });
 
@@ -2076,6 +2288,170 @@ router.get("/auth-logs", requireAdmin, async (req, res) => {
   } catch (error) {
     logger.error("Get hotel auth logs error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch authentication logs" });
+  }
+});
+
+// ─── Payment Settings ───────────────────────────────────────────────
+router.get("/payment-settings", requireAdmin, async (req, res) => {
+  try {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req)
+      : req.admin.hotelId;
+
+    if (!hotelId || hotelId === -1) {
+      return res.status(404).json({ success: false, message: "Hotel not resolved." });
+    }
+
+    const result = await db.query(
+      `SELECT merchant_name, upi_id, payment_qr_url, payment_instructions
+       FROM public.hotels WHERE hotel_id = $1`,
+      [hotelId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Hotel not found." });
+    }
+
+    const row = result.rows[0];
+    return res.json({
+      success: true,
+      merchantName: row.merchant_name || "",
+      upiId: row.upi_id || "",
+      paymentQrUrl: row.payment_qr_url || "",
+      paymentInstructions: row.payment_instructions || ""
+    });
+  } catch (error) {
+    logger.error("Get payment settings error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch payment settings." });
+  }
+});
+
+router.post("/payment-settings", requireAdmin, async (req, res) => {
+  try {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req)
+      : req.admin.hotelId;
+
+    if (!hotelId || hotelId === -1) {
+      return res.status(404).json({ success: false, message: "Hotel not resolved." });
+    }
+
+    const { merchantName, upiId, paymentInstructions } = req.body;
+
+    await db.query(
+      `UPDATE public.hotels
+       SET merchant_name = $1, upi_id = $2, payment_instructions = $3
+       WHERE hotel_id = $4`,
+      [merchantName ? xss(merchantName.trim()) : null, upiId ? xss(upiId.trim()) : null, paymentInstructions ? xss(paymentInstructions.trim()) : null, hotelId]
+    );
+
+    return res.json({ success: true, message: "Payment settings updated." });
+  } catch (error) {
+    logger.error("Update payment settings error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update payment settings." });
+  }
+});
+
+router.post("/payment-settings/qr-upload", requireAdmin, (req, res, next) => {
+  upload.single("qrImage")(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ success: false, message: "Image size exceeds the maximum limit." });
+      }
+      return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
+    } else if (err) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    next();
+  });
+}, validateImageUpload, async (req, res) => {
+  try {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req)
+      : req.admin.hotelId;
+
+    if (!hotelId || hotelId === -1) {
+      return res.status(404).json({ success: false, message: "Hotel not resolved." });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No image file provided." });
+    }
+
+    const ext = path.extname(req.file.originalname) || ".png";
+    const fileName = `payment_qr_${hotelId}_${Date.now()}${ext}`;
+
+    let qrUrl = null;
+      try {
+        const cdnResult = await bunnyCDN.uploadImage(req.file.buffer, fileName, "payment-qr");
+        if (cdnResult.success) {
+          qrUrl = cdnResult.url;
+        }
+      } catch (cdnErr) {
+        logger.warn("BunnyCDN upload failed, using local fallback:", cdnErr.message);
+      }
+
+      if (!qrUrl) {
+        const uploadDir = path.join(__dirname, "../public/uploads/payment-qr");
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        const localPath = path.join(uploadDir, fileName);
+        fs.writeFileSync(localPath, req.file.buffer);
+        qrUrl = `/uploads/payment-qr/${fileName}`;
+      }
+
+      await db.query(
+        "UPDATE public.hotels SET payment_qr_url = $1 WHERE hotel_id = $2",
+        [qrUrl, hotelId]
+      );
+
+      return res.json({ success: true, message: "QR code uploaded.", qrUrl });
+    } catch (error) {
+      logger.error("QR upload error:", error);
+      return res.status(500).json({ success: false, message: "Failed to upload QR code." });
+    }
+  });
+router.delete("/payment-settings/qr", requireAdmin, async (req, res) => {
+  try {
+    const hotelId = req.admin.role === 'super_admin'
+      ? await resolveHotelSlug(req)
+      : req.admin.hotelId;
+
+    if (!hotelId || hotelId === -1) {
+      return res.status(404).json({ success: false, message: "Hotel not resolved." });
+    }
+
+    const result = await db.query(
+      "SELECT payment_qr_url FROM public.hotels WHERE hotel_id = $1",
+      [hotelId]
+    );
+
+    if (result.rows.length > 0 && result.rows[0].payment_qr_url) {
+      const oldUrl = result.rows[0].payment_qr_url;
+      if (oldUrl.startsWith("/uploads/")) {
+        const localPath = path.join(__dirname, "../public", oldUrl);
+        if (fs.existsSync(localPath)) {
+          fs.unlinkSync(localPath);
+        }
+      } else if (oldUrl.includes("bunnycdn") || oldUrl.includes("storage.bunnycdn")) {
+        try {
+          await bunnyCDN.deleteImage(oldUrl);
+        } catch (cdnErr) {
+          logger.warn("BunnyCDN delete failed (non-fatal):", cdnErr.message);
+        }
+      }
+    }
+
+    await db.query(
+      "UPDATE public.hotels SET payment_qr_url = NULL WHERE hotel_id = $1",
+      [hotelId]
+    );
+
+    return res.json({ success: true, message: "QR code deleted." });
+  } catch (error) {
+    logger.error("QR delete error:", error);
+    return res.status(500).json({ success: false, message: "Failed to delete QR code." });
   }
 });
 

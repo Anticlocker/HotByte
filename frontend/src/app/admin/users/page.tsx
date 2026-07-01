@@ -11,6 +11,7 @@ import {
   Calendar,
   Gift,
 } from "lucide-react";
+import { logger } from "@/lib/utils/logger";
 
 interface CustomerLog {
   customer_id: number;
@@ -48,7 +49,7 @@ export default function CustomerDirectory() {
         setUsers(data.users);
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     } finally {
       setLoading(false);
     }

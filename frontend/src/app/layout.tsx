@@ -1,7 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
-import Script from "next/script";
+import { LocaleProvider } from "../context/LocaleContext";
+import I18nProvider from "../components/I18nProvider";
+import { NotificationProvider } from "../context/NotificationContext";
+
 
 const plusJakarta = Plus_Jakarta_Sans({
   variable: "--font-plus-jakarta",
@@ -20,17 +23,12 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#0b0d11" },
   ],
 };
-
-import { LocaleProvider } from "../context/LocaleContext";
-import I18nProvider from "../components/I18nProvider";
-
 
 export default function RootLayout({
   children,
@@ -44,25 +42,17 @@ export default function RootLayout({
           rel="stylesheet"
           href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
         />
-        <link
-          rel="stylesheet"
-          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem('hotbyte_theme')==='dark'){document.documentElement.classList.add('dark')}else{document.documentElement.classList.remove('dark')}}catch(_){}`
+          }}
         />
-        <Script id="theme-initializer" strategy="beforeInteractive">
-          {`
-            try {
-              if (localStorage.getItem('hotbyte_theme') === 'dark') {
-                document.documentElement.classList.add('dark');
-              } else {
-                document.documentElement.classList.remove('dark');
-              }
-            } catch (_) {}
-          `}
-        </Script>
       </head>
       <body className="min-h-full flex flex-col font-sans selection:bg-orange-100 selection:text-orange-700 bg-white dark:bg-[#0b0d11] transition-colors duration-300" suppressHydrationWarning>
         <I18nProvider>
-          <LocaleProvider>{children}</LocaleProvider>
+          <LocaleProvider>
+            <NotificationProvider>{children}</NotificationProvider>
+          </LocaleProvider>
         </I18nProvider>
       </body>
     </html>

@@ -16,8 +16,9 @@ import {
   Menu,
   X,
   Lock,
+  Table2,
 } from "lucide-react";
-import Swal from "sweetalert2";
+import { useNotification } from "@/context/NotificationContext";
 import { useAdminSession } from "@/context/AdminSessionContext";
 
 export default function AdminSidebar() {
@@ -25,6 +26,7 @@ export default function AdminSidebar() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { admin, loading } = useAdminSession();
+  const notif = useNotification();
   const [isOpen, setIsOpen] = useState(false);
   const [hotelOpen, setHotelOpen] = useState(true);
 
@@ -44,59 +46,45 @@ export default function AdminSidebar() {
     }
   }, [admin]);
 
+  const getCsrfToken = () => {
+    if (typeof document === "undefined") return "";
+    const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : "";
+  };
+
   const handleToggleHotelStatus = async () => {
     const nextStatus = !hotelOpen;
     try {
       const res = await fetch("/api/admin/toggle-hotel-status", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() || "" },
         body: JSON.stringify({ isOpen: nextStatus }),
       });
       const data = await res.json();
       if (data.success) {
         setHotelOpen(data.isOpen);
-        Swal.fire({
-          title: data.isOpen ? "Hotel Opened!" : "Hotel Closed!",
-          text: data.message,
-          icon: "success",
-          timer: 1500,
-          showConfirmButton: false,
-        });
+        notif.success(data.isOpen ? "Hotel Opened!" : "Hotel Closed!", data.message);
       } else {
-        Swal.fire("Error", data.message || "Failed to update status", "error");
+        notif.error("Error", data.message || "Failed to update status");
       }
     } catch (err) {
-      Swal.fire("Error", "Network connection failed", "error");
+      notif.error("Error", "Network connection failed");
     }
   };
 
   const handleLogout = async () => {
-    const result = await Swal.fire({
-      title: "Logout Admin?",
-      text: "Are you sure you want to end your admin session?",
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonColor: "#FF5A1F",
-      cancelButtonColor: "#3085d6",
-      confirmButtonText: "Yes, Logout",
-    });
+    const { isConfirmed } = await notif.confirm("Logout Admin?", "Are you sure you want to end your admin session?");
 
-    if (result.isConfirmed) {
+    if (isConfirmed) {
       try {
         const res = await fetch("/api/auth/admin/logout", { method: "POST" });
         const data = await res.json();
         if (data.success) {
-          Swal.fire({
-            title: "Logged Out",
-            text: "Admin session closed successfully!",
-            icon: "success",
-            timer: 1200,
-            showConfirmButton: false,
-          });
+          notif.success("Logged Out", "Admin session closed successfully!");
           router.push("/admin/login");
         }
       } catch (err) {
-        Swal.fire("Error", "Logout failed", "error");
+        notif.error("Error", "Logout failed");
       }
     }
   };
@@ -104,6 +92,7 @@ export default function AdminSidebar() {
   const navItems = [
     { name: "Live Orders", href: "/admin", icon: LayoutDashboard },
     { name: "Kitchen KDS", href: "/admin/kitchen", icon: ChefHat },
+    { name: "Table Mgmt", href: "/admin/tables", icon: Table2 },
     { name: "Sales Report", href: "/admin/sales-report", icon: BarChart3 },
     { name: "Customer Log", href: "/admin/users", icon: Users },
     { name: "Order History", href: "/admin/oldorders", icon: History },
